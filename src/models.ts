@@ -4,7 +4,7 @@ import type { ModelPricing, Tier } from './types.js';
 export const DEFAULT_MODELS: Record<Tier, string> = {
   haiku: 'claude-haiku-4-5',
   sonnet: 'claude-sonnet-5',
-  opus: 'claude-opus-4-8',
+  opus: 'claude-opus-5',
   // Fable 5.1 (2026-09-01) supersedes Fable 5, which is now a legacy model. Same
   // $10/$50 base, cheaper cache reads — so this promotion *does* move a cost
   // figure, downward, on the cache-read line.
@@ -17,27 +17,29 @@ export const DEFAULT_MODELS: Record<Tier, string> = {
 export const BEDROCK_MODELS: Record<Tier, string> = {
   haiku:  'us.anthropic.claude-haiku-4-5-20251001-v1:0',
   sonnet: 'us.anthropic.claude-sonnet-5-v1:0',
-  opus:   'us.anthropic.claude-opus-4-8-v1:0',
+  opus:   'us.anthropic.claude-opus-5-v1:0',
   // Fable's availability and inference-profile ID on Bedrock are unverified, so
   // the fable tier resolves to Opus here rather than risking a 404. Fable
   // routing is opt-in and off by default, so this is inert unless enabled.
-  fable:  'us.anthropic.claude-opus-4-8-v1:0',
+  fable:  'us.anthropic.claude-opus-5-v1:0',
 };
 
 export const VERTEX_MODELS: Record<Tier, string> = {
   haiku:  'claude-haiku-4-5',
   sonnet: 'claude-sonnet-5',
-  opus:   'claude-opus-4-8',
+  opus:   'claude-opus-5',
   // Same reasoning as Bedrock above.
-  fable:  'claude-opus-4-8',
+  fable:  'claude-opus-5',
 };
 
 /**
  * Current-generation Claude pricing ($ per 1M tokens), keyed by tier/family.
- * Verified against platform.claude.com pricing (last checked 2026-09-02):
+ * Verified against platform.claude.com pricing on PRICING_LAST_CHECKED:
  *   Haiku 4.5 — $1.00 / $5.00
  *   Sonnet 5  — $2.00 / $10.00
- *   Opus 4.5/4.6/4.7/4.8 — $5.00 / $25.00  (note: NOT the old $15/$75 of Opus 4.0/4.1)
+ *   Opus 5 / 4.5/4.6/4.7/4.8 — $5.00 / $25.00  (note: NOT the old $15/$75 of
+ *     Opus 4.0/4.1. Opus 5 ships at the same rate as 4.8, so promoting the opus
+ *     tier to it changes no cost figure — only the model ID.)
  *
  *   Fable 5 / 5.1 — $10.00 / $50.00 (2x Opus; the most expensive routable tier)
  *
@@ -54,6 +56,22 @@ export const VERTEX_MODELS: Record<Tier, string> = {
  * reports — keep this in sync when a new generation ships, and rely on the
  * family fallback in `priceForModel` to cover Bedrock/Vertex/dated IDs.
  */
+/**
+ * The date this table was last verified against platform.claude.com, ISO
+ * `YYYY-MM-DD`. Every savings figure the router reports is downstream of these
+ * constants, and nothing else notices when they drift. The weekly
+ * `pricing-check` workflow opens an issue once this is older than 60 days;
+ * `claude-router doctor` warns past 90. Bump it whenever you re-verify, even
+ * if nothing changed — the point is a dated claim, not a diff.
+ */
+export const PRICING_LAST_CHECKED = '2026-09-02';
+
+/** Whole days since {@link PRICING_LAST_CHECKED}. */
+export function pricingAgeDays(now: Date = new Date()): number {
+  const checked = Date.parse(`${PRICING_LAST_CHECKED}T00:00:00Z`);
+  return Math.floor((now.getTime() - checked) / 86_400_000);
+}
+
 export const FAMILY_PRICING: Record<Tier, ModelPricing> = {
   haiku:  { input: 1.00, output: 5.00 },
   sonnet: { input: 2.00, output: 10.00 },
@@ -132,6 +150,7 @@ const FAMILY_DERIVED_PRICING: Record<string, ModelPricing> = {
   'claude-haiku-4-5': FAMILY_PRICING.haiku,
   'claude-haiku-4-5-20251001': FAMILY_PRICING.haiku,
   'claude-sonnet-5': FAMILY_PRICING.sonnet,
+  'claude-opus-5': FAMILY_PRICING.opus,
   'claude-opus-4-8': FAMILY_PRICING.opus,
   'claude-opus-4-7': FAMILY_PRICING.opus,
   'claude-opus-4-6': FAMILY_PRICING.opus,
@@ -150,6 +169,20 @@ export const DEFAULT_PRICING: Record<string, ModelPricing> = {
 };
 
 export const TIER_ORDER: Tier[] = ['haiku', 'sonnet', 'opus', 'fable'];
+
+/**
+ * The fixed label set for a per-tier breakdown: every tier, plus `passthrough`
+ * for requests that bypassed routing. `RouteTotals.tiers` carries only labels
+ * actually seen, so consumers that render a stable set (the dashboard bars,
+ * `claude-router stats`) zero-fill from this via `tierBreakdown`.
+ *
+ * Derived from TIER_ORDER on purpose: both consumers used to spell the list out
+ * by hand and both had gone stale, omitting `fable` — a fable route was folded
+ * into the totals and then rendered nowhere, and it was excluded from the bar
+ * chart's own percentage denominator.
+ */
+export const DISPLAY_TIERS = [...TIER_ORDER, 'passthrough'] as const;
+export type DisplayTier = (typeof DISPLAY_TIERS)[number];
 
 /**
  * Automatic escalation stops here. Fable is 2x opus, and the triggers that would
@@ -330,5 +363,69 @@ export function computeRouteCost(
     inputTokens,
     outputTokens,
     priced: modelPriced && baselinePriced,
+  };
+}
+
+/**
+ * What a token total would have cost on one model — the "vs all-opus" figure.
+ * Cost is linear in tokens, so the totals fold once and price here. Same caveat
+ * as the research replay: tokens are held constant across models, which makes
+ * this an upper bound on what a single-model session would have cost, not a
+ * measurement of one. 0 (with no warning) when the model has no price; the
+ * caller decides how to render that.
+ */
+export function counterfactualCents(
+  tokens: { input: number; output: number; cacheRead: number; cacheCreation: number },
+  model: string,
+  pricing: Record<string, ModelPricing> = DEFAULT_PRICING,
+): number {
+  return computeCostCents(model, tokens.input, tokens.output, pricing, {
+    readTokens: tokens.cacheRead,
+    creationTokens: tokens.cacheCreation,
+  });
+}
+
+/** The cost and token fields a route outcome record carries, plus the `priced` flag. */
+export interface RouteCostFields {
+  costCents: number;
+  savedCents: number;
+  cacheReadTokens: number;
+  cacheCreationTokens: number;
+  inputTokens: number;
+  outputTokens: number;
+  priced?: false;
+}
+
+/**
+ * Shape a {@link RouteCost} into the fields every route outcome record carries.
+ *
+ * The library's `RouteMeta` and the proxy's `RouteEvent` are different records,
+ * but the step from priced call to recorded figures is the same one — and it
+ * used to be written out longhand at four sites (`index.buildMeta`, plus the
+ * non-streaming, streaming-success and streaming-error paths in the proxy
+ * handler), which is how `priced` and the cache-token fields drifted between
+ * them. One place to change means one place to get it wrong.
+ *
+ * `priced` is emitted **only when false**: absent means priced, so history lines
+ * written before the flag existed keep counting as measured.
+ */
+export function costFields(cost: RouteCost): RouteCostFields {
+  const {
+    costCents,
+    savedCents,
+    cacheReadTokens,
+    cacheCreationTokens,
+    inputTokens,
+    outputTokens,
+    priced,
+  } = cost;
+  return {
+    costCents,
+    savedCents,
+    cacheReadTokens,
+    cacheCreationTokens,
+    inputTokens,
+    outputTokens,
+    ...(priced ? {} : { priced: false as const }),
   };
 }

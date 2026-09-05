@@ -17,11 +17,15 @@ export interface ModelPricing {
 }
 
 export interface RoutingTuning {
-  /** Heuristic score below this routes to haiku (default 30) */
+  /**
+   * @deprecated No-op since 0.2.2. Routing is gate-based (see `routeByEvidence`)
+   * and there is no score to threshold. Accepted so existing config files load;
+   * the proxy warns once per key.
+   */
   haikuMax?: number;
-  /** Heuristic score above this routes to opus (default 70) */
+  /** @deprecated No-op since 0.2.2 — see `haikuMax`. */
   opusMin?: number;
-  /** Hybrid mode confirms with AI when score falls in this inclusive band (default [40, 60]) */
+  /** @deprecated No-op since 0.2.2. Hybrid defers to AI when no gate fired. */
   hybridBand?: [number, number];
   /** AI classifier timeout in ms; on timeout/error falls back to heuristic (default 1500) */
   aiTimeoutMs?: number;
@@ -35,6 +39,13 @@ export interface RoutingTuning {
    * clearly-trivial turn drop to haiku for maximum savings.
    */
   allowHaikuInAgentic?: boolean;
+  /**
+   * Allow classification to reach the fable tier. Default false: fable is
+   * $10/$50 and no measured signal predicts "super hard" from request text, so
+   * promotion needs depth and long-horizon evidence together. Config-file
+   * `routing.allowFable` maps here.
+   */
+  allowFable?: boolean;
 }
 
 export interface RouterConfig {
@@ -79,9 +90,11 @@ export interface RouteMeta {
    * this call's model (or the baseline) has no known price. Absent means priced.
    */
   priced?: boolean;
-  classifierMethod: 'heuristic' | 'ai' | 'pinned';
+  classifierMethod: 'heuristic' | 'ai' | 'pinned' | 'role';
   /** Routing overhead in milliseconds */
   classifierMs: number;
+  /** Which gate, pin or AI verdict decided the tier (e.g. `agentic:mid-loop`) */
+  reason?: string;
   /** True if original tier was rate-limited and a different tier was used */
   fallbackUsed: boolean;
   /** Classifier confidence 0–1 */
@@ -125,7 +138,7 @@ export interface ClassifyResult {
    * (see HandlerConfig.sessionModel); it rides this field so the existing
    * headers/log/history path records "why this tier" uniformly.
    */
-  method: 'heuristic' | 'ai' | 'pinned';
+  method: 'heuristic' | 'ai' | 'pinned' | 'role';
   ms: number;
   confidence: number;
   /** True when the result was served from the classification cache */

@@ -2,9 +2,10 @@ import { describe, it, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import Anthropic from '@anthropic-ai/sdk';
 import { createProxyApp } from '../proxy/server.js';
-import { routeHistory, boundHistory, MAX_HISTORY, getAnthropicClient, clearClientCache } from '../proxy/handler.js';
+import { routeHistory, boundHistory, MAX_HISTORY, getAnthropicClient, clearClientCache, routeCounters, usageFromSse } from '../proxy/handler.js';
 import { renderDashboard } from '../proxy/dashboard.js';
-import type { RouteEvent } from '../proxy/handler.js';
+import { emptyTotals } from '../totals.js';
+import type { RouteEvent } from '../proxy/route-event.js';
 
 import { DEFAULT_MODELS } from '../models.js';
 
@@ -129,7 +130,12 @@ describe('createProxyApp', () => {
     // Seeds the history rather than asserting a loose pattern: the original
     // version needed a non-null lastTier and got one only because an earlier
     // describe had already routed something into the module-global array.
+    // `#N` is the per-process count of recorded events, not the window length —
+    // seeding the array directly bypasses the recorder, so the counter is set
+    // to match what the array would have recorded.
     routeHistory.length = 0;
+    const savedCount = routeCounters.recorded;
+    routeCounters.recorded = 0;
     try {
       const res = await app.request('/statusline');
       assert.equal(res.status, 200);
@@ -137,8 +143,10 @@ describe('createProxyApp', () => {
       assert.equal(await res.text(), '[auto:ready #0]', 'reads "ready" before any traffic');
 
       routeHistory.push(statuslineEvent('sonnet'));
+      routeCounters.recorded = 1;
       assert.equal(await (await app.request('/statusline')).text(), '[auto:sonnet #1]');
     } finally {
+      routeCounters.recorded = savedCount;
       routeHistory.length = 0;
     }
   });
@@ -169,10 +177,11 @@ describe('createProxyApp', () => {
     assert.equal(body.error.type, 'authentication_error');
   });
 
-  it('GET /unknown returns 404', async () => {
-    const res = await app.request('/unknown');
-    assert.equal(res.status, 404);
-  });
+  // No unmatched-path test in this suite. Unmatched paths now forward to the
+  // upstream, and nothing here stubs fetch — probing one would send a real
+  // request to api.anthropic.com from every cell of the CI matrix. That
+  // behaviour is covered in 'catch-all passthrough (hermetic — stubbed
+  // upstream)', which stubs the fetch and pins the upstream at loopback.
 });
 
 describe('renderDashboard', () => {
@@ -186,6 +195,7 @@ describe('renderDashboard', () => {
 
   it('renders lifetime stats when provided', () => {
     const html = renderDashboard([], {
+      ...emptyTotals(),
       requests: 42,
       costCents: 100,
       savedCents: 4700,
@@ -198,6 +208,77 @@ describe('renderDashboard', () => {
     assert.ok(html.includes('Lifetime Saved'));
     assert.ok(html.includes('$47.00'));
     assert.ok(html.includes('42'));
+  });
+
+  it('shows fable in the tier bar and its own percentage denominator', () => {
+    // Regression: the tier label set was written out by hand here and in
+    // `stats`, and both had gone stale. A fable route folded into the totals and
+    // then appeared nowhere — and because it was missing from the denominator
+    // too, the remaining bars added up to more than 100%.
+    const events: RouteEvent[] = (['fable', 'sonnet'] as const).map((tier, i) => ({
+      timestamp: `2026-05-01T12:0${i}:00.000Z`,
+      tier,
+      model: `claude-${tier}-5`,
+      costCents: 1,
+      savedCents: 0,
+      confidence: 0.9,
+      classifier: 'heuristic',
+      retried: false,
+      retryReason: null,
+      inputTokens: 10,
+      outputTokens: 10,
+    }));
+
+    const html = renderDashboard(events);
+    assert.ok(html.includes('tier-fable'), 'fable gets a bar');
+    assert.ok(html.includes('Fable 50.0%'), 'fable is half of two requests');
+    assert.ok(html.includes('Sonnet 50.0%'), 'and sonnet is the other half');
+    assert.ok(html.includes('badge-fable'), 'fable rows get a styled badge');
+  });
+
+  it('shows which gate decided each row', () => {
+    const events: RouteEvent[] = [
+      {
+        timestamp: '2026-05-01T12:00:00.000Z', tier: 'sonnet', model: 'claude-sonnet-5',
+        costCents: 1, savedCents: 0, confidence: 0.9, classifier: 'heuristic',
+        retried: false, retryReason: null, inputTokens: 10, outputTokens: 10,
+        reason: 'agentic:mid-loop',
+      },
+      {
+        timestamp: '2026-05-01T12:01:00.000Z', tier: 'haiku', model: 'claude-haiku-4-5',
+        costCents: 1, savedCents: 1, confidence: 0.9, classifier: 'heuristic',
+        retried: false, retryReason: null, inputTokens: 10, outputTokens: 10,
+      },
+    ];
+    const html = renderDashboard(events);
+    assert.ok(html.includes('<th>Reason</th>'), 'reason column exists');
+    assert.ok(html.includes('agentic:mid-loop'), 'the gate name renders');
+    assert.ok(html.includes('<td class="reason"><span class="none">-</span></td>'), 'a legacy row without a reason renders a dash');
+  });
+
+  it('renders dispatch, counterfactual and by-role once there is a coordinator turn', () => {
+    const events: RouteEvent[] = [
+      {
+        timestamp: '2026-05-01T12:00:00.000Z', tier: 'opus', model: 'claude-opus-5',
+        costCents: 3, savedCents: 0, confidence: 1, classifier: 'pinned',
+        retried: false, retryReason: null, inputTokens: 100, outputTokens: 50,
+        coordinator: true, dispatchable: true, dispatched: true,
+      },
+      {
+        timestamp: '2026-05-01T12:00:01.000Z', tier: 'haiku', model: 'claude-haiku-4-5',
+        costCents: 0.1, savedCents: 2, confidence: 1, classifier: 'role',
+        retried: false, retryReason: null, inputTokens: 100, outputTokens: 50,
+        subagent: true, role: 'recon', roleSource: 'marker',
+      },
+    ];
+    const html = renderDashboard(events);
+    assert.ok(html.includes('Dispatch Rate'), 'dispatch card');
+    assert.ok(html.includes('100%') && html.includes('1 of 1 coordinator turns'), 'rate and denominator');
+    assert.ok(html.includes('vs All-Opus'), 'counterfactual card');
+    assert.ok(html.includes('By Role') && html.includes('<span class="role-name">recon</span>'), 'role rows');
+    assert.ok(html.includes('<th>Role</th>') && html.includes('dispatched'), 'role column with dispatch badge');
+    const plain = renderDashboard([events[1]!]);
+    assert.ok(!plain.includes('Dispatch Rate'), 'no dispatch card without a coordinator turn');
   });
 
   it('renders with data', () => {
@@ -481,8 +562,8 @@ describe('proxy passthrough (hermetic — stubbed upstream)', () => {
     // upstream on the non-force-route path. It must forward it like the routed
     // path and handlePassthrough do.
     let seenHeaders: Record<string, string> = {};
-    globalThis.fetch = (async (_input: unknown, init?: { headers?: Record<string, string> }) => {
-      seenHeaders = (init?.headers ?? {}) as Record<string, string>;
+    globalThis.fetch = (async (_input: unknown, init?: { headers?: ConstructorParameters<typeof Headers>[0] }) => {
+      seenHeaders = Object.fromEntries(new Headers(init?.headers).entries());
       return new Response(JSON.stringify({ id: 'msg', type: 'message' }), {
         status: 200,
         headers: { 'content-type': 'application/json' },
@@ -501,6 +582,284 @@ describe('proxy passthrough (hermetic — stubbed upstream)', () => {
     assert.equal(res.status, 200);
     assert.equal(res.headers.get('x-router-tier'), 'passthrough');
     assert.equal(seenHeaders['anthropic-beta'], 'context-management-2025-06-27');
+  });
+});
+
+describe('passthrough recording (hermetic — stubbed upstream)', () => {
+  // A passthrough used to leave no trace: the dashboard's "passthrough" bar was
+  // permanently zero and a user without --force-route saw an empty ledger and
+  // concluded the proxy was not working. Explicit-model /v1/messages traffic is
+  // now priced against the model the client named (saved = 0 by construction).
+  const app = createProxyApp({
+    classifier: 'heuristic', defaultModel: 'claude-sonnet-5', verbose: false,
+    provider: 'anthropic', models: DEFAULT_MODELS, forceRoute: false,
+  });
+  const realFetch = globalThis.fetch;
+  afterEach(() => { globalThis.fetch = realFetch; });
+
+  const message = { id: 'msg', type: 'message', model: 'claude-sonnet-5', usage: { input_tokens: 1000, output_tokens: 100 } };
+
+  it('records a non-streaming passthrough with its real usage and zero saving', async () => {
+    globalThis.fetch = (async () => new Response(JSON.stringify(message), { status: 200, headers: { 'content-type': 'application/json' } })) as typeof fetch;
+    const before = routeHistory.length;
+    const res = await app.request('/v1/messages', {
+      method: 'POST', headers: { 'content-type': 'application/json', 'x-api-key': 'k' },
+      body: JSON.stringify({ model: 'claude-sonnet-5', messages: [{ role: 'user', content: 'hi' }], max_tokens: 10 }),
+    });
+    assert.equal(res.status, 200);
+    assert.deepEqual(await res.json(), message, 'the body reaches the client unchanged');
+    assert.equal(routeHistory.length, before + 1);
+    const e = routeHistory[routeHistory.length - 1]!;
+    assert.equal(e.tier, 'passthrough');
+    assert.equal(e.classifier, 'passthrough');
+    assert.equal(e.reason, 'passthrough:explicit-model');
+    assert.equal(e.model, 'claude-sonnet-5');
+    assert.equal(e.inputTokens, 1000);
+    assert.equal(e.savedCents, 0, 'the router changed nothing');
+    assert.ok(e.costCents > 0, 'but the traffic is priced');
+    assert.ok(!('priced' in e));
+  });
+
+  it('records a streaming passthrough from the SSE usage without holding any event back', async () => {
+    const sse = [
+      `event: message_start\ndata: ${JSON.stringify({ type: 'message_start', message: { ...message, usage: { input_tokens: 500, output_tokens: 0, cache_read_input_tokens: 2000 } } })}\n\n`,
+      `event: content_block_delta\ndata: ${JSON.stringify({ type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'hi' } })}\n\n`,
+      `event: message_delta\ndata: ${JSON.stringify({ type: 'message_delta', delta: { stop_reason: 'end_turn' }, usage: { output_tokens: 42 } })}\n\n`,
+      'event: message_stop\ndata: {"type":"message_stop"}\n\n',
+    ];
+    globalThis.fetch = (async () => {
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          for (const chunk of sse) controller.enqueue(new TextEncoder().encode(chunk));
+          controller.close();
+        },
+      });
+      return new Response(body, { status: 200, headers: { 'content-type': 'text/event-stream' } });
+    }) as typeof fetch;
+    const before = routeHistory.length;
+    const res = await app.request('/v1/messages', {
+      method: 'POST', headers: { 'content-type': 'application/json', 'x-api-key': 'k' },
+      body: JSON.stringify({ model: 'claude-sonnet-5', stream: true, messages: [{ role: 'user', content: 'hi' }], max_tokens: 10 }),
+    });
+    const text = await res.text();
+    assert.equal(text, sse.join(''), 'every byte passes through');
+    assert.equal(routeHistory.length, before + 1);
+    const e = routeHistory[routeHistory.length - 1]!;
+    assert.equal(e.tier, 'passthrough');
+    assert.equal(e.inputTokens, 500);
+    assert.equal(e.outputTokens, 42);
+    assert.equal(e.cacheReadTokens, 2000);
+  });
+
+  it('records nothing for an error response or a body without usage', async () => {
+    const before = routeHistory.length;
+    globalThis.fetch = (async () => new Response(JSON.stringify({ error: { type: 'x' } }), { status: 400 })) as typeof fetch;
+    await app.request('/v1/messages', { method: 'POST', headers: { 'x-api-key': 'k' }, body: JSON.stringify({ model: 'claude-sonnet-5', messages: [], max_tokens: 1 }) });
+    globalThis.fetch = (async () => new Response('{"id":"msg"}', { status: 200 })) as typeof fetch;
+    await app.request('/v1/messages', { method: 'POST', headers: { 'x-api-key': 'k' }, body: JSON.stringify({ model: 'claude-sonnet-5', messages: [], max_tokens: 1 }) });
+    assert.equal(routeHistory.length, before);
+  });
+
+  it('the catch-all (count_tokens, non-/v1) never records', async () => {
+    globalThis.fetch = (async () => new Response(JSON.stringify({ input_tokens: 5 }), { status: 200 })) as typeof fetch;
+    const before = routeHistory.length;
+    await app.request('/v1/messages/count_tokens', { method: 'POST', headers: { 'x-api-key': 'k' }, body: '{"model":"claude-sonnet-5","messages":[]}' });
+    await app.request('/api/hello');
+    assert.equal(routeHistory.length, before);
+  });
+
+  it('strips hop-by-hop headers in both directions', async () => {
+    let seen: Headers | undefined;
+    globalThis.fetch = (async (_input: unknown, init?: { headers?: ConstructorParameters<typeof Headers>[0] }) => {
+      seen = new Headers(init?.headers);
+      return new Response('{}', { status: 200, headers: { 'content-encoding': 'gzip', 'transfer-encoding': 'chunked', connection: 'close', 'x-keep': 'yes' } });
+    }) as typeof fetch;
+    const res = await app.request('/v1/models', {
+      headers: { 'x-api-key': 'k', connection: 'keep-alive', 'transfer-encoding': 'chunked', 'accept-encoding': 'br', te: 'trailers', 'anthropic-version': '2023-06-01' },
+    });
+    assert.equal(seen!.get('connection'), null);
+    assert.equal(seen!.get('transfer-encoding'), null);
+    assert.equal(seen!.get('accept-encoding'), null);
+    assert.equal(seen!.get('te'), null);
+    assert.equal(seen!.get('anthropic-version'), '2023-06-01', 'end-to-end headers still forward');
+    assert.equal(res.headers.get('content-encoding'), null);
+    assert.equal(res.headers.get('transfer-encoding'), null);
+    assert.equal(res.headers.get('x-keep'), 'yes');
+  });
+});
+
+describe('usageFromSse', () => {
+  it('merges message_start and message_delta usage, ignores unparseable lines', () => {
+    const text = 'data: {"type":"message_start","message":{"model":"m","usage":{"input_tokens":3}}}\n\ndata: nope\n\ndata: {"type":"message_delta","usage":{"output_tokens":7}}\n';
+    assert.deepEqual(usageFromSse(text), { model: 'm', usage: { input_tokens: 3, output_tokens: 7 } });
+    assert.equal(usageFromSse('data: {"type":"message_delta","usage":{"output_tokens":7}}'), null, 'no message_start, no usage');
+  });
+});
+
+describe('catch-all passthrough (hermetic — stubbed upstream)', () => {
+  // Everything the router does not serve itself belongs to the upstream API, not
+  // only the paths under /v1: Claude Code probes `HEAD /api/hello` on startup and
+  // also calls /api/organizations. Answering those with a local 404 invents a
+  // failure the origin does not have.
+  //
+  // Hermetic twice over: `stubUpstream` replaces the single fetch the handler
+  // makes, and the app is pinned to an unroutable loopback upstream, so a stub
+  // that failed to install dies on connect instead of reaching a real vendor host.
+  const app = createProxyApp({
+    classifier: 'heuristic',
+    defaultModel: 'claude-sonnet-4-6',
+    verbose: false,
+    provider: 'anthropic',
+    models: DEFAULT_MODELS,
+    forceRoute: false,
+    upstream: 'http://127.0.0.1:1',
+  });
+
+  const realFetch = globalThis.fetch;
+  afterEach(() => { globalThis.fetch = realFetch; });
+
+  function stubUpstream(status = 200, body: unknown = { ok: true }) {
+    let seen: { url: string; method: string; body?: string } | undefined;
+    globalThis.fetch = (async (input: unknown, init?: { method?: string; body?: string }) => {
+      seen = { url: String(input), method: init?.method ?? 'GET', body: init?.body };
+      return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
+    }) as typeof fetch;
+    return () => seen;
+  }
+
+  it('HEAD /api/hello forwards upstream instead of 404ing locally', async () => {
+    const captured = stubUpstream(200, {});
+    const res = await app.request('/api/hello', { method: 'HEAD' });
+    assert.notEqual(res.status, 404, 'Claude Code probes this on startup and the origin serves it');
+    assert.equal(res.headers.get('x-router-tier'), 'passthrough');
+    assert.equal(captured()!.method, 'HEAD', 'the method is forwarded verbatim, not coerced to GET');
+    assert.match(captured()!.url, /\/api\/hello$/);
+  });
+
+  it('forwards any unrouted path, query string intact', async () => {
+    const captured = stubUpstream(200, { ok: true });
+    const res = await app.request('/some/unrouted/path?limit=1');
+    assert.notEqual(res.status, 404, 'the invariant is every unmatched path, not just /api/hello');
+    assert.equal(res.headers.get('x-router-tier'), 'passthrough');
+    assert.match(captured()!.url, /\/some\/unrouted\/path\?limit=1$/);
+  });
+
+  it('forwards an unrouted POST with its body', async () => {
+    const captured = stubUpstream(200, { ok: true });
+    const res = await app.request('/api/organizations', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ hello: 'world' }),
+    });
+    assert.notEqual(res.status, 404);
+    assert.equal(captured()!.method, 'POST');
+    assert.equal(captured()!.body, '{"hello":"world"}', 'the request body survives the hop');
+  });
+
+  it('answers the routers own endpoints locally — they win over the catch-all', async () => {
+    const captured = stubUpstream(200, { ok: true });
+    const res = await app.request('/health');
+    assert.equal(res.status, 200);
+    assert.equal((await res.json() as { service: string }).service, 'claude-router-proxy');
+    assert.equal(captured(), undefined, '/health is answered here, never forwarded');
+  });
+
+  it('still 404s an unrouted path on a non-anthropic provider', async () => {
+    // bedrock/vertex have no HTTP passthrough target, so the catch-all must not
+    // turn an unknown path into an outbound call there.
+    const bedrockApp = createProxyApp({
+      classifier: 'heuristic',
+      defaultModel: 'claude-sonnet-4-6',
+      verbose: false,
+      provider: 'bedrock',
+      models: DEFAULT_MODELS,
+      forceRoute: false,
+      upstream: 'http://127.0.0.1:1',
+    });
+    const captured = stubUpstream(200, { ok: true });
+    const res = await bedrockApp.request('/api/hello', { method: 'HEAD' });
+    assert.equal(res.status, 404);
+    assert.equal(captured(), undefined, 'no upstream to forward to');
+  });
+});
+describe('the router surface is reserved on every method (hermetic — stubbed upstream)', () => {
+  // Route ordering protects each of the router's own paths only for the method it
+  // registers: `GET /dashboard` matches its route, `POST /dashboard` does not — it
+  // falls through to the catch-all and handlePassthrough forwards it to the origin
+  // with the operator's x-api-key attached. There is no CORS, so a webpage cannot
+  // read the reply, but a cross-site form POST is a simple request and still
+  // reaches the proxy. These paths are ours on every method: the wrong method is a
+  // 405 from us, never a hop to the origin carrying the operator's credentials.
+  //
+  // Hermetic twice over, like the catch-all suite above: `stubUpstream` replaces
+  // the single fetch the handler makes, and the app is pinned to an unroutable
+  // loopback upstream, so a stub that failed to install dies on connect instead of
+  // reaching a real vendor host.
+  const ROUTER_SURFACE = ['/health', '/statusline', '/api/last-route', '/dashboard'];
+
+  const app = createProxyApp({
+    classifier: 'heuristic',
+    defaultModel: 'claude-sonnet-4-6',
+    verbose: false,
+    provider: 'anthropic',
+    models: DEFAULT_MODELS,
+    forceRoute: false,
+    upstream: 'http://127.0.0.1:1',
+  });
+
+  const realFetch = globalThis.fetch;
+  afterEach(() => { globalThis.fetch = realFetch; });
+
+  function stubUpstream() {
+    let seen: { url: string; method: string } | undefined;
+    globalThis.fetch = (async (input: unknown, init?: { method?: string }) => {
+      seen = { url: String(input), method: init?.method ?? 'GET' };
+      return new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }) as typeof fetch;
+    return () => seen;
+  }
+
+  it('answers 405 to POST on every router path and forwards none of them', async () => {
+    // One loop over the surface, not one case per path: the invariant is "these
+    // paths are ours", not "this one path 405s on this one method".
+    const observed: { path: string; status: number; forwardedUpstream: boolean }[] = [];
+    for (const path of ROUTER_SURFACE) {
+      const captured = stubUpstream();
+      const res = await app.request(path, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-api-key': 'sk-ant-OPERATOR-SECRET' },
+        body: JSON.stringify({ hello: 'world' }),
+      });
+      observed.push({ path, status: res.status, forwardedUpstream: captured() !== undefined });
+    }
+    assert.deepEqual(
+      observed,
+      ROUTER_SURFACE.map((path) => ({ path, status: 405, forwardedUpstream: false })),
+      'a router path reached by an unregistered method is a 405 here, never a forwarded request',
+    );
+  });
+
+  it('still answers GET /dashboard locally', async () => {
+    // The reservation must not cost the registered method its own route.
+    const captured = stubUpstream();
+    const res = await app.request('/dashboard');
+    assert.equal(res.status, 200);
+    assert.ok((await res.text()).includes('claude-router dashboard'));
+    assert.equal(captured(), undefined, '/dashboard is answered here, never forwarded');
+  });
+
+  it('still forwards HEAD /api/hello, which is not ours', async () => {
+    // The reservation covers the router's own paths only; everything else still
+    // belongs to the origin, on every method.
+    const captured = stubUpstream();
+    const res = await app.request('/api/hello', { method: 'HEAD' });
+    assert.notEqual(res.status, 404, 'Claude Code probes this on startup and the origin serves it');
+    assert.equal(res.headers.get('x-router-tier'), 'passthrough');
+    assert.equal(captured()!.method, 'HEAD');
+    assert.match(captured()!.url, /\/api\/hello$/);
   });
 });
 

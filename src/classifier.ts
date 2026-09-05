@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import type Anthropic from '@anthropic-ai/sdk';
 import { LruCache } from './cache.js';
-import { isAgentic, latestUserText, routeByEvidence } from './routing.js';
+import { isAgentic, latestUserText, routeByEvidence, systemText } from './routing.js';
 import type { ClassifyInput, ClassifyResult, Tier } from './types.js';
 
 export const DEFAULT_AI_TIMEOUT_MS = 1500;
@@ -56,33 +56,6 @@ function extractSignals(messages: Anthropic.MessageParam[]): ExtractedSignals {
   return { text: parts.join(' '), toolBlockCount, imageCount, extraChars };
 }
 
-function extractSystemText(
-  system: string | Anthropic.TextBlockParam[] | undefined,
-): string {
-  if (!system) return '';
-  if (typeof system === 'string') return system;
-  return system
-    .filter((b): b is Anthropic.TextBlockParam => b.type === 'text')
-    .map((b) => b.text)
-    .join(' ');
-}
-
-export interface TierThresholds {
-  haikuMax?: number;
-  opusMin?: number;
-}
-
-export function scoreToTier(score: number, thresholds?: TierThresholds): Tier {
-  if (score < (thresholds?.haikuMax ?? 30)) return 'haiku';
-  if (score > (thresholds?.opusMin ?? 70)) return 'opus';
-  return 'sonnet';
-}
-
-export function scoreToConfidence(score: number): number {
-  // Distance from ambiguous center (50). Farther = more confident.
-  // Score 0→1.0, 20→0.9, 40→0.7, 50→0.5, 60→0.7, 80→0.9, 100→1.0
-  return Math.min(1, Math.abs(score - 50) / 50 + 0.5);
-}
 
 /**
  * Nominal score per tier, kept only so `RouteMeta.score`, the dashboard, and the
@@ -119,7 +92,9 @@ export interface ClassifyOptions {
    * no score to threshold. Still accepted so existing config files load, but
    * they no longer influence any decision — see `routeByEvidence`. They are
    * kept rather than removed so a stale config fails loudly at review time
-   * instead of silently changing behaviour on upgrade.
+   * instead of silently changing behaviour on upgrade. (Until 0.4.0 the AI
+   * classifier still mapped its 1–3 verdict through them, so "ignored" was a
+   * lie in `ai`/`hybrid` mode; the verdict now maps to a tier directly.)
    */
   haikuMax?: number;
   /** @deprecated No-op — see `haikuMax`. */
@@ -131,6 +106,12 @@ export interface ClassifyOptions {
   cache?: LruCache<string, ClassifyResult>;
   /** Allow haiku inside a tool-using session; default false floors it at sonnet */
   allowHaikuInAgentic?: boolean;
+  /**
+   * Allow classification to reach fable. Off by default: fable is $10/$50 and
+   * no measured signal predicts "super hard" from request text, so promotion
+   * requires depth *and* long-horizon evidence together — see `promoteToFable`.
+   */
+  allowFable?: boolean;
 }
 
 /**
@@ -147,12 +128,13 @@ function applyAgenticFloor(
   if (result.tier !== 'haiku' || opts?.allowHaikuInAgentic || !isAgentic(input)) {
     return result;
   }
-  const score = Math.max(result.score, opts?.haikuMax ?? 30);
   return {
     ...result,
     tier: 'sonnet',
-    score,
-    confidence: Math.round(scoreToConfidence(score) * 100) / 100,
+    score: NOMINAL_SCORE.sonnet,
+    // Floored, not decided: the evidence said haiku and policy overrode it, so
+    // report the ambiguous-centre confidence rather than the gate's.
+    confidence: 0.5,
     floored: true,
   };
 }
@@ -176,13 +158,13 @@ function buildAISnippet(input: ClassifyInput): string {
     text.length > AI_SNIPPET_HEAD + AI_SNIPPET_TAIL
       ? `${text.slice(0, AI_SNIPPET_HEAD)} … ${text.slice(-AI_SNIPPET_TAIL)}`
       : text;
-  const sysSnippet = extractSystemText(input.system).slice(0, AI_SYSTEM_SNIPPET);
+  const sysSnippet = systemText(input.system).slice(0, AI_SYSTEM_SNIPPET);
   return sysSnippet ? `System: ${sysSnippet}\nTask: ${snippet}` : `Task: ${snippet}`;
 }
 
 function cacheKey(input: ClassifyInput): string {
   const { text } = extractSignals(input.messages);
-  const sys = extractSystemText(input.system);
+  const sys = systemText(input.system);
   // Hash the FULL normalized text/system — a prefix slice (formerly 500/200
   // chars) collides for prompts that share a long preamble but diverge later
   // (common in agentic/Claude Code traffic), serving a stale tier for a
@@ -202,10 +184,9 @@ export async function classifyAI(
   client: Anthropic,
   input: ClassifyInput,
   haikuModel: string,
-  opts?: { timeoutMs?: number; haikuMax?: number; opusMin?: number },
+  opts?: { timeoutMs?: number } & Pick<ClassifyOptions, 'allowFable' | 'allowHaikuInAgentic'>,
 ): Promise<ClassifyResult> {
   const timeoutMs = opts?.timeoutMs ?? DEFAULT_AI_TIMEOUT_MS;
-  const thresholds: TierThresholds = { haikuMax: opts?.haikuMax, opusMin: opts?.opusMin };
   const start = performance.now();
 
   let response: Anthropic.Message;
@@ -224,10 +205,10 @@ export async function classifyAI(
       { signal: AbortSignal.timeout(timeoutMs) },
     );
   } catch {
-    // Haiku timeout/outage must never break routing — fall back to heuristic,
-    // preserving any custom thresholds so a transient outage doesn't silently
-    // change routing for tuned deployments.
-    return classifyHeuristic(input, thresholds);
+    // Haiku timeout/outage must never break routing — fall back to the gates,
+    // with the caller's routing options intact so an outage lands on the same
+    // decision the heuristic path would have made.
+    return classifyHeuristic(input, opts);
   }
   const ms = performance.now() - start;
 
@@ -243,17 +224,18 @@ export async function classifyAI(
     cleanParse = true;
   }
 
-  const score = level === 1 ? 15 : level === 2 ? 50 : 85;
+  // The verdict maps to a tier directly. It used to pass through the score
+  // thresholds, which meant `haikuMax`/`opusMin` — documented as ignored —
+  // still moved AI-mode routing; the AI path reaches opus at most, never fable.
+  const tier: Tier = level === 1 ? 'haiku' : level === 3 ? 'opus' : 'sonnet';
 
   return {
-    // Map the synthetic score through scoreToTier so custom haikuMax/opusMin
-    // apply here too — a hardcoded level→tier map silently ignored them (with
-    // default thresholds this is identical to {1:haiku,2:sonnet,3:opus}).
-    tier: scoreToTier(score, thresholds),
-    score,
+    tier,
+    score: NOMINAL_SCORE[tier],
     method: 'ai',
     ms: Math.round(ms * 100) / 100,
     confidence: cleanParse ? 0.9 : 0.6,
+    reason: cleanParse ? `ai:level-${level}` : 'ai:unparsed',
   };
 }
 
@@ -270,8 +252,8 @@ async function classifyAICached(
   }
   const result = await classifyAI(client, input, haikuModel, {
     timeoutMs: opts?.aiTimeoutMs,
-    haikuMax: opts?.haikuMax,
-    opusMin: opts?.opusMin,
+    allowFable: opts?.allowFable,
+    allowHaikuInAgentic: opts?.allowHaikuInAgentic,
   });
   // Only genuine AI verdicts are worth caching — heuristic fallbacks are free to recompute
   if (key && result.method === 'ai') {
@@ -325,4 +307,28 @@ export async function classify(
       : classifyHybrid(client, input, haikuModel, opts));
   // Floor agentic sessions at sonnet (unless opted out) regardless of method.
   return applyAgenticFloor(result, input, opts);
+}
+
+/**
+ * The classifier's view of a request: messages, text-only system blocks, and
+ * the tool list (only its shape is inspected). One builder for the library and
+ * the proxy — they used to carry byte-identical copies that could drift.
+ */
+export function buildClassifyInput(params: {
+  messages?: unknown;
+  system?: unknown;
+  tools?: unknown;
+}): ClassifyInput {
+  const messages = (params.messages ?? []) as Anthropic.MessageParam[];
+  const system = params.system;
+  let systemInput: ClassifyInput['system'];
+  if (typeof system === 'string') {
+    systemInput = system;
+  } else if (Array.isArray(system)) {
+    systemInput = system.filter(
+      (b): b is Anthropic.TextBlockParam =>
+        typeof b === 'object' && b !== null && 'type' in b && (b as { type?: unknown }).type === 'text',
+    );
+  }
+  return { messages, system: systemInput, tools: Array.isArray(params.tools) ? params.tools : undefined };
 }

@@ -24,7 +24,8 @@ import type { AddressInfo } from 'node:net';
 import { serve } from '@hono/node-server';
 import Anthropic from '@anthropic-ai/sdk';
 import { createProxyApp } from '../proxy/server.js';
-import type { HandlerConfig } from '../proxy/handler.js';
+import { routeHistory, type HandlerConfig } from '../proxy/handler.js';
+import { roleMarker } from '../roles.js';
 import { readLifetimeStats, resetHistoryCache } from '../proxy/history.js';
 import { DEFAULT_MODELS } from '../models.js';
 
@@ -49,9 +50,13 @@ interface FakeUpstream {
  * `dropMidStream` sends the opening SSE events then destroys the socket.
  */
 async function startFakeUpstream(
-  opts: { truncateModels?: string[]; streamAuthFail?: boolean; dropMidStream?: boolean } = {},
+  opts: { truncateModels?: string[]; streamAuthFail?: boolean; dropMidStream?: boolean; dispatchModels?: string[] } = {},
 ): Promise<FakeUpstream> {
   const truncate = new Set(opts.truncateModels ?? []);
+  // `dispatchModels` answer with a tool_use block calling the Agent tool, so
+  // the proxy's dispatch observation can be exercised on both paths.
+  const dispatch = new Set(opts.dispatchModels ?? []);
+  const agentCall = { type: 'tool_use', id: 'toolu_agent', name: 'Agent', input: { prompt: 'look' } };
   const calls: UpstreamCall[] = [];
 
   const server = http.createServer((req, res) => {
@@ -108,6 +113,11 @@ async function startFakeUpstream(
         }
         send('content_block_delta', { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text } });
         send('content_block_stop', { type: 'content_block_stop', index: 0 });
+        if (dispatch.has(model)) {
+          send('content_block_start', { type: 'content_block_start', index: 1, content_block: { ...agentCall, input: {} } });
+          send('content_block_delta', { type: 'content_block_delta', index: 1, delta: { type: 'input_json_delta', partial_json: '{"prompt":"look"}' } });
+          send('content_block_stop', { type: 'content_block_stop', index: 1 });
+        }
         send('message_delta', { type: 'message_delta', delta: { stop_reason: stopReason, stop_sequence: null }, usage: { output_tokens: outputTokens } });
         send('message_stop', { type: 'message_stop' });
         res.end();
@@ -119,7 +129,7 @@ async function startFakeUpstream(
         type: 'message',
         role: 'assistant',
         model,
-        content: [{ type: 'text', text }],
+        content: dispatch.has(model) ? [{ type: 'text', text }, agentCall] : [{ type: 'text', text }],
         stop_reason: stopReason,
         stop_sequence: null,
         usage: { input_tokens: 5, output_tokens: outputTokens },
@@ -181,6 +191,7 @@ async function setup(
     truncateModels?: string[];
     streamAuthFail?: boolean;
     dropMidStream?: boolean;
+    dispatchModels?: string[];
     config?: Partial<HandlerConfig>;
   } = {},
 ): Promise<{ upstream: FakeUpstream; base: string }> {
@@ -234,6 +245,23 @@ describe('proxy end-to-end (real sockets, fake upstream)', () => {
     assert.equal(body.service, 'claude-router-proxy');
   });
 
+  it('/health counts every routed request, not the bounded window', async () => {
+    const { base } = await setup();
+    const before = ((await (await fetch(`${base}/health`)).json()) as { requests: number }).requests;
+
+    const res = await post(base, {
+      model: 'claude-opus-4-8',
+      max_tokens: 10,
+      messages: [{ role: 'user', content: 'translate hello to French' }],
+    });
+    assert.equal(res.status, 200);
+
+    const after = ((await (await fetch(`${base}/health`)).json()) as { requests: number }).requests;
+    assert.equal(after, before + 1, 'the counter is monotonic per recorded event');
+    const line = await (await fetch(`${base}/statusline`)).text();
+    assert.match(line, new RegExp(`#${after}\\]$`), 'the statusline shows the same count');
+  });
+
   it('routes a trivial prompt to haiku end-to-end', async () => {
     const { upstream, base } = await setup();
 
@@ -245,6 +273,7 @@ describe('proxy end-to-end (real sockets, fake upstream)', () => {
 
     assert.equal(res.status, 200);
     assert.equal(res.headers.get('x-router-tier'), 'haiku');
+    assert.match(res.headers.get('x-router-reason') ?? '', /^single-turn:/, 'the deciding gate rides a header');
     assert.equal(res.headers.get('x-router-model'), DEFAULT_MODELS.haiku);
     assert.ok(Number.isFinite(Number(res.headers.get('x-router-cost-cents'))));
 
@@ -292,6 +321,7 @@ describe('proxy end-to-end (real sockets, fake upstream)', () => {
     assert.equal(res.headers.get('x-router-tier'), 'opus', 'coordinator pinned, not routed to haiku');
     assert.equal(res.headers.get('x-router-model'), DEFAULT_MODELS.opus);
     assert.equal(res.headers.get('x-router-classifier'), 'pinned', 'classifier bypassed');
+    assert.equal(res.headers.get('x-router-reason'), 'session:coordinator-pinned', 'the pin is auditable from the client side');
     assert.equal(upstream.calls.length, 1, 'no extra classifier call');
     assert.equal(upstream.calls[0]!.model, DEFAULT_MODELS.opus, 'pinned model reached the wire');
   });
@@ -618,5 +648,175 @@ describe('proxy end-to-end (real sockets, fake upstream)', () => {
         `${model}: priced against sonnet, not the unusable model`,
       );
     }
+  });
+});
+
+// ── Role routing (subagents) ─────────────────────────────────────────────────
+//
+// Shaped like a Claude Code subagent request on the wire: the agent-id header,
+// a session-id header, and a `system` array whose first block is Claude Code's
+// attribution and whose second block is the agent definition body (with the
+// environment details appended). Only the header presence, the first line of a
+// system block, and the tool names are structural signals; nothing else is read.
+
+const ATTRIBUTION_BLOCK = { type: 'text', text: 'x-anthropic-billing-header: claude-code; subagent' };
+const READ_ONLY_TOOLS = ['Read', 'Glob', 'Grep'].map((name) => ({ name, description: name, input_schema: { type: 'object', properties: {} } }));
+const WRITE_TOOLS = ['Read', 'Edit', 'Write', 'Bash'].map((name) => ({ name, description: name, input_schema: { type: 'object', properties: {} } }));
+
+function subagentRequest(
+  base: string,
+  opts: { body?: string; tools: unknown[]; model: string; prompt?: string; stream?: boolean; subagent?: boolean; nested?: boolean },
+): Promise<Response> {
+  const headers: Record<string, string> = { 'content-type': 'application/json', 'x-claude-code-session-id': 'sess_1' };
+  if (opts.subagent !== false) headers['x-claude-code-agent-id'] = 'agent_1';
+  if (opts.nested) headers['x-claude-code-parent-agent-id'] = 'agent_0';
+  return fetch(`${base}/v1/messages`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      model: opts.model,
+      max_tokens: 64,
+      stream: opts.stream === true,
+      system: [ATTRIBUTION_BLOCK, { type: 'text', text: `${opts.body ?? 'You are a helper.'}\n\nWorking directory: /tmp/repo` }],
+      tools: opts.tools,
+      messages: [{ role: 'user', content: opts.prompt ?? 'find where the config loader is defined' }],
+    }),
+  });
+}
+
+describe('role routing (subagents)', () => {
+  it('a recon-marked agent is pinned to haiku whatever model the client asked for', async () => {
+    const { upstream, base } = await setup({ config: { sessionModel: 'opus' } });
+    const res = await subagentRequest(base, { body: `${roleMarker('recon')}\nFind things, report facts.`, tools: READ_ONLY_TOOLS, model: 'claude-opus-4-8' });
+    assert.equal(res.status, 200);
+    assert.equal(res.headers.get('x-router-tier'), 'haiku');
+    assert.equal(res.headers.get('x-router-classifier'), 'role');
+    assert.equal(res.headers.get('x-router-reason'), 'role:recon');
+    assert.equal(res.headers.get('x-router-role'), 'recon');
+    assert.equal(upstream.calls.length, 1, 'no classifier call, one upstream call');
+    assert.equal(upstream.calls[0]!.model, DEFAULT_MODELS.haiku);
+    const last = routeHistory[routeHistory.length - 1]!;
+    assert.equal(last.role, 'recon');
+    assert.equal(last.roleSource, 'marker');
+    assert.equal(last.subagent, true);
+  });
+
+  it('an audit-marked agent stays on opus even though its tools are read-only', async () => {
+    const { base } = await setup();
+    const res = await subagentRequest(base, { body: `${roleMarker('audit')}\nFalsify the claim.`, tools: READ_ONLY_TOOLS, model: 'claude-opus-4-8' });
+    assert.equal(res.headers.get('x-router-tier'), 'opus');
+    assert.equal(res.headers.get('x-router-reason'), 'role:audit');
+  });
+
+  it('an unmarked read-only agent already on haiku is confirmed at haiku (no agentic floor)', async () => {
+    const { base } = await setup();
+    const res = await subagentRequest(base, { tools: READ_ONLY_TOOLS, model: 'claude-haiku-4-5' });
+    assert.equal(res.headers.get('x-router-tier'), 'haiku');
+    assert.equal(res.headers.get('x-router-classifier'), 'role');
+    assert.equal(res.headers.get('x-router-reason'), 'subagent:readonly-tools');
+  });
+
+  it('an unmarked read-only agent on opus is NOT demoted — the classifier decides', async () => {
+    const { base } = await setup();
+    const res = await subagentRequest(base, { tools: READ_ONLY_TOOLS, model: 'claude-opus-4-8' });
+    assert.notEqual(res.headers.get('x-router-classifier'), 'role');
+    assert.equal(res.headers.get('x-router-role'), null, 'no header when the role did not decide');
+    const last = routeHistory[routeHistory.length - 1]!;
+    assert.equal(last.role, 'recon', 'the inferred role is still recorded on the ledger row');
+    assert.equal(last.roleSource, 'shape');
+  });
+
+  it('a writer-shaped agent is labelled builder but classified — depth still promotes', async () => {
+    const { base } = await setup();
+    const res = await subagentRequest(base, {
+      tools: WRITE_TOOLS, model: 'claude-sonnet-5',
+      prompt: 'architect a payment system and prove correctness under partition',
+    });
+    assert.equal(res.headers.get('x-router-classifier'), 'heuristic');
+    assert.equal(res.headers.get('x-router-tier'), 'opus');
+    assert.equal(routeHistory[routeHistory.length - 1]!.role, 'builder');
+  });
+
+  it('roles config overrides a marked role\'s tier', async () => {
+    const { base } = await setup({ config: { roles: { builder: 'opus' } } });
+    const res = await subagentRequest(base, { body: `${roleMarker('builder')}\nImplement the ticket.`, tools: WRITE_TOOLS, model: 'claude-sonnet-5' });
+    assert.equal(res.headers.get('x-router-tier'), 'opus');
+    assert.equal(res.headers.get('x-router-reason'), 'role:builder');
+  });
+
+  it('roleRouting: false classifies a marked agent like any request but still records the role', async () => {
+    const { base } = await setup({ config: { roleRouting: false } });
+    const res = await subagentRequest(base, { body: `${roleMarker('recon')}\nFind things.`, tools: READ_ONLY_TOOLS, model: 'claude-opus-4-8' });
+    assert.equal(res.headers.get('x-router-classifier'), 'heuristic');
+    assert.equal(res.headers.get('x-router-role'), null);
+    assert.equal(routeHistory[routeHistory.length - 1]!.role, undefined, 'off means off: no role resolution at all');
+  });
+
+  it('the streaming path pins by role too and carries x-router-role', async () => {
+    const { upstream, base } = await setup();
+    const res = await subagentRequest(base, { body: `${roleMarker('recon')}\nFind things.`, tools: READ_ONLY_TOOLS, model: 'claude-opus-4-8', stream: true });
+    assert.equal(res.status, 200);
+    assert.equal(res.headers.get('x-router-tier'), 'haiku');
+    assert.equal(res.headers.get('x-router-role'), 'recon');
+    const sse = await readSse(res);
+    assert.match(sse, /message_stop/);
+    assert.equal(upstream.calls[upstream.calls.length - 1]!.model, DEFAULT_MODELS.haiku);
+    assert.equal(routeHistory[routeHistory.length - 1]!.roleSource, 'marker');
+  });
+
+  it('a coordinator turn is never role-routed — a marker pasted into CLAUDE.md changes nothing', async () => {
+    const { base } = await setup({ config: { sessionModel: 'opus' } });
+    const res = await subagentRequest(base, {
+      subagent: false,
+      body: `${roleMarker('recon')}\nFind things.`,
+      tools: CODER_TOOLS, model: 'claude-opus-4-8',
+    });
+    assert.equal(res.headers.get('x-router-tier'), 'opus');
+    assert.equal(res.headers.get('x-router-classifier'), 'pinned', 'the session pin, not the marker, decided');
+    assert.equal(res.headers.get('x-router-role'), null);
+  });
+});
+
+// ── Orchestration measurement ────────────────────────────────────────────────
+
+const AGENT_TOOL = { name: 'Agent', description: 'spawn a subagent', input_schema: { type: 'object', properties: {} } };
+
+describe('orchestration measurement', () => {
+  it('a coordinator turn offered the Agent tool that calls it is recorded as dispatched', async () => {
+    const { base } = await setup({ dispatchModels: [DEFAULT_MODELS.opus], config: { sessionModel: 'opus' } });
+    const res = await subagentRequest(base, { subagent: false, tools: [...CODER_TOOLS, AGENT_TOOL], model: 'claude-opus-4-8' });
+    assert.equal(res.status, 200);
+    const last = routeHistory[routeHistory.length - 1]!;
+    assert.equal(last.coordinator, true);
+    assert.equal(last.dispatchable, true);
+    assert.equal(last.dispatched, true);
+    assert.equal(last.sessionId, 'sess_1');
+    assert.equal(last.subagent, undefined);
+  });
+
+  it('a coordinator turn without the Agent tool is not dispatchable, so it cannot count as dispatched', async () => {
+    const { base } = await setup({ dispatchModels: [DEFAULT_MODELS.opus], config: { sessionModel: 'opus' } });
+    await subagentRequest(base, { subagent: false, tools: CODER_TOOLS, model: 'claude-opus-4-8' });
+    const last = routeHistory[routeHistory.length - 1]!;
+    assert.equal(last.coordinator, true);
+    assert.equal(last.dispatchable, undefined);
+    assert.equal(last.dispatched, undefined, 'the denominator rule: no Agent tool offered, no dispatch counted');
+  });
+
+  it('the streaming path observes dispatch from the accumulated final message', async () => {
+    const { base } = await setup({ dispatchModels: [DEFAULT_MODELS.opus], config: { sessionModel: 'opus' } });
+    const res = await subagentRequest(base, { subagent: false, tools: [...CODER_TOOLS, AGENT_TOOL], model: 'claude-opus-4-8', stream: true });
+    await readSse(res);
+    const last = routeHistory[routeHistory.length - 1]!;
+    assert.equal(last.dispatchable, true);
+    assert.equal(last.dispatched, true);
+  });
+
+  it('a subagent that carries a parent agent id is recorded as nested', async () => {
+    const { base } = await setup();
+    await subagentRequest(base, { tools: READ_ONLY_TOOLS, model: 'claude-haiku-4-5', nested: true });
+    const last = routeHistory[routeHistory.length - 1]!;
+    assert.equal(last.subagent, true);
+    assert.equal(last.nested, true);
   });
 });

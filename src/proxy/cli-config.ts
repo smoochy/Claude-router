@@ -1,4 +1,5 @@
 import { warnDeadRoutingKeys } from '../routing.js';
+import { invalidRoleMappings } from '../roles.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
@@ -60,6 +61,22 @@ export interface FileConfig {
    * for it. Subagents still route by evidence. Only takes effect under forceRoute.
    */
   sessionModel?: Tier;
+  /**
+   * Remove Claude Code's injected anti-delegation lines from the system prompt so
+   * subagents can be spawned again. Off by default — this is the one place the
+   * proxy edits a prompt. Only takes effect under forceRoute.
+   */
+  restoreDelegation?: boolean;
+  /**
+   * Route Claude Code subagents by role (default `'on'`): marker, `agents`
+   * mapping, or read-only tool shape in the cheap direction. `'off'` classifies
+   * subagents like any other request (the inferred role is still recorded).
+   */
+  roleRouting?: 'on' | 'off';
+  /** Per-role tier overrides, e.g. `{ "builder": "opus" }`. Roles: recon, builder, batch, gate, audit. */
+  roles?: Partial<Record<string, Tier>>;
+  /** Pin third-party agents by Claude Code agent type, e.g. `{ "my-plugin:reviewer": "opus" }`. */
+  agents?: Record<string, Tier>;
   /** Override the model ID used for each tier. */
   tiers?: Partial<Record<Tier, string>>;
   /** Override pricing ($/1M tokens) for savings math, keyed by model ID. */
@@ -96,6 +113,12 @@ export interface ServeOptions {
   upstream: string;
   /** '' = disabled (classify every request); a tier name pins the coordinator. */
   sessionModel: string;
+  /** Strip the client's injected anti-delegation lines (routed path only). */
+  restoreDelegation: boolean;
+  /** 'on' | 'off' — see FileConfig.roleRouting. */
+  roleRouting: string;
+  roles?: Partial<Record<string, Tier>>;
+  agents?: Record<string, Tier>;
   tiers?: Partial<Record<Tier, string>>;
   pricing?: Record<string, ModelPricing>;
   routing?: RoutingTuning;
@@ -105,6 +128,7 @@ export interface ServeOptions {
 export class CliUsageError extends Error {}
 
 const DEFAULT_HOST = '127.0.0.1';
+const TIER_NAMES = 'haiku | sonnet | opus | fable';
 
 type OptionKind =
   | { type: 'number'; min: number; max: number }
@@ -120,29 +144,66 @@ type OptionKind =
  */
 interface OptionSpec {
   /** Corresponding key on ServeOptions / FileConfig. */
-  key: 'port' | 'host' | 'verbose' | 'classifier' | 'provider' | 'region' | 'forceRoute' | 'upstream' | 'sessionModel';
+  key: 'port' | 'host' | 'verbose' | 'classifier' | 'provider' | 'region' | 'forceRoute' | 'upstream' | 'sessionModel' | 'restoreDelegation' | 'roleRouting';
   flags: string[];
   kind: OptionKind;
   default: string | number | boolean;
+  /** One line for `claude-router help`. Enum values and the default are appended by the renderer. */
+  help: string;
+  /** Placeholder for the flag's argument in help (`<port>`); omitted for booleans. */
+  arg?: string;
   /** Always emit as a spawn arg (else only when non-default). */
   argAlways?: boolean;
   /** Always include in the scaffolded config.json (else only when non-default). */
   configAlways?: boolean;
 }
 
-const OPTIONS: OptionSpec[] = [
-  { key: 'port',       flags: ['--port', '-p'],    kind: { type: 'number', min: 1, max: 65535 }, default: 4000, argAlways: true, configAlways: true },
-  { key: 'host',       flags: ['--host'],          kind: { type: 'string' },                     default: DEFAULT_HOST },
-  { key: 'forceRoute', flags: ['--force-route'],   kind: { type: 'boolean' },                    default: false, configAlways: true },
-  { key: 'verbose',    flags: ['--verbose', '-v'], kind: { type: 'boolean' },                    default: false, configAlways: true },
-  { key: 'classifier', flags: ['--classifier'],    kind: { type: 'enum', values: ['heuristic', 'ai', 'hybrid'] }, default: 'hybrid', configAlways: true },
-  { key: 'provider',   flags: ['--provider'],      kind: { type: 'enum', values: ['anthropic', 'bedrock', 'vertex'] }, default: 'anthropic', configAlways: true },
-  { key: 'region',     flags: ['--region'],        kind: { type: 'string' },                     default: '' },
+export const OPTIONS: readonly OptionSpec[] = [
+  { key: 'port',       flags: ['--port', '-p'],    kind: { type: 'number', min: 1, max: 65535 }, default: 4000, argAlways: true, configAlways: true,
+    arg: 'number', help: 'Port' },
+  { key: 'host',       flags: ['--host'],          kind: { type: 'string' },                     default: DEFAULT_HOST,
+    arg: 'address', help: 'Bind address — 127.0.0.1 is local only; 0.0.0.0 exposes the proxy to the network' },
+  { key: 'forceRoute', flags: ['--force-route'],   kind: { type: 'boolean' },                    default: false, configAlways: true,
+    help: 'Route even explicit model requests — required for Claude Code' },
+  { key: 'verbose',    flags: ['--verbose', '-v'], kind: { type: 'boolean' },                    default: false, configAlways: true,
+    help: 'Log each routing decision' },
+  { key: 'classifier', flags: ['--classifier'],    kind: { type: 'enum', values: ['heuristic', 'ai', 'hybrid'] }, default: 'hybrid', configAlways: true,
+    arg: 'mode', help: 'How a tier is chosen' },
+  { key: 'provider',   flags: ['--provider'],      kind: { type: 'enum', values: ['anthropic', 'bedrock', 'vertex'] }, default: 'anthropic', configAlways: true,
+    arg: 'name', help: 'API provider' },
+  { key: 'region',     flags: ['--region'],        kind: { type: 'string' },                     default: '',
+    arg: 'string', help: 'AWS/GCP region (bedrock/vertex)' },
   // Explicit only — never inherited from the environment. See DEFAULT_UPSTREAM.
-  { key: 'upstream',   flags: ['--upstream'],      kind: { type: 'string' },                     default: DEFAULT_UPSTREAM },
+  { key: 'upstream',   flags: ['--upstream'],      kind: { type: 'string' },                     default: DEFAULT_UPSTREAM,
+    arg: 'url', help: 'Where routed and passed-through requests go — testing only, never read from the environment' },
   // Empty default = disabled. A tier name pins the Claude Code coordinator session.
-  { key: 'sessionModel', flags: ['--session-model'], kind: { type: 'enum', values: ['haiku', 'sonnet', 'opus', 'fable'] }, default: '' },
+  { key: 'sessionModel', flags: ['--session-model'], kind: { type: 'enum', values: ['haiku', 'sonnet', 'opus', 'fable'] }, default: '',
+    arg: 'tier', help: 'Pin the Claude Code main session to one tier; subagents still route by evidence (needs --force-route)' },
+  // Off by default: the one place the proxy edits a prompt. See src/proxy/delegation.ts.
+  { key: 'restoreDelegation', flags: ['--restore-delegation'], kind: { type: 'boolean' }, default: false, configAlways: true,
+    help: 'Strip the injected "do not spawn agents" lines so a pinned session can still delegate' },
+  // An enum rather than a boolean: the table's booleans can only be switched on,
+  // and "off" is the interesting value here (the A/B baseline for the ledger).
+  { key: 'roleRouting', flags: ['--role-routing'], kind: { type: 'enum', values: ['on', 'off'] }, default: 'on',
+    arg: 'on|off', help: 'Route Claude Code subagents by role — marker, agents mapping, or read-only tool shape (needs --force-route)' },
 ];
+
+/**
+ * The `Options` block of `claude-router help`, rendered from OPTIONS so a flag
+ * cannot exist without a help line — `--session-model` and `--upstream` shipped
+ * with no mention in `help`, because the text was a second hand-written copy of
+ * the table.
+ */
+export function helpOptionLines(): string[] {
+  const width = 26;
+  return OPTIONS.map((spec) => {
+    const left = `${spec.flags.join(', ')}${spec.arg ? ` <${spec.arg}>` : ''}`;
+    const values = spec.kind.type === 'enum' ? `${spec.kind.values.join(' | ')}` : '';
+    const dflt = spec.default === '' || spec.default === false ? '' : `default: ${String(spec.default)}`;
+    const tail = [values, dflt].filter(Boolean).join('; ');
+    return `  ${left.padEnd(width)} ${spec.help}${tail ? ` (${tail})` : ''}`;
+  });
+}
 
 /** Validate and convert a flag's raw argument per its declared kind. */
 function coerce(spec: OptionSpec, raw: string | undefined): string | number | boolean {
@@ -190,12 +251,21 @@ export function parseServeArgs(args: string[], file: FileConfig = {}): ServeOpti
   // The config file is where these keys actually live for most users, so this
   // is the call site that matters. Warn after parsing, before the proxy starts.
   warnDeadRoutingKeys(file.routing as Record<string, unknown> | undefined);
+  // A mapping to a non-tier is skipped at routing time (never `model: undefined`);
+  // say so once here rather than letting a typo silently route by shape instead.
+  for (const [name, mapping] of [['roles', file.roles], ['agents', file.agents]] as const) {
+    for (const bad of invalidRoleMappings(mapping as Record<string, unknown> | undefined)) {
+      console.warn(`[claude-router] config ${name}.${bad} is not a tier (${TIER_NAMES}) and will be ignored.`);
+    }
+  }
 
   return {
-    ...(values as unknown as Omit<ServeOptions, 'tiers' | 'pricing' | 'routing'>),
+    ...(values as unknown as Omit<ServeOptions, 'tiers' | 'pricing' | 'routing' | 'roles' | 'agents'>),
     tiers: file.tiers,
     pricing: file.pricing,
     routing: file.routing,
+    roles: file.roles,
+    agents: file.agents,
   };
 }
 
@@ -240,10 +310,17 @@ export function getVersion(): string {
   try {
     const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8')) as { version?: string };
     return pkg.version ?? 'unknown';
-  } catch {
+  } catch (err) {
+    // 'unknown' in a banner, a /health payload or a bug report is a silent
+    // degradation; say why once so a broken install layout is diagnosable.
+    if (!versionReadFailureReported) {
+      versionReadFailureReported = true;
+      console.warn(`[claude-router] cannot read ${pkgPath}: ${String(err)} — version reported as "unknown"`);
+    }
     return 'unknown';
   }
 }
+let versionReadFailureReported = false;
 
 // ── Command suggestion ─────────────────────────────────────────────────────
 
@@ -274,4 +351,24 @@ export function suggestCommand(input: string, commands: string[]): string | null
     }
   }
   return best;
+}
+
+/**
+ * What `claude-router install` sets up unless told `--api-only`: the Claude
+ * Code profile. Claude Code pins a model on every request, so a proxy that is
+ * not force-routing does nothing for it; the coordinator is pinned to opus and
+ * delegation restored so the orchestration plugin has something to orchestrate.
+ * The profile sits **under** the config file (a user's explicit choice wins)
+ * and under the flags, and `install` persists the result to config.json so a
+ * later `claude-router start -d` — the plugin's self-start included — carries
+ * the same behaviour.
+ */
+export const CLAUDE_CODE_PROFILE: FileConfig = {
+  forceRoute: true,
+  sessionModel: 'opus',
+  restoreDelegation: true,
+};
+
+export function withInstallProfile(file: FileConfig, apiOnly: boolean): FileConfig {
+  return apiOnly ? file : { ...CLAUDE_CODE_PROFILE, ...file };
 }

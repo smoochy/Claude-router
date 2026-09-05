@@ -11,6 +11,8 @@ import {
   DEFAULT_PRICING,
   DIVERGENT_PRICING,
   FAMILY_PRICING,
+  PRICING_LAST_CHECKED,
+  pricingAgeDays,
 } from '../models.js';
 
 describe('computeCostCents', () => {
@@ -139,6 +141,17 @@ describe('current-generation pricing (guards against drift)', () => {
       input: 2.0,
       output: 10.0,
     });
+  });
+
+  it('Opus 5 prices like the rest of the Opus family — promotion is free', () => {
+    // The opus tier moved from 4.8 to Opus 5, which ships at the same rate. If a
+    // future Opus arrives at a different price, this fails rather than silently
+    // rebasing every historical savings figure against a new baseline.
+    assert.equal(DEFAULT_MODELS.opus, 'claude-opus-5');
+    assert.equal(familyForModel('claude-opus-5'), 'opus');
+    for (const id of ['claude-opus-5', 'claude-opus-4-8', 'claude-opus-4-7', 'claude-opus-4-6']) {
+      assert.deepEqual(priceForModel(id, DEFAULT_PRICING), FAMILY_PRICING.opus, id);
+    }
   });
 
   it('legacy Sonnet (4, 4.5, 4.6) keeps $3/$15 after the family rate dropped', () => {
@@ -350,5 +363,22 @@ describe('tierForModel', () => {
 
   it('returns undefined for unknown model', () => {
     assert.equal(tierForModel('unknown', DEFAULT_MODELS), undefined);
+  });
+});
+
+describe('PRICING_LAST_CHECKED', () => {
+  it('is a real ISO date no later than today', () => {
+    // The freshness guards (weekly workflow, doctor) compute from this string;
+    // a typo would make the table look freshly verified forever.
+    assert.match(PRICING_LAST_CHECKED, /^\d{4}-\d{2}-\d{2}$/);
+    const parsed = Date.parse(`${PRICING_LAST_CHECKED}T00:00:00Z`);
+    assert.ok(Number.isFinite(parsed), 'parses');
+    assert.ok(parsed <= Date.now(), 'not in the future');
+  });
+
+  it('pricingAgeDays counts whole days from the checked date', () => {
+    const checked = new Date(`${PRICING_LAST_CHECKED}T00:00:00Z`);
+    assert.equal(pricingAgeDays(checked), 0);
+    assert.equal(pricingAgeDays(new Date(checked.getTime() + 90 * 86_400_000 + 1)), 90);
   });
 });

@@ -28,12 +28,14 @@ export interface Term {
   magenta: (s: string) => string;
   dim: (s: string) => string;
   bold: (s: string) => string;
-  /** Consistent tier coloring: haiku=cyan, sonnet=yellow, opus=magenta */
+  /** Consistent tier coloring: haiku=cyan, sonnet=yellow, opus=magenta, fable=red */
   tier: (t: Tier | string) => string;
   ok: () => string;
   fail: () => string;
   warn: () => string;
   /** Red message to stderr */
+  /** The text `errorLine` prints, as a value — for callers that return output. */
+  errorText: (msg: string) => string;
   errorLine: (msg: string) => void;
   /** Box with width computed from visible (ANSI-stripped) content */
   box: (title: string, rows: Array<[string, string]>) => string;
@@ -60,6 +62,7 @@ export function createTerm(opts?: { forceColor?: boolean }): Term {
     haiku: cyan,
     sonnet: yellow,
     opus: magenta,
+    fable: red,
   };
   const tier = (t: Tier | string) => (tierColors[t] ?? ((s: string) => s))(t);
 
@@ -93,6 +96,7 @@ export function createTerm(opts?: { forceColor?: boolean }): Term {
     ok: () => green('✓'),
     fail: () => red('✗'),
     warn: () => yellow('!'),
+    errorText: (msg: string) => red(`✗ ${msg}`),
     errorLine: (msg: string) => console.error(red(`✗ ${msg}`)),
     box,
     enabled,

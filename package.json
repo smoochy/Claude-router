@@ -1,6 +1,6 @@
 {
   "name": "@sheruq/claude-router",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "description": "TypeScript-native Claude API cost router — routes each call to Haiku/Sonnet/Opus/Fable using evidence-based gates, not keyword guesswork, to cut your Anthropic/Bedrock/Vertex bill",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -18,7 +18,8 @@
     "test": "npm run build && node scripts/run-tests.mjs",
     "dev": "tsc --watch",
     "proxy": "node dist/proxy/cli.js",
-    "prepublishOnly": "npm test"
+    "prepublishOnly": "npm test",
+    "test:coverage": "npm run build && COVERAGE=1 node scripts/run-tests.mjs"
   },
   "keywords": [
     "claude",
@@ -31,7 +32,12 @@
     "haiku",
     "sonnet",
     "opus",
-    "proxy"
+    "proxy",
+    "claude-code",
+    "anthropic-proxy",
+    "llm-gateway",
+    "orchestration",
+    "subagents"
   ],
   "author": "Serhii Leniv",
   "license": "MIT",
@@ -68,6 +74,8 @@
     "assets/claude-router.svg",
     "README.md",
     "CHANGELOG.md",
-    "LICENSE"
+    "LICENSE",
+    "plugin",
+    ".claude-plugin"
   ]
 }

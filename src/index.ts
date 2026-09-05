@@ -1,18 +1,17 @@
 import Anthropic from '@anthropic-ai/sdk';
 import {
   classify,
-  DEFAULT_CLASSIFY_CACHE_SIZE,
-} from './classifier.js';
+  DEFAULT_CLASSIFY_CACHE_SIZE, buildClassifyInput } from './classifier.js';
 import { LruCache } from './cache.js';
 import {
   DEFAULT_MODELS,
   DEFAULT_PRICING,
   computeRouteCost,
+  costFields,
   type WarnFn,
 } from './models.js';
 import { CostTracker } from './tracker.js';
-import { executeRoute } from './route.js';
-import { normalizeParamsForTier } from './params.js';
+import { executeRoute, startRouteStream, type MessageStream } from './route.js';
 import { warnDeadRoutingKeys } from './routing.js';
 import type {
   ClassifyInput,
@@ -38,12 +37,8 @@ interface ResolvedConfig {
   warn: WarnFn;
 }
 
-/**
- * The SDK's streaming handle, derived from the client surface rather than a
- * deep `lib/` import — internal SDK layout is not a stable export, and this is
- * exactly the type `messages.stream()` returns.
- */
-export type MessageStream = ReturnType<Anthropic['messages']['stream']>;
+/** Re-exported from the routing kernel, which owns the streaming entry point. */
+export type { MessageStream } from './route.js';
 
 export interface StreamResult {
   /** The real SDK stream: `for await`, `.on()` chaining, `.finalMessage()` all work. */
@@ -93,26 +88,15 @@ function resolveConfig(config: RouterConfig): ResolvedConfig {
   };
 }
 
-function buildClassifyInput(
-  params: SendParams | StreamParams,
-): ClassifyInput {
-  const system = params.system;
-  let systemInput: ClassifyInput['system'];
-  if (typeof system === 'string') {
-    systemInput = system;
-  } else if (Array.isArray(system)) {
-    systemInput = system.filter(
-      (b): b is Anthropic.TextBlockParam =>
-        'type' in b && b.type === 'text',
-    );
-  }
-
-  return {
-    messages: params.messages,
-    system: systemInput,
-    tools: (params as { tools?: unknown[] }).tools,
-  };
+/**
+ * The synthetic classification for an explicitly pinned tier: no classifier ran,
+ * so there is no method, timing or uncertainty to report. `send` and `stream`
+ * both need it and had drifted into two spellings of the same five fields.
+ */
+function forcedClassification(tier: Tier): ClassifyResult {
+  return { tier, score: -1, method: 'heuristic', ms: 0, confidence: 1.0 };
 }
+
 
 export class ClaudeRouter {
   /** @internal Exposed for testing — do not depend on this. */
@@ -149,23 +133,18 @@ export class ClaudeRouter {
     retried: boolean = false,
     retryReason: string | null = null,
   ): RouteMeta {
-    const { costCents, savedCents, cacheReadTokens, cacheCreationTokens, inputTokens, outputTokens, priced } =
-      computeRouteCost(model, usage, this.config.defaultModel, this.config.pricing, this.config.warn);
+    const cost = computeRouteCost(model, usage, this.config.defaultModel, this.config.pricing, this.config.warn);
 
     return {
       tier,
       model,
-      inputTokens,
-      outputTokens,
-      cacheReadTokens,
-      cacheCreationTokens,
-      costCents,
-      savedCents,
-      // Only carried when false — absent means priced, which keeps the common
-      // record (and the proxy's JSONL line built from the same shape) lean.
-      ...(priced ? {} : { priced: false as const }),
+      // `priced` is only carried when false — absent means priced. That rule and
+      // the cache-token fields live in `costFields`, shared with the proxy's
+      // RouteEvent so the two records cannot drift.
+      ...costFields(cost),
       classifierMethod: classifyResult.method,
       classifierMs: classifyResult.ms,
+      ...(classifyResult.reason ? { reason: classifyResult.reason } : {}),
       fallbackUsed,
       confidence: classifyResult.confidence,
       retried,
@@ -191,7 +170,7 @@ export class ClaudeRouter {
           } vs ${this.config.defaultModel}`;
 
     console.log(
-      `[claude-router] → ${meta.tier} (${meta.classifierMethod}, ${meta.classifierMs}ms${fallbackNote}) | ${money}`,
+      `[claude-router] → ${meta.tier} (${meta.classifierMethod}, ${meta.classifierMs}ms${meta.reason ? `, ${meta.reason}` : ''}${fallbackNote}) | ${money}`,
     );
   }
 
@@ -200,7 +179,7 @@ export class ClaudeRouter {
     const input = buildClassifyInput(params);
 
     const classifyResult = forcedTier
-      ? { tier: forcedTier, score: -1, method: 'heuristic' as const, ms: 0, confidence: 1.0 }
+      ? forcedClassification(forcedTier)
       : await this.classify(input);
 
     const result = await executeRoute(
@@ -237,27 +216,19 @@ export class ClaudeRouter {
   async stream(params: StreamParams): Promise<StreamResult> {
     const { tier: forcedTier, ...apiParams } = params;
 
-    if (forcedTier && !(forcedTier in this.config.tiers)) {
-      throw new TypeError(
-        `[claude-router] Unknown tier "${forcedTier}" — expected one of: ${Object.keys(this.config.tiers).join(', ')}`,
-      );
-    }
-
-    const classifyResult: ClassifyResult = forcedTier
-      ? {
-          tier: forcedTier,
-          score: -1,
-          method: 'heuristic' as const,
-          ms: 0,
-          confidence: 1.0,
-        }
+    const classifyResult = forcedTier
+      ? forcedClassification(forcedTier)
       : await this.classify(buildClassifyInput(params));
 
-    const tier = classifyResult.tier;
-    const model = this.config.tiers[tier];
-
-    const stream = this._client.messages.stream(
-      normalizeParamsForTier({ ...apiParams, model }, tier) as Anthropic.MessageStreamParams,
+    // Same kernel as `send`, stopping before the retry loop. Tier validation,
+    // model resolution and normalization used to be re-implemented here, and the
+    // duplicate unknown-tier TypeError listed its expected tiers from the config
+    // keys rather than from TIER_ORDER.
+    const { stream, tier, model } = startRouteStream(
+      this._client,
+      apiParams as Record<string, unknown>,
+      classifyResult.tier,
+      this.config.tiers,
     );
 
     const meta = stream.finalMessage().then((finalMessage) => {

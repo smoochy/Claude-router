@@ -27,7 +27,9 @@
 
 ## Is this for you?
 
-**If you pay per token** (Anthropic API, Amazon Bedrock, or Google Vertex) **and your traffic is a mix of easy and hard requests.** The router skims the easy majority down to Haiku/Sonnet and reserves Opus for what actually needs it — **35% on agentic coding traffic**, [measured](research/2026-07-21-end-to-end-savings.md) by replaying 200 real turns through the published proxy.
+**If you pay per token** (Anthropic API, Amazon Bedrock, or Google Vertex) **and your traffic is a mix of easy and hard requests.** The router skims the easy majority down to Haiku/Sonnet and reserves Opus for what actually needs it.
+
+**Measured, not promised.** One live Claude Code session through the proxy spent $3.34 against a $4.23 all-Opus counterfactual — **21%** ([note](research/2026-07-25-live-session.md)). A 200-turn replay of the published 0.2.2 projected **35%** ([method](research/2026-07-21-end-to-end-savings.md)), an upper bound that assumes token counts do not change when the model does and that comes almost entirely from one rule: mid-loop tool steps go to Sonnet. Direct API (single-turn) traffic is **unmeasured**. See [What is measured vs assumed](#what-is-measured-vs-assumed).
 
 ## Contents
 
@@ -51,29 +53,30 @@
 
 ### Claude Code (recommended)
 
-Two commands on **Windows, macOS, or Linux**:
+Two commands on **Windows, macOS, or Linux**, no flags, no environment variables:
 
 ```bash
 npm install -g @sheruq/claude-router
-claude-router install --force-route
-# open a new terminal, then use `claude` normally — every call is auto-routed
+claude-router install
+# restart Claude Code — that's it
 ```
 
 > Install **globally** (not via `npx`) when using `install`: login autostart points at the installed CLI, and the `claude-router` command must stay on your PATH for `status` / `stop` / `doctor`.
 
-`install` starts the proxy in the background (verifying it's healthy before reporting success), registers it to start on login, sets `ANTHROPIC_BASE_URL`, and adds a Claude Code statusline — per OS:
+`install` does the whole setup and verifies each step before reporting it:
 
-| OS | Autostart | Env var |
-|----|-----------|---------|
-| **Windows** | HKCU Run key | `setx` (applies to new terminals) |
-| **macOS** | LaunchAgent | block in `~/.zshrc` |
-| **Linux** | systemd user unit (graceful fallback) | block in `~/.bashrc` / `~/.zshrc` |
+- starts the proxy in the background and registers it to start on login (Windows Run key, macOS LaunchAgent, Linux systemd user unit);
+- points Claude Code at the proxy through its own `~/.claude/settings.json` `env` block — no shell rc edit, no `setx`, no new terminal;
+- applies the Claude Code profile and saves it to `~/.claude-router/config.json`: routing forced on (Claude Code pins a model on every request, so nothing routes otherwise), the main session pinned to Opus, delegation restored, subagents routed by role;
+- installs the [orchestration plugin](#orchestration-mode-claude-code) (role agents + session policy) and a statusline.
+
+From then on the plugin's session-start hook keeps it honest: if the proxy isn't running it starts it, and every session opens with one line saying `claude-router: enforcing — …` or why not.
 
 Manage it anytime:
 
 ```bash
 claude-router status    # health, routing stats, install state
-claude-router stats     # lifetime savings + per-day breakdown
+claude-router stats     # lifetime savings, dispatch rate, cost by role
 claude-router logs -f   # follow the daemon log
 claude-router doctor    # diagnose setup problems
 claude-router stop      # stop the background proxy
@@ -82,7 +85,7 @@ claude-router uninstall # remove everything install added
 
 Watch routing live in the logs, or open the dashboard at `http://localhost:4000/dashboard`.
 
-> **Why `--force-route`?** Claude Code always pins a model, so the proxy must override it to route by complexity. The router reconciles model-specific parameters with the tier it picks (see [How it works](#how-it-works)), so force-routing never 400s on Claude Code's adaptive-thinking / effort settings. Drop the flag if you want explicit model requests to pass through untouched.
+> **Only want a plain proxy for SDK apps?** `claude-router install --api-only` skips the Claude Code profile and plugin and exports `ANTHROPIC_BASE_URL` in your shell instead (add `--shell-env` to a normal install to get both). Explicit model requests then pass through untouched unless you start with `--force-route`.
 
 ### Any app, without installing
 
@@ -145,6 +148,47 @@ The pin also requires the request to **carry tools**, which every real coordinat
 
 ---
 
+## Orchestration mode (Claude Code)
+
+The proxy already sees every request Claude Code makes, so it can do more than pick a model per turn: it can run the whole session as a coordinator on the top tier with role agents carrying the volume on cheaper tiers — and enforce that, and measure it.
+
+```bash
+claude-router install --force-route --session-model opus --restore-delegation
+# then restart Claude Code
+```
+
+`install` also adds the **orchestration plugin** (skip with `--no-policy`, or manage it alone with `claude-router policy install|status|uninstall`). The plugin ships five role agents and a short session policy:
+
+| Agent | Hand it | Tier |
+|---|---|---|
+| `claude-router:recon` | read-only lookup: where is X, what calls Y | haiku |
+| `claude-router:builder` | one scoped change that needs judgement | sonnet |
+| `claude-router:batch` | the same edit across many files, fully specified | sonnet |
+| `claude-router:gate` | fresh-context readiness check before risky work (READY / REVISE) | opus |
+| `claude-router:audit` | fresh-context attempt to refute finished risky work (CONFIRMED / REFUTED / INCONCLUSIVE) | opus |
+
+What the proxy adds that a prompt-only policy cannot:
+
+- **Enforcement.** Each agent definition opens with a marker (`<!-- claude-router:role=recon -->`); the proxy reads it from the subagent's system prompt and pins the tier, whatever model the client asked for and whatever `CLAUDE_CODE_SUBAGENT_MODEL` says. `--session-model opus` pins the coordinator; `--restore-delegation` removes the injected lines that stop Claude Code from spawning agents at all.
+- **A ledger.** Every subagent row in `history.jsonl` carries `role`, and `x-router-role` names the deciding role on the response. `claude-router stats` and the dashboard show what reconnaissance, implementation and review actually cost.
+- **Every OS.** The hooks are Node scripts, not shell.
+
+Configure in `~/.claude-router/config.json`:
+
+```jsonc
+{
+  "sessionModel": "opus",
+  "restoreDelegation": true,
+  "roleRouting": "on",                          // "off" = classify subagents like any request (A/B baseline)
+  "roles": { "builder": "opus" },               // move a role to another tier
+  "agents": { "some-plugin:reviewer": "opus" }  // pin third-party agents by Claude Code agent type
+}
+```
+
+Without a marker, a read-only agent Claude Code already runs on haiku (the built-in Explore) is confirmed at haiku instead of being floored to sonnet; the proxy never demotes an agent from tool shape alone.
+
+**Coming from a prompt-only delegation policy?** Keep it if you like it — the proxy does not care where the instruction to delegate came from. What changes: `--session-model opus` holds the coordinator's tier whatever the client sends, `--restore-delegation` removes the injected lines that stop Claude Code spawning agents at all, and `claude-router stats` tells you the dispatch rate and what each role cost, which a prompt cannot. To pin agents from another plugin by name, map their agent type under `agents`. On SessionStart the plugin prints one line saying whether the proxy is actually enforcing (`claude-router: enforcing — session pinned to opus, subagent roles routed by the proxy`) or, if it is down, that the tiers are advisory. For development: `claude --plugin-dir ./plugin`.
+
 ## Configuration
 
 Set defaults once in `~/.claude-router/config.json` instead of passing flags. **CLI flags always override the file.** Scaffold it with `claude-router init --force-route --port 4000`.
@@ -159,21 +203,21 @@ Set defaults once in `~/.claude-router/config.json` instead of passing flags. **
   "tiers": {
     "haiku": "claude-haiku-4-5",
     "sonnet": "claude-sonnet-5",
-    "opus": "claude-opus-4-8"
+    "opus": "claude-opus-5"
   },
   "pricing": {
-    "claude-opus-4-8": { "input": 5.0, "output": 25.0 }
+    "claude-opus-5": { "input": 5.0, "output": 25.0 }
   },
   "routing": {
-    "haikuMax": 30,
-    "opusMin": 70,
-    "hybridBand": [40, 60],
     "aiTimeoutMs": 1500,
     "classifyCacheSize": 500,
-    "allowHaikuInAgentic": false
+    "allowHaikuInAgentic": false,
+    "allowFable": false
   }
 }
 ```
+
+`haikuMax`, `opusMin` and `hybridBand` are accepted but ignored since 0.2.2 — routing is gate-based and there is no score to threshold; the proxy warns once per key. `allowFable` lets classification reach the fable tier (off by default: it is $10/$50 and no measured signal predicts "super hard" from request text).
 
 - **`sessionModel`** — pin the Claude Code coordinator session to a tier (subagents still route). See [Pin the coordinator session](#pin-the-coordinator-session).
 - **`tiers`** — override which model ID each tier maps to.
@@ -229,7 +273,7 @@ Pricing tracks the **current Claude generation**; unknown/dated/Bedrock/Vertex I
 | Model | ID | Input $/1M | Output $/1M |
 |-------|-----|-----------:|------------:|
 | Claude Fable 5.1 | `claude-fable-5-1` | $10.00 | $50.00 |
-| Claude Opus 4.8 | `claude-opus-4-8` | $5.00 | $25.00 |
+| Claude Opus 5 | `claude-opus-5` | $5.00 | $25.00 |
 | Claude Sonnet 5 | `claude-sonnet-5` | $2.00 | $10.00 |
 | Claude Haiku 4.5 | `claude-haiku-4-5` | $1.00 | $5.00 |
 
@@ -247,7 +291,27 @@ x-router-saved-cents: 1.200
 x-router-classifier: heuristic
 x-router-classifier-ms: 0.1
 x-router-confidence: 0.9
+x-router-reason: agentic:mid-loop
 ```
+
+---
+
+## What is measured vs assumed
+
+Every number this project reports is downstream of a few measurements and a few assumptions. Which is which:
+
+| Claim | Status | Evidence |
+|---|---|---|
+| Mid-loop tool steps are tier-insensitive (Sonnet adequate 75%, zero clear losses); final synthesis is not (Opus won 10 of 11) | **Measured** | [tier ceiling](research/2026-07-21-tier-ceiling.md), 23 real turns, blind-judged |
+| Escalation triggers (truncation, refusal) never fire on real traffic | **Measured** | [detector measurement](research/2026-07-21-detector-measurement.md), 0 of 35,314 responses |
+| 21% saved on one live Claude Code session | **Measured**, n=1 | [live session](research/2026-07-25-live-session.md) |
+| 35% on agentic coding traffic | **Upper bound**, replay on a stub upstream, tokens held constant | [end-to-end savings](research/2026-07-21-end-to-end-savings.md) |
+| The single-turn haiku gate (short mechanical transforms) | **Unmeasured**, deliberately conservative | [failed experiment](research/2026-07-21-single-turn-failed.md) |
+| Fable promotion signals (depth + long horizon) | **Assumed** — nothing measured predicts "super hard" from text | off by default |
+| Bedrock / Vertex inference-profile IDs | **Unverified** against a console | `src/models.ts` |
+| Orchestration mode saves money over classifying subagents | **Unmeasured** — that is what `--role-routing off` and `stats` exist to compare | [sandbox](sandbox/README.md) |
+
+The standing caveats are in [research/README.md](research/README.md#standing-caveats).
 
 ---
 
@@ -339,17 +403,15 @@ const router = createRouter({
   tiers: {                         // override model IDs per tier
     haiku: 'claude-haiku-4-5',
     sonnet: 'claude-sonnet-5',
-    opus: 'claude-opus-4-8',
+    opus: 'claude-opus-5',
   },
   pricing: {                       // override $/1M token pricing
-    'claude-sonnet-5': { input: 3.0, output: 15.0 },
+    'claude-sonnet-5': { input: 2.0, output: 10.0 },
   },
   fallback: true,                  // auto-fallback to next tier on rate limit (default: true)
   verbose: true,                   // log routing decisions (default: false)
   routing: {                       // classifier tuning (defaults shown)
-    haikuMax: 30,                  // score below this → haiku
-    opusMin: 70,                   // score above this → opus
-    hybridBand: [40, 60],          // hybrid confirms with AI inside this band
+    allowFable: false,             // let classification reach fable (depth AND long-horizon evidence required)
     aiTimeoutMs: 1500,             // AI classifier timeout → heuristic fallback
     classifyCacheSize: 500,        // LRU size for AI results (0 disables)
     allowHaikuInAgentic: false,    // let trivial tool-using turns reach haiku (default: floor at sonnet)

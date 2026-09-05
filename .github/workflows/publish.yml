@@ -1,0 +1,81 @@
+name: publish
+
+# Publishes to npm when a `v*` tag is pushed — and only when that tag points at
+# a commit on master whose package.json version matches. 0.3.2 and 0.3.3 were
+# published by hand from a side branch, so npm carried code that master did not;
+# this workflow is the guard against a repeat: no side-branch tag can publish,
+# and the provenance attestation ties every tarball to the exact commit.
+#
+# Requires npm trusted publishing (OIDC) to be configured for this package →
+# repository/workflow pair on npmjs.com. No NPM_TOKEN secret is used.
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      # No `registry-url` here on purpose: setup-node would write an .npmrc with a
+      # placeholder `_authToken`, and npm then sends that bogus token instead of
+      # attempting the OIDC exchange trusted publishing relies on (the symptom is
+      # an E404 on PUT). With no token configured, npm >= 11.5 uses OIDC.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      # Trusted publishing needs npm >= 11.5; Node 22's bundled npm is older.
+      - run: npm install -g npm@latest
+      - run: npm ci
+      - run: npm test
+
+      - name: Tag must match package.json
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          VERSION="v$(node -p "require('./package.json').version")"
+          if [ "$TAG" != "$VERSION" ]; then
+            echo "tag $TAG does not match package.json $VERSION"; exit 1
+          fi
+
+      - name: Tag must be on master
+        run: |
+          git fetch origin master --depth=200
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/master; then
+            echo "$GITHUB_SHA is not reachable from origin/master — refusing to publish from a side branch"; exit 1
+          fi
+
+      - name: Tarball must match the previous release's shape
+        run: npm pack --dry-run 2>&1 | tail -40
+
+      # Diagnostics for trusted publishing: the exact claims npm matches the
+      # publisher entry against, so a mismatch (owner casing, workflow file name,
+      # environment) is visible in the log rather than guessed at.
+      - name: OIDC claims npm will see
+        run: |
+          echo "npm $(npm --version)"
+          TOKEN=$(curl -sS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=npm:registry.npmjs.org" | node -pe 'JSON.parse(require("fs").readFileSync(0,"utf8")).value')
+          echo "$TOKEN" | cut -d. -f2 | base64 -d 2>/dev/null | node -pe 'const c=JSON.parse(require("fs").readFileSync(0,"utf8")); JSON.stringify({repository:c.repository, repository_owner:c.repository_owner, workflow_ref:c.workflow_ref, job_workflow_ref:c.job_workflow_ref, environment:c.environment ?? null, ref:c.ref}, null, 2)'
+
+      - run: npm publish --provenance --access public
+        env:
+          NPM_CONFIG_LOGLEVEL: verbose
+
+      - name: GitHub release from the CHANGELOG section
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          awk -v v="$VERSION" '
+            $0 ~ "^## \\[" v "\\]" { on=1; next }
+            on && /^## \[/ { exit }
+            on { print }
+          ' CHANGELOG.md > release-notes.md
+          gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes-file release-notes.md

@@ -1,0 +1,203 @@
+import { describe, it } from 'node:test';
+import assert from 'node:assert/strict';
+import { failureCount, runDiagnostics, PRICING_STALE_DAYS, type Diagnostic, type DoctorProbes } from '../proxy/doctor.js';
+import { PRICING_LAST_CHECKED } from '../models.js';
+import { SERVICE_ID, type HealthInfo } from '../proxy/health.js';
+
+const HEALTHY: HealthInfo = {
+  status: 'ok',
+  service: SERVICE_ID,
+  classifier: 'hybrid',
+  provider: 'anthropic',
+  forceRoute: true,
+  sessionModel: null,
+  roleRouting: true,
+  version: '0.0.0-test',
+  requests: 3,
+  lastTier: 'sonnet',
+  lastModel: 'claude-sonnet-5',
+};
+
+/** A machine where everything is configured. Override one field per test. */
+function probes(overrides: Partial<DoctorProbes> = {}): DoctorProbes {
+  return {
+    nodeVersion: '22.1.0',
+    platform: 'linux',
+    now: () => new Date(`${PRICING_LAST_CHECKED}T12:00:00Z`),
+    loadConfig: () => ({ loaded: true }),
+    checkHealth: async () => HEALTHY,
+    isEnvVarSet: () => true,
+    isClaudeCodeEnvSet: () => true,
+    apiKeySet: () => true,
+    daemonState: () => null,
+    isProcessAlive: () => true,
+    isAutostartRegistered: () => true,
+    isStatuslineConfigured: () => true,
+    policyPluginInstalled: () => true,
+    ...overrides,
+  };
+}
+
+const OPTIONS = { port: 4000, provider: 'anthropic', configFile: '/home/u/.claude-router/config.json' };
+
+function find(diagnostics: Diagnostic[], pattern: RegExp): Diagnostic {
+  const match = diagnostics.find((d) => pattern.test(d.label));
+  assert.ok(match, `no diagnostic matching ${pattern}`);
+  return match;
+}
+
+describe('runDiagnostics', () => {
+  it('passes everything on a fully configured machine', async () => {
+    const diagnostics = await runDiagnostics(OPTIONS, probes());
+    assert.equal(failureCount(diagnostics), 0);
+    assert.ok(diagnostics.every((d) => d.ok));
+  });
+
+  it('accepts Claude Code\'s settings.json env as the route to the proxy', async () => {
+    // `install` no longer touches the shell; it writes settings.json env. Doctor
+    // must not fail a machine set up the default way.
+    const diagnostics = await runDiagnostics(OPTIONS, probes({ isEnvVarSet: () => false, isClaudeCodeEnvSet: () => true }));
+    const env = find(diagnostics, /routes through the proxy|ANTHROPIC_BASE_URL|points at the proxy/);
+    assert.equal(env.ok, true);
+    assert.match(env.label, /settings\.json env/);
+    assert.equal(failureCount(diagnostics), 0);
+    const neither = await runDiagnostics(OPTIONS, probes({ isEnvVarSet: () => false, isClaudeCodeEnvSet: () => false }));
+    assert.equal(failureCount(neither), 1);
+    assert.match(find(neither, /Nothing points at the proxy/).hint ?? '', /claude-router install/);
+  });
+
+  it('warns, without failing, when the pricing table is older than the stale window', async () => {
+    // Every savings figure depends on the table; a stale one is a reason to
+    // re-verify, not a broken install, so it never moves the exit code.
+    const later = new Date(Date.parse(`${PRICING_LAST_CHECKED}T00:00:00Z`) + (PRICING_STALE_DAYS + 30) * 86_400_000);
+    const diagnostics = await runDiagnostics(OPTIONS, probes({ now: () => later }));
+    const pricing = find(diagnostics, /Pricing table/);
+    assert.equal(pricing.ok, false);
+    assert.equal(pricing.warnOnly, true);
+    assert.match(pricing.label, new RegExp(`${PRICING_STALE_DAYS + 30} days ago`));
+    assert.equal(failureCount(diagnostics), 0);
+  });
+
+  it('reports a freshly verified pricing table as ok', async () => {
+    const diagnostics = await runDiagnostics(OPTIONS, probes());
+    const pricing = find(diagnostics, /Pricing table/);
+    assert.equal(pricing.ok, true);
+    assert.match(pricing.label, /verified 0 days ago/);
+  });
+
+  it('counts only hard failures toward the exit code', async () => {
+    // The exit code is doctor's contract for CI. A missing proxy and a missing
+    // env var are failures; an unregistered autostart is a warning.
+    const diagnostics = await runDiagnostics(
+      OPTIONS,
+      probes({
+        checkHealth: async () => null,
+        isEnvVarSet: () => false,
+        isClaudeCodeEnvSet: () => false,
+        isAutostartRegistered: () => false,
+        isStatuslineConfigured: () => false,
+      }),
+    );
+    assert.equal(failureCount(diagnostics), 2);
+    assert.equal(find(diagnostics, /Autostart not registered/).warnOnly, true);
+  });
+
+  it('fails an unsupported Node version', async () => {
+    const diagnostics = await runDiagnostics(OPTIONS, probes({ nodeVersion: '16.20.0' }));
+    assert.equal(find(diagnostics, /^Node 16/).ok, false);
+    assert.equal(failureCount(diagnostics), 1);
+  });
+
+  it('reports an unreadable config file as a failure with a fix', async () => {
+    const diagnostics = await runDiagnostics(
+      OPTIONS,
+      probes({ loadConfig: () => ({ loaded: false, error: 'Unexpected token }' }) }),
+    );
+    const d = find(diagnostics, /Config file invalid/);
+    assert.equal(d.ok, false);
+    assert.match(d.hint!, /claude-router init --force/);
+  });
+
+  it('points at `claude-router install` when nothing routes to the proxy, on every platform', async () => {
+    // The install writes Claude Code's settings.json env everywhere, so the
+    // remedy is the same command on Linux and Windows — no per-OS shell advice.
+    for (const platform of ['linux', 'windows']) {
+      const diagnostics = await runDiagnostics(OPTIONS, probes({ isEnvVarSet: () => false, isClaudeCodeEnvSet: () => false, platform }));
+      assert.match(find(diagnostics, /Nothing points at the proxy/).hint!, /claude-router install/);
+    }
+  });
+
+  describe('ANTHROPIC_API_KEY', () => {
+    it('is fine when unset on the anthropic provider — Claude Code sends its own', async () => {
+      const diagnostics = await runDiagnostics(OPTIONS, probes({ apiKeySet: () => false }));
+      const d = find(diagnostics, /ANTHROPIC_API_KEY/);
+      assert.equal(d.warnOnly, true);
+      assert.match(d.label, /fine if Claude Code sends its own auth/);
+    });
+
+    it('says why a missing key passes on a cloud provider', async () => {
+      // The verdict and its label used to disagree: with --provider bedrock and
+      // no key, a green tick sat next to the words "ANTHROPIC_API_KEY not set".
+      const diagnostics = await runDiagnostics(
+        { ...OPTIONS, provider: 'bedrock' },
+        probes({ apiKeySet: () => false }),
+      );
+      const d = find(diagnostics, /ANTHROPIC_API_KEY/);
+      assert.equal(d.ok, true);
+      assert.match(d.label, /not needed for the bedrock provider/);
+    });
+  });
+
+  describe('daemon state', () => {
+    it('is not reported at all when there is no state file', async () => {
+      const diagnostics = await runDiagnostics(OPTIONS, probes());
+      assert.equal(diagnostics.find((d) => /daemon state/i.test(d.label)), undefined);
+    });
+
+    it('warns about a stale record without failing the run', async () => {
+      const diagnostics = await runDiagnostics(
+        OPTIONS,
+        probes({
+          daemonState: () => ({ pid: 4242, port: 4000, startedAt: '2026-07-01T00:00:00.000Z', args: [] }),
+          isProcessAlive: () => false,
+        }),
+      );
+      const d = find(diagnostics, /Stale daemon state/);
+      assert.equal(d.ok, false);
+      assert.equal(d.warnOnly, true);
+      assert.match(d.label, /pid 4242 is gone/);
+      assert.equal(failureCount(diagnostics), 0);
+    });
+  });
+
+  it('probes each fact exactly once', async () => {
+    // Every probe used to run twice — once for the verdict and once to build the
+    // label — which on Windows meant two `reg query` subprocesses per check.
+    const calls: Record<string, number> = {};
+    const count = <T>(name: string, value: T) => () => {
+      calls[name] = (calls[name] ?? 0) + 1;
+      return value;
+    };
+
+    await runDiagnostics(
+      OPTIONS,
+      probes({
+        daemonState: count('daemonState', { pid: 1, port: 4000, startedAt: '', args: [] }),
+        isProcessAlive: count('isProcessAlive', true),
+        isAutostartRegistered: count('isAutostartRegistered', true),
+        isStatuslineConfigured: count('isStatuslineConfigured', true),
+        isEnvVarSet: count('isEnvVarSet', true),
+        apiKeySet: count('apiKeySet', true),
+      }),
+    );
+
+    assert.deepEqual(calls, {
+      daemonState: 1,
+      isProcessAlive: 1,
+      isAutostartRegistered: 1,
+      isStatuslineConfigured: 1,
+      isEnvVarSet: 1,
+      apiKeySet: 1,
+    });
+  });
+});

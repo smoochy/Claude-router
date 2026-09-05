@@ -2,18 +2,20 @@ import type { Context } from 'hono';
 import Anthropic from '@anthropic-ai/sdk';
 import {
   classify as classifyUnified,
-  DEFAULT_CLASSIFY_CACHE_SIZE,
-} from '../classifier.js';
+  DEFAULT_CLASSIFY_CACHE_SIZE, buildClassifyInput } from '../classifier.js';
 import { LruCache } from '../cache.js';
 import {
   DEFAULT_PRICING,
   computeRouteCost,
   priceForModel,
+  type RouteCost,
 } from '../models.js';
-import { executeRoute } from '../route.js';
-import { normalizeParamsForTier } from '../params.js';
+import { executeRoute, startRouteStream, type MessageStream } from '../route.js';
 import { term } from './term.js';
 import { appendEvent } from './history.js';
+import { buildRouteEvent, errorRouteEvent, passthroughRouteEvent, type RouteContext, type RouteEvent } from './route-event.js';
+import { resolveRole } from '../roles.js';
+import { stripDelegationBlockers, describeStrip } from './delegation.js';
 import type { ClassifyInput, ClassifyResult, ModelPricing, RoutingTuning, Tier } from '../types.js';
 
 export type Provider = 'anthropic' | 'bedrock' | 'vertex';
@@ -35,6 +37,27 @@ export interface HandlerConfig {
    * pinned model already passes through). Undefined = classify every request.
    */
   sessionModel?: Tier;
+  /**
+   * Remove the injected anti-delegation lines from the client's system prompt so
+   * subagents can be spawned again (Claude Code 2.1.219+ suppresses them for
+   * Opus 5 with no opt-out — see src/proxy/delegation.ts). Off by default: this
+   * is the one place the proxy edits a prompt. Only applies to routed requests,
+   * so it needs `forceRoute` — passthrough forwards the client's exact bytes.
+   */
+  restoreDelegation?: boolean;
+  /**
+   * Route Claude Code subagents by role (default on): a `<!-- claude-router:role=… -->`
+   * marker on the agent definition's first line, an `agents` mapping by
+   * agent type, or — in the cheap direction only — the read-only tool shape.
+   * Off means subagents are classified like any other request; the inferred
+   * role is still recorded on the event so an A/B over the ledger is possible.
+   * See src/roles.ts. Only meaningful under forceRoute.
+   */
+  roleRouting?: boolean;
+  /** Per-role tier overrides (`{ builder: 'opus' }`). */
+  roles?: Partial<Record<string, Tier>>;
+  /** Third-party agents pinned by Claude Code `agent_type` (`{ 'plugin:reviewer': 'opus' }`). */
+  agents?: Record<string, Tier>;
   /** Pricing table for savings math (default: current-generation DEFAULT_PRICING) */
   pricing?: Record<string, ModelPricing>;
   /** Classifier thresholds/band/timeout/cache tuning */
@@ -47,34 +70,6 @@ export interface HandlerConfig {
    * is an explicit setting and never read from the environment.
    */
   upstream?: string;
-}
-
-export interface RouteEvent {
-  timestamp: string;
-  tier: Tier | 'passthrough';
-  model: string;
-  costCents: number;
-  savedCents: number;
-  confidence: number;
-  classifier: string;
-  retried: boolean;
-  retryReason: string | null;
-  inputTokens: number;
-  outputTokens: number;
-  cacheReadTokens?: number;
-  cacheCreationTokens?: number;
-  /**
-   * Set to false when `costCents`/`savedCents` are placeholder zeros because the
-   * model has no known price. Absent means priced — history.jsonl lines written
-   * before this field existed must keep counting as measured.
-   */
-  priced?: boolean;
-  /**
-   * Set when the request failed mid-flight (stream died after headers were
-   * sent). `foldOutcome` counts such events only toward `RouteTotals.errors` —
-   * their zeros are placeholders, not measurements.
-   */
-  error?: string;
 }
 
 export const MAX_HISTORY = 1000;
@@ -95,7 +90,79 @@ export function boundHistory(history: RouteEvent[]): void {
   if (history.length >= MAX_HISTORY + TRIM_BATCH) history.splice(0, TRIM_BATCH);
 }
 
+/**
+ * Report the delegation strip once per process — including the no-match case,
+ * because that is how a vendor payload change surfaces and silent success and
+ * silent failure would otherwise look identical.
+ *
+ * **The no-match report is gated on the request carrying tools**, and that gate
+ * is load-bearing rather than cosmetic. The injected section rides Claude Code's
+ * full agent prompt; its meta-calls (session title, summary) ship no tools and
+ * legitimately carry no payload. Reporting on the first request regardless of
+ * shape meant the very first line an operator saw was almost always "not
+ * present" — measured against live Claude Code 2.1.220, request #1 is a
+ * tool-less meta-call with a 1.3K system prompt and request #2 is the real
+ * coordinator turn with 31 tools and a 10.3K prompt that does carry both lines.
+ * A user turning the flag on would conclude it was broken while it worked. This
+ * is the same structural agentic/meta split the session pin already makes.
+ */
+let delegationStripReported = false;
+export function resetDelegationReport(): void {
+  delegationStripReported = false;
+}
+function noteDelegationStrip(removed: number, hasTools: boolean): void {
+  if (delegationStripReported) return;
+  // A tool-less request that matched nothing proves nothing — stay quiet.
+  if (removed === 0 && !hasTools) return;
+  delegationStripReported = true;
+  console.warn(`${term.dim('[claude-router]')} ${describeStrip(removed)}`);
+}
+
+/**
+ * Requests recorded since the process started. `routeHistory` is bounded, so
+ * its length is not a count: `/health.requests` and the statusline's `#N` read
+ * from it and stalled at ~1000, then oscillated as batches were trimmed.
+ */
+export const routeCounters = { recorded: 0 };
+
+/**
+ * Claude Code agent id → agent type, fed by the plugin's SubagentStart hook
+ * through `POST /api/agents`. Lets an operator's `agents` mapping pin
+ * third-party agents by name; the agents this project ships are pinned by
+ * their marker and need no registry. Bounded like every other in-memory table.
+ */
+const agentRegistry = new LruCache<string, { agentType: string; sessionId?: string; at: number }>(500);
+
+export function registerAgent(agentId: string, agentType: string, sessionId?: string): void {
+  agentRegistry.set(agentId, { agentType, ...(sessionId ? { sessionId } : {}), at: Date.now() });
+}
+
+export function knownAgentType(agentId: string | undefined): string | undefined {
+  return agentId ? agentRegistry.get(agentId)?.agentType : undefined;
+}
+
+/** @internal Test hook */
+export function clearAgentRegistry(): void {
+  agentRegistry.clear();
+}
+
+const DISPATCH_TOOL_NAMES = new Set(['Agent', 'Task']);
+
+/** Was the Agent tool among the tools offered on this request? */
+function offersDispatch(tools: unknown): boolean {
+  return Array.isArray(tools) && tools.some((t) => DISPATCH_TOOL_NAMES.has(String((t as { name?: unknown })?.name)));
+}
+
+/**
+ * Did the response call the Agent tool? Read from the completed message's
+ * content — the SDK accumulates it for streams too, so no extra buffering.
+ */
+export function dispatchedIn(content: ReadonlyArray<{ type: string; name?: string }> | undefined): boolean {
+  return Array.isArray(content) && content.some((b) => b.type === 'tool_use' && DISPATCH_TOOL_NAMES.has(b.name ?? ''));
+}
+
 function recordEvent(event: RouteEvent, config?: HandlerConfig): void {
+  routeCounters.recorded++;
   routeHistory.push(event);
   boundHistory(routeHistory);
   if (config?.historyFile) appendEvent(config.historyFile, event);
@@ -142,22 +209,6 @@ function computeCosts(
   return computeRouteCost(model, usage, baselineModel, config.pricing ?? DEFAULT_PRICING);
 }
 
-function buildClassifyInput(body: Record<string, unknown>): ClassifyInput {
-  const messages = (body.messages ?? []) as Anthropic.MessageParam[];
-  const system = body.system as string | Anthropic.TextBlockParam[] | undefined;
-
-  let systemInput: ClassifyInput['system'];
-  if (typeof system === 'string') {
-    systemInput = system;
-  } else if (Array.isArray(system)) {
-    systemInput = system.filter(
-      (b): b is Anthropic.TextBlockParam =>
-        typeof b === 'object' && b !== null && 'type' in b && b.type === 'text',
-    );
-  }
-
-  return { messages, system: systemInput, tools: body.tools as unknown[] | undefined };
-}
 
 // One classification cache per handler config (i.e. per proxy app instance)
 const classifyCaches = new WeakMap<HandlerConfig, LruCache<string, ClassifyResult>>();
@@ -191,9 +242,10 @@ function log(tier: Tier, model: string, classifyResult: ClassifyResult, costCent
 
   const retryNote = retried ? term.yellow(` [retried: ${retryReason}]`) : '';
   const cachedNote = classifyResult.cached ? ', cached' : '';
+  const reasonNote = classifyResult.reason ? `, ${classifyResult.reason}` : '';
 
   console.log(
-    `${term.dim('[claude-router]')} → ${term.tier(tier)} ${term.dim(`(${classifyResult.method}, ${classifyResult.ms}ms, conf:${classifyResult.confidence}${cachedNote})`)}${retryNote} | ${money}`,
+    `${term.dim('[claude-router]')} → ${term.tier(tier)} ${term.dim(`(${classifyResult.method}, ${classifyResult.ms}ms, conf:${classifyResult.confidence}${reasonNote}${cachedNote})`)}${retryNote} | ${money}`,
   );
 }
 
@@ -206,6 +258,7 @@ function setRouterHeaders(
   classifyResult: ClassifyResult,
   retried: boolean = false,
   retryReason: string | null = null,
+  context?: RouteContext,
 ): void {
   headers.set('x-router-tier', tier);
   headers.set('x-router-model', model);
@@ -214,6 +267,11 @@ function setRouterHeaders(
   headers.set('x-router-classifier', classifyResult.method);
   headers.set('x-router-classifier-ms', classifyResult.ms.toString());
   headers.set('x-router-confidence', classifyResult.confidence.toString());
+  // The gate that decided — what makes a routing decision auditable from the
+  // client side. It was computed on every request and reached nothing.
+  if (classifyResult.reason) headers.set('x-router-reason', classifyResult.reason);
+  // Only when the role decided the tier — a header must not claim more than it did.
+  if (classifyResult.method === 'role' && context?.role) headers.set('x-router-role', context.role);
   if (retried) {
     headers.set('x-router-retried', 'true');
     headers.set('x-router-retry-reason', retryReason ?? '');
@@ -227,9 +285,11 @@ function setRouterHeaders(
 export async function createProviderClient(provider: Provider): Promise<Anthropic | null> {
   if (provider === 'bedrock') {
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const mod = await import('@anthropic-ai/bedrock-sdk' as any);
-      const AnthropicBedrock = mod.default ?? mod.AnthropicBedrock;
+      // A variable specifier keeps the optional dependency out of type
+      // resolution — the package is not installed unless the operator wants it.
+      const spec = '@anthropic-ai/bedrock-sdk';
+      const mod = (await import(spec)) as { default?: unknown; AnthropicBedrock?: unknown };
+      const AnthropicBedrock = (mod.default ?? mod.AnthropicBedrock) as new (o: { timeout: number }) => unknown;
       return new AnthropicBedrock({ timeout: CLIENT_TIMEOUT_MS }) as unknown as Anthropic;
     } catch {
       throw new Error(
@@ -240,9 +300,9 @@ export async function createProviderClient(provider: Provider): Promise<Anthropi
   }
   if (provider === 'vertex') {
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const mod = await import('@anthropic-ai/vertex-sdk' as any);
-      const AnthropicVertex = mod.AnthropicVertex ?? mod.default;
+      const spec = '@anthropic-ai/vertex-sdk';
+      const mod = (await import(spec)) as { default?: unknown; AnthropicVertex?: unknown };
+      const AnthropicVertex = (mod.AnthropicVertex ?? mod.default) as new (o: { projectId: string; region: string; timeout: number }) => unknown;
       return new AnthropicVertex({
         projectId: process.env['ANTHROPIC_VERTEX_PROJECT_ID'] ?? '',
         region: process.env['ANTHROPIC_VERTEX_REGION'] ?? 'us-east5',
@@ -348,7 +408,20 @@ export async function handleMessages(
 
   // Passthrough only for Anthropic provider with explicit model (not "auto"), unless --force-route
   if (!config.forceRoute && config.provider === 'anthropic' && requestedModel && requestedModel !== 'auto') {
-    return proxyPassthrough(c, rawBody, config.upstream ?? DEFAULT_UPSTREAM);
+    return proxyPassthrough(c, rawBody, requestedModel, isStreaming, config);
+  }
+
+  // Whether the request carries Claude Code's tool set. Separates a real agent
+  // turn from a meta-call, for both the delegation report and the session pin.
+  const hasTools = Array.isArray(body.tools) && body.tools.length > 0;
+
+  // Restore delegation before anything reads `system`: the injected lines are not
+  // the user's instruction and must not reach the model — nor influence routing.
+  // Routed path only; passthrough forwards the client's exact bytes by contract.
+  if (config.restoreDelegation) {
+    const stripped = stripDelegationBlockers(body.system);
+    if (stripped.removed > 0) body.system = stripped.system;
+    noteDelegationStrip(stripped.removed, hasTools);
   }
 
   // Coordinator-session pin (Claude Code): a request WITHOUT x-claude-code-agent-id
@@ -371,16 +444,55 @@ export async function handleMessages(
   // meta-calls ship none, so this is the same structural agentic/single-turn split
   // routing.ts already makes — no text is parsed. A genuinely tool-less coordinator
   // turn degrades to classification, which is the cheap path anyway.
-  const isSubagent = c.req.header('x-claude-code-agent-id') != null;
-  const hasTools = Array.isArray(body.tools) && body.tools.length > 0;
+  const agentId = c.req.header('x-claude-code-agent-id');
+  const isSubagent = agentId != null;
   const pinTier = config.sessionModel;
-  const classifyResult: ClassifyResult =
-    pinTier && !isSubagent && hasTools && config.models[pinTier]
-      ? { tier: pinTier, score: 0, method: 'pinned', ms: 0, confidence: 1, reason: 'session:coordinator-pinned' }
-      : await classify(client, buildClassifyInput(body), config);
+  const classifyInput = buildClassifyInput(body);
 
+  // Role routing (subagents only — the marker is never consulted on a
+  // coordinator turn, so pasting it into CLAUDE.md changes nothing). A pinned
+  // role skips the classifier entirely, which also removes hybrid mode's Haiku
+  // confirmation call for every policy agent. The decision order and the
+  // reason it only ever confirms a cheap tier from shape are in src/roles.ts.
+  // A role whose tier has no `models[tier]` entry degrades to classification,
+  // same as a typo'd sessionModel.
+  const roleDecision = isSubagent && config.roleRouting !== false
+    ? resolveRole(
+        {
+          system: classifyInput.system,
+          tools: body.tools as unknown[] | undefined,
+          requestedModel,
+          agentType: knownAgentType(agentId),
+        },
+        { roles: config.roles, agents: config.agents },
+      )
+    : null;
+  const rolePin = roleDecision?.pinned && roleDecision.tier && config.models[roleDecision.tier] ? roleDecision.tier : null;
+  const classifyResult: ClassifyResult = rolePin
+    ? { tier: rolePin, score: 0, method: 'role', ms: 0, confidence: 1, reason: roleDecision!.reason }
+    : pinTier && !isSubagent && hasTools && config.models[pinTier]
+      ? { tier: pinTier, score: 0, method: 'pinned', ms: 0, confidence: 1, reason: 'session:coordinator-pinned' }
+      : await classify(client, classifyInput, config);
+  // Facts about the request that belong on the ledger row whatever decided the
+  // tier. `coordinator` is the same structural test the session pin makes;
+  // `dispatchable` is whether this turn was even offered the Agent tool, so a
+  // dispatch *rate* has an honest denominator; `nested` is a subagent that
+  // itself carries a parent agent id — a leaf that delegated.
+  const sessionId = c.req.header('x-claude-code-session-id');
+  const coordinator = !isSubagent && hasTools;
+  const context: RouteContext = {
+    ...(sessionId ? { sessionId } : {}),
+    ...(isSubagent ? { subagent: true as const } : {}),
+    ...(isSubagent && c.req.header('x-claude-code-parent-agent-id') != null ? { nested: true as const } : {}),
+    ...(coordinator ? { coordinator: true as const } : {}),
+    ...(coordinator && offersDispatch(body.tools) ? { dispatchable: true as const } : {}),
+    ...(roleDecision ? { role: roleDecision.role, roleSource: roleDecision.source } : {}),
+  };
+
+  // The tier's model is resolved inside the routing kernel, which is also where
+  // an unknown tier is caught — resolving it here too gave the non-streaming
+  // path a `model` argument it never read.
   const tier = classifyResult.tier;
-  const model = config.models[tier];
 
   // Remove 'model' and 'stream' from body, we control them
   const { model: _m, stream: _s, ...apiParams } = body;
@@ -395,10 +507,10 @@ export async function handleMessages(
   const baselineModel = resolveBaselineModel(requestedModel, config);
 
   if (isStreaming) {
-    return handleStreaming(c, client, apiParams, tier, model, classifyResult, config, baselineModel, anthropicBeta);
+    return handleStreaming(c, client, apiParams, tier, classifyResult, context, config, baselineModel, anthropicBeta);
   }
 
-  return handleNonStreaming(c, client, apiParams, tier, model, classifyResult, config, baselineModel, anthropicBeta);
+  return handleNonStreaming(c, client, apiParams, tier, classifyResult, context, config, baselineModel, anthropicBeta);
 }
 
 /** SDK request options that relay the client's anthropic-beta header, if any. */
@@ -411,8 +523,8 @@ async function handleNonStreaming(
   client: Anthropic,
   apiParams: Record<string, unknown>,
   tier: Tier,
-  model: string,
   classifyResult: ClassifyResult,
+  context: RouteContext,
   config: HandlerConfig,
   baselineModel: string,
   anthropicBeta?: string,
@@ -427,32 +539,25 @@ async function handleNonStreaming(
       requestOptions: reqOpts,
     });
 
-    const { costCents: roundedCost, savedCents, cacheReadTokens, cacheCreationTokens, inputTokens, outputTokens, priced } =
-      computeCosts(result.model, result.response.usage, config, baselineModel);
+    const cost = computeCosts(result.model, result.response.usage, config, baselineModel);
 
     if (config.verbose) {
-      log(result.tier, result.model, classifyResult, roundedCost, savedCents, baselineModel, result.retried, result.retryReason, priced);
+      log(result.tier, result.model, classifyResult, cost.costCents, cost.savedCents, baselineModel, result.retried, result.retryReason, cost.priced);
     }
 
-    recordEvent({
-      timestamp: new Date().toISOString(),
+    recordEvent(buildRouteEvent({
       tier: result.tier,
       model: result.model,
-      costCents: roundedCost,
-      savedCents,
-      confidence: classifyResult.confidence,
-      classifier: classifyResult.method,
+      cost,
+      classifyResult,
+      context,
+      dispatched: dispatchedIn(result.response.content),
       retried: result.retried,
       retryReason: result.retryReason,
-      inputTokens,
-      outputTokens,
-      cacheReadTokens,
-      cacheCreationTokens,
-      ...(priced ? {} : { priced: false as const }),
-    }, config);
+    }), config);
 
     const headers = new Headers({ 'content-type': 'application/json' });
-    setRouterHeaders(headers, result.tier, result.model, roundedCost, savedCents, classifyResult, result.retried, result.retryReason);
+    setRouterHeaders(headers, result.tier, result.model, cost.costCents, cost.savedCents, classifyResult, result.retried, result.retryReason, context);
 
     return new Response(JSON.stringify(result.response), { status: 200, headers });
   } catch (err) {
@@ -491,8 +596,8 @@ async function handleStreaming(
   client: Anthropic,
   apiParams: Record<string, unknown>,
   tier: Tier,
-  model: string,
   classifyResult: ClassifyResult,
+  context: RouteContext,
   config: HandlerConfig,
   baselineModel: string,
   anthropicBeta?: string,
@@ -502,14 +607,16 @@ async function handleStreaming(
   // 400 validation) surface on the first iterator pull — awaiting it here,
   // before any headers go out, lets them map to proper HTTP statuses exactly
   // like the non-streaming path instead of a `200 OK` carrying an error frame.
-  let stream: ReturnType<Anthropic['messages']['stream']>;
+  let stream: MessageStream;
+  let model: string;
   let iterator: AsyncIterator<Anthropic.MessageStreamEvent>;
   let first: IteratorResult<Anthropic.MessageStreamEvent>;
   try {
-    stream = client.messages.stream(
-      normalizeParamsForTier({ ...apiParams, model }, tier) as Anthropic.MessageStreamParams,
-      betaRequestOptions(anthropicBeta),
-    );
+    // Same kernel the non-streaming path enters, stopping before the retry loop
+    // — model resolution and parameter normalization were duplicated here.
+    ({ stream, model } = startRouteStream(client, apiParams, tier, config.models, {
+      requestOptions: betaRequestOptions(anthropicBeta),
+    }));
     iterator = stream[Symbol.asyncIterator]();
     first = await iterator.next();
   } catch (err) {
@@ -526,6 +633,8 @@ async function handleStreaming(
     'x-router-classifier-ms': classifyResult.ms.toString(),
     'x-router-confidence': classifyResult.confidence.toString(),
   });
+  if (classifyResult.reason) headers.set('x-router-reason', classifyResult.reason);
+  if (classifyResult.method === 'role' && context.role) headers.set('x-router-role', context.role);
 
   const encoder = new TextEncoder();
 
@@ -539,29 +648,13 @@ async function handleStreaming(
         }
 
         const finalMessage = await stream.finalMessage();
-        const { costCents: roundedCost, savedCents, cacheReadTokens, cacheCreationTokens, inputTokens, outputTokens, priced } =
-          computeCosts(model, finalMessage.usage, config, baselineModel);
+        const cost = computeCosts(model, finalMessage.usage, config, baselineModel);
 
         if (config.verbose) {
-          log(tier, model, classifyResult, roundedCost, savedCents, baselineModel, false, null, priced);
+          log(tier, model, classifyResult, cost.costCents, cost.savedCents, baselineModel, false, null, cost.priced);
         }
 
-        recordEvent({
-          timestamp: new Date().toISOString(),
-          tier,
-          model,
-          costCents: roundedCost,
-          savedCents,
-          confidence: classifyResult.confidence,
-          classifier: classifyResult.method,
-          retried: false,
-          retryReason: null,
-          inputTokens,
-          outputTokens,
-          cacheReadTokens,
-          cacheCreationTokens,
-          ...(priced ? {} : { priced: false as const }),
-        }, config);
+        recordEvent(buildRouteEvent({ tier, model, cost, classifyResult, context, dispatched: dispatchedIn(finalMessage.content) }), config);
 
         controller.close();
       } catch (err) {
@@ -576,20 +669,7 @@ async function handleStreaming(
             `${term.dim('[claude-router]')} ${term.red('stream error')} → ${tier} (${model}): ${String(err)}`,
           );
         }
-        recordEvent({
-          timestamp: new Date().toISOString(),
-          tier,
-          model,
-          costCents: 0,
-          savedCents: 0,
-          confidence: classifyResult.confidence,
-          classifier: classifyResult.method,
-          retried: false,
-          retryReason: null,
-          inputTokens: 0,
-          outputTokens: 0,
-          error: String(err).slice(0, 200),
-        }, config);
+        recordEvent(errorRouteEvent({ tier, model, classifyResult, context, error: err }), config);
         controller.close();
       }
     },
@@ -599,47 +679,135 @@ async function handleStreaming(
 }
 
 /**
- * Forward a non-routed endpoint (count_tokens, model listing, …) straight to the
- * Anthropic API, preserving the client's auth + beta headers. Routing only makes
- * sense for /v1/messages; every other endpoint the client needs must still reach
- * the origin, or Claude Code (and the VS Code extension) 404s on count_tokens.
+ * Headers that describe one hop, not the message. Forwarding them re-asserts a
+ * transport decision the origin did not make (`connection: keep-alive`,
+ * `transfer-encoding: chunked` for a body fetch re-frames) and, on the way
+ * back, describes bytes that undici has already transformed (it decompresses
+ * transparently, so `content-encoding`/`content-length` are wrong by the time
+ * we see them). `accept-encoding` is stripped so undici negotiates its own.
  */
-export async function handlePassthrough(
+const HOP_BY_HOP = new Set([
+  'connection', 'keep-alive', 'proxy-authenticate', 'proxy-authorization', 'te', 'trailer',
+  'transfer-encoding', 'upgrade', 'host', 'content-length', 'accept-encoding',
+]);
+const STRIP_RESPONSE = new Set(['content-encoding', 'content-length', 'transfer-encoding', 'connection']);
+
+/** One upstream call for both passthrough paths: hop-by-hop headers dropped both ways, tier tagged. */
+async function forwardUpstream(
+  url: string,
+  init: { method: string; headers: Headers; body?: string },
+): Promise<{ response: Response; headers: Headers }> {
+  for (const name of HOP_BY_HOP) init.headers.delete(name);
+  const response = await fetch(url, init);
+  const headers = new Headers();
+  response.headers.forEach((value, key) => {
+    if (!STRIP_RESPONSE.has(key)) headers.set(key, value);
+  });
+  headers.set('x-router-tier', 'passthrough');
+  return { response, headers };
+}
+
+/**
+ * Usage from a forwarded response, priced against the model the client named.
+ * A passthrough changed nothing, so the saving is 0 — the row exists so the
+ * ledger shows the traffic at all. Returns null when there is no usage to
+ * price (an error body, a stream that never sent message_start).
+ */
+function passthroughCost(model: string, usage: Anthropic.Usage | undefined, config: HandlerConfig): RouteCost | null {
+  if (!usage || typeof usage.input_tokens !== 'number') return null;
+  return computeRouteCost(model, usage, model, config.pricing ?? DEFAULT_PRICING);
+}
+
+/** Pull the usage (and model) out of a buffered SSE stream: message_start carries input, message_delta output. */
+export function usageFromSse(text: string): { model?: string; usage: Anthropic.Usage } | null {
+  let model: string | undefined;
+  let usage: Partial<Anthropic.Usage> | undefined;
+  for (const line of text.split('\n')) {
+    if (!line.startsWith('data:')) continue;
+    let event: { type?: string; message?: { model?: string; usage?: Partial<Anthropic.Usage> }; usage?: Partial<Anthropic.Usage> };
+    try {
+      event = JSON.parse(line.slice(5).trim()) as typeof event;
+    } catch {
+      continue;
+    }
+    if (event.type === 'message_start' && event.message) {
+      model = event.message.model;
+      usage = { ...event.message.usage };
+    } else if (event.type === 'message_delta' && event.usage && usage) {
+      usage = { ...usage, ...event.usage };
+    }
+  }
+  if (!usage || typeof usage.input_tokens !== 'number') return null;
+  return { ...(model ? { model } : {}), usage: usage as Anthropic.Usage };
+}
+
+async function proxyPassthrough(
   c: Context,
+  rawBody: string,
+  requestedModel: string,
+  isStreaming: boolean,
   config: HandlerConfig,
 ): Promise<Response> {
-  if (config.provider !== 'anthropic') {
-    // ponytail: bedrock/vertex have no HTTP passthrough target; count_tokens there is rare.
-    return c.json(
-      { error: { type: 'not_found_error', message: `${c.req.path} is only proxied for the anthropic provider` } },
-      404,
-    );
-  }
-
-  const url = new URL(c.req.url);
-  const headers = new Headers();
-  c.req.raw.headers.forEach((value, key) => {
-    // host/content-length are recomputed by fetch; forward everything else
-    // (x-api-key, authorization, anthropic-version, anthropic-beta, …).
-    if (key === 'host' || key === 'content-length') return;
-    headers.set(key, value);
-  });
-
-  const method = c.req.method;
-  const body = method === 'GET' || method === 'HEAD' ? undefined : await c.req.text();
-
+  const upstream = config.upstream ?? DEFAULT_UPSTREAM;
   try {
-    const response = await fetch((config.upstream ?? DEFAULT_UPSTREAM) + url.pathname + url.search, {
-      method,
-      headers,
-      body,
+    // Forward original auth headers (x-api-key or Authorization: Bearer)
+    const headers = new Headers({
+      'content-type': 'application/json',
+      'anthropic-version': c.req.header('anthropic-version') ?? '2023-06-01',
     });
-    const outHeaders = new Headers();
-    response.headers.forEach((value, key) => outHeaders.set(key, value));
-    outHeaders.delete('content-encoding');
-    outHeaders.delete('content-length');
-    outHeaders.set('x-router-tier', 'passthrough');
-    return new Response(response.body, { status: response.status, headers: outHeaders });
+    const apiKey = c.req.header('x-api-key');
+    const authHeader = c.req.header('authorization');
+    if (apiKey) headers.set('x-api-key', apiKey);
+    if (authHeader) headers.set('authorization', authHeader);
+    // Relay anthropic-beta — a beta-dependent request (e.g. context-management)
+    // 400s upstream without it. The routed path and handlePassthrough both
+    // forward it; this path must too.
+    const anthropicBeta = c.req.header('anthropic-beta');
+    if (anthropicBeta) headers.set('anthropic-beta', anthropicBeta);
+
+    const { response, headers: outHeaders } = await forwardUpstream(`${upstream}/v1/messages`, {
+      method: 'POST',
+      headers,
+      body: rawBody,
+    });
+
+    // Record the traffic. A passthrough used to leave no trace, so a user
+    // running without --force-route saw an empty ledger and a permanently
+    // zero "passthrough" bar and concluded the proxy was not working.
+    if (response.status !== 200 || !response.body) {
+      return new Response(response.body, { status: response.status, headers: outHeaders });
+    }
+    if (!isStreaming) {
+      // Buffer: the body has to be parsed for usage, and it is one JSON document.
+      const text = await response.text();
+      try {
+        const message = JSON.parse(text) as { model?: string; usage?: Anthropic.Usage };
+        const cost = passthroughCost(message.model ?? requestedModel, message.usage, config);
+        if (cost) recordEvent(passthroughRouteEvent({ model: message.model ?? requestedModel, cost }), config);
+      } catch {
+        // Not a message document — forward it untouched, record nothing.
+      }
+      return new Response(text, { status: response.status, headers: outHeaders });
+    }
+    // Stream: pass every byte through as it arrives and keep a copy; parse the
+    // copy for usage once the origin closes. No event is held back.
+    let seen = '';
+    const decoder = new TextDecoder();
+    const tap = new TransformStream<Uint8Array, Uint8Array>({
+      transform(chunk, controller) {
+        seen += decoder.decode(chunk, { stream: true });
+        controller.enqueue(chunk);
+      },
+      flush() {
+        seen += decoder.decode();
+        const parsed = usageFromSse(seen);
+        if (!parsed) return;
+        const model = parsed.model ?? requestedModel;
+        const cost = passthroughCost(model, parsed.usage, config);
+        if (cost) recordEvent(passthroughRouteEvent({ model, cost }), config);
+      },
+    });
+    return new Response(response.body.pipeThrough(tap), { status: response.status, headers: outHeaders });
   } catch (err) {
     return c.json(
       { error: { type: 'proxy_error', message: `Failed to reach Anthropic API: ${String(err)}` } },
@@ -648,42 +816,35 @@ export async function handlePassthrough(
   }
 }
 
-async function proxyPassthrough(
+export async function handlePassthrough(
   c: Context,
-  rawBody: string,
-  upstream: string,
+  config: HandlerConfig,
 ): Promise<Response> {
+  if (config.provider !== 'anthropic') {
+    // bedrock/vertex have no HTTP passthrough target; count_tokens there is rare.
+    return c.json(
+      { error: { type: 'not_found_error', message: `${c.req.path} is only proxied for the anthropic provider` } },
+      404,
+    );
+  }
+
+  const url = new URL(c.req.url);
+  // Forward the client's headers (x-api-key, authorization, anthropic-version,
+  // anthropic-beta, …); forwardUpstream drops the hop-by-hop ones.
+  const headers = new Headers();
+  c.req.raw.headers.forEach((value, key) => headers.set(key, value));
+
+  const method = c.req.method;
+  const body = method === 'GET' || method === 'HEAD' ? undefined : await c.req.text();
+
   try {
-    // Forward original auth headers (x-api-key or Authorization: Bearer)
-    const passthroughHeaders: Record<string, string> = {
-      'content-type': 'application/json',
-      'anthropic-version': c.req.header('anthropic-version') ?? '2023-06-01',
-    };
-    const apiKey = c.req.header('x-api-key');
-    const authHeader = c.req.header('authorization');
-    if (apiKey) passthroughHeaders['x-api-key'] = apiKey;
-    if (authHeader) passthroughHeaders['authorization'] = authHeader;
-    // Relay anthropic-beta — a beta-dependent request (e.g. context-management)
-    // 400s upstream without it. The routed path and handlePassthrough both
-    // forward it; this path must too.
-    const anthropicBeta = c.req.header('anthropic-beta');
-    if (anthropicBeta) passthroughHeaders['anthropic-beta'] = anthropicBeta;
-
-    const response = await fetch(`${upstream}/v1/messages`, {
-      method: 'POST',
-      headers: passthroughHeaders,
-      body: rawBody,
-    });
-
-    const headers = new Headers();
-    response.headers.forEach((value, key) => headers.set(key, value));
-    // fetch already decompressed the body; origin encoding headers no longer apply
-    headers.delete('content-encoding');
-    headers.delete('content-length');
-    headers.set('x-router-tier', 'passthrough');
-
-    // Pipe the upstream body through without buffering
-    return new Response(response.body, { status: response.status, headers });
+    const { response, headers: outHeaders } = await forwardUpstream(
+      (config.upstream ?? DEFAULT_UPSTREAM) + url.pathname + url.search,
+      { method, headers, ...(body === undefined ? {} : { body }) },
+    );
+    // Never recorded: these are count_tokens, model listings and the paths
+    // outside /v1 — traffic the router neither prices nor routes.
+    return new Response(response.body, { status: response.status, headers: outHeaders });
   } catch (err) {
     return c.json(
       { error: { type: 'proxy_error', message: `Failed to reach Anthropic API: ${String(err)}` } },

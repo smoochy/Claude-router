@@ -11,6 +11,9 @@ import {
   routerPaths,
   serveArgsFrom,
   suggestCommand,
+  OPTIONS,
+  helpOptionLines,
+  withInstallProfile,
 } from '../proxy/cli-config.js';
 
 describe('parseServeArgs', () => {
@@ -64,11 +67,12 @@ describe('parseServeArgs', () => {
       '--provider', 'bedrock', '--region', 'eu-west-1', '--force-route',
     ]);
     assert.deepEqual(
-      { ...opts, tiers: undefined, pricing: undefined, routing: undefined },
+      { ...opts, tiers: undefined, pricing: undefined, routing: undefined, roles: undefined, agents: undefined },
       {
         port: 4100, host: '127.0.0.1', verbose: true, classifier: 'heuristic', provider: 'bedrock',
         region: 'eu-west-1', forceRoute: true, upstream: 'https://api.anthropic.com', sessionModel: '',
-        tiers: undefined, pricing: undefined, routing: undefined,
+        restoreDelegation: false, roleRouting: 'on',
+        tiers: undefined, pricing: undefined, routing: undefined, roles: undefined, agents: undefined,
       },
     );
   });
@@ -191,5 +195,73 @@ describe('routerPaths', () => {
     assert.ok(p.daemonStateFile.endsWith('daemon.json'));
     assert.ok(p.logFile.endsWith('proxy.log'));
     assert.ok(p.plistFile.includes('LaunchAgents'));
+  });
+});
+
+describe('helpOptionLines', () => {
+  it('mentions every serve flag, so a new option cannot ship undocumented', () => {
+    // `--session-model` and `--upstream` were live flags with no line in
+    // `claude-router help`: the help text was a second hand-written copy of
+    // the table and nothing tied them together.
+    const text = helpOptionLines().join('\n');
+    for (const spec of OPTIONS) {
+      assert.ok(text.includes(spec.flags[0]!), `${spec.flags[0]} is in help`);
+    }
+    assert.match(text, /--session-model <tier>/);
+    assert.match(text, /--upstream <url>/);
+    assert.match(text, /--restore-delegation/);
+  });
+
+  it('shows enum values and non-empty defaults, and hides empty ones', () => {
+    const text = helpOptionLines().join('\n');
+    assert.match(text, /heuristic \| ai \| hybrid; default: hybrid/);
+    assert.match(text, /haiku \| sonnet \| opus \| fable\)/, 'an empty default is not printed as "default: "');
+    assert.doesNotMatch(text, /default: false/);
+  });
+});
+
+describe('role routing options', () => {
+  it('parses --role-routing, defaults to on, and rejects other values', () => {
+    assert.equal(parseServeArgs([]).roleRouting, 'on');
+    assert.equal(parseServeArgs(['--role-routing', 'off']).roleRouting, 'off');
+    assert.equal(parseServeArgs([], { roleRouting: 'off' }).roleRouting, 'off', 'file config supplies it');
+    assert.equal(parseServeArgs(['--role-routing', 'on'], { roleRouting: 'off' }).roleRouting, 'on', 'flag wins');
+    assert.throws(() => parseServeArgs(['--role-routing', 'maybe']), CliUsageError);
+  });
+
+  it('round-trips --role-routing through spawn args, omitting the default', () => {
+    assert.ok(!serveArgsFrom(parseServeArgs([])).includes('--role-routing'));
+    const args = serveArgsFrom(parseServeArgs(['--role-routing', 'off']));
+    assert.deepEqual(args.slice(args.indexOf('--role-routing'), args.indexOf('--role-routing') + 2), ['--role-routing', 'off']);
+  });
+
+  it('passes roles and agents through from the file untouched', () => {
+    const opts = parseServeArgs([], { roles: { builder: 'opus' }, agents: { 'my-plugin:reviewer': 'opus' } });
+    assert.deepEqual(opts.roles, { builder: 'opus' });
+    assert.deepEqual(opts.agents, { 'my-plugin:reviewer': 'opus' });
+    assert.equal(parseServeArgs([]).roles, undefined);
+  });
+});
+
+describe('withInstallProfile', () => {
+  it('fills force-route, opus pin and delegation restore under the file config', () => {
+    const merged = withInstallProfile({}, false);
+    assert.deepEqual(merged, { forceRoute: true, sessionModel: 'opus', restoreDelegation: true });
+    const opts = parseServeArgs([], merged);
+    assert.equal(opts.forceRoute, true);
+    assert.equal(opts.sessionModel, 'opus');
+    assert.equal(opts.restoreDelegation, true);
+  });
+
+  it('the user\'s config and flags win over the profile', () => {
+    const merged = withInstallProfile({ sessionModel: 'sonnet', port: 4100 }, false);
+    assert.equal(merged.sessionModel, 'sonnet');
+    assert.equal(merged.port, 4100);
+    assert.equal(parseServeArgs(['--session-model', 'haiku'], merged).sessionModel, 'haiku');
+  });
+
+  it('api-only leaves the file config untouched', () => {
+    assert.deepEqual(withInstallProfile({ port: 4100 }, true), { port: 4100 });
+    assert.equal(parseServeArgs([], withInstallProfile({}, true)).forceRoute, false);
   });
 });

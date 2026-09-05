@@ -1,7 +1,16 @@
 import { emptyTotals, foldOutcome, tierBreakdown } from '../totals.js';
+import { DISPLAY_TIERS, DEFAULT_MODELS, DEFAULT_PRICING, counterfactualCents, type DisplayTier } from '../models.js';
 import { savedCentsDisplay } from './format.js';
-import type { RouteEvent } from './handler.js';
+import type { RouteEvent } from './route-event.js';
 import type { LifetimeStats } from './history.js';
+
+const TIER_BAR_LABEL: Record<DisplayTier, string> = {
+  haiku: 'Haiku',
+  sonnet: 'Sonnet',
+  opus: 'Opus',
+  fable: 'Fable',
+  passthrough: 'Pass',
+};
 
 function esc(s: string): string {
   return s
@@ -19,14 +28,42 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats)
   const totalCost = totals.costCents;
   const totalSaved = totals.savedCents;
   const retried = totals.retried;
+  // Orchestration cards render only once there is a coordinator turn to count.
+  const { turns, dispatched, nested } = totals.dispatch;
+  const dispatchCard = turns > 0
+    ? `<div class="stat-card card">
+      <div class="label">Dispatch Rate</div>
+      <div class="value">${((dispatched / turns) * 100).toFixed(0)}%</div>
+      <div class="sub">${dispatched} of ${turns} coordinator turns${nested > 0 ? ` · <span class="negative">${nested} nested</span>` : ''}</div>
+    </div>`
+    : '';
+  const allOpus = totals.tokens.input + totals.tokens.output > 0
+    ? counterfactualCents(totals.tokens, DEFAULT_MODELS.opus, DEFAULT_PRICING)
+    : 0;
+  const counterfactualCard = allOpus > 0
+    ? `<div class="stat-card card">
+      <div class="label">vs All-Opus</div>
+      <div class="value orange">$${(allOpus / 100).toFixed(4)}</div>
+      <div class="sub">same tokens on ${esc(DEFAULT_MODELS.opus)} · upper bound</div>
+    </div>`
+    : '';
+  const roleRows = Object.entries(totals.byRole)
+    .sort((a, b) => b[1].costCents - a[1].costCents)
+    .map(([name, r]) => `<div class="role-row"><span class="role-name">${esc(name)}</span><span>${r.requests} req</span><span>$${(r.costCents / 100).toFixed(4)}</span></div>`)
+    .join('');
 
-  const tierCounts = tierBreakdown(totals, ['haiku', 'sonnet', 'opus', 'passthrough'] as const);
-
-  const total = tierCounts.haiku + tierCounts.sonnet + tierCounts.opus + tierCounts.passthrough || 1;
-  const haikuPct = ((tierCounts.haiku / total) * 100).toFixed(1);
-  const sonnetPct = ((tierCounts.sonnet / total) * 100).toFixed(1);
-  const opusPct = ((tierCounts.opus / total) * 100).toFixed(1);
-  const passPct = ((tierCounts.passthrough / total) * 100).toFixed(1);
+  // DISPLAY_TIERS, not a hand-written list: the list here used to omit `fable`,
+  // which both hid fable routes from the chart and left them out of its own
+  // percentage denominator, so the bars quietly failed to total 100%.
+  const tierCounts = tierBreakdown(totals, DISPLAY_TIERS);
+  const tierTotal = DISPLAY_TIERS.reduce((n, t) => n + tierCounts[t], 0) || 1;
+  const tierBars = DISPLAY_TIERS.map((t) => ({
+    tier: t,
+    pct: ((tierCounts[t] / tierTotal) * 100).toFixed(1),
+  }))
+    .filter((b) => Number(b.pct) > 0)
+    .map((b) => `<div class="tier-${b.tier}" style="width:${b.pct}%">${TIER_BAR_LABEL[b.tier]} ${b.pct}%</div>`)
+    .join('');
 
   // A card reading "$0.0000 saved" is indistinguishable from a quiet week, so
   // any unpriced call gets called out next to the figures it silently deflates.
@@ -49,6 +86,8 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats)
         <td>${esc(e.timestamp.replace('T', ' ').slice(0, 19))}</td>
         <td><span class="badge badge-${esc(String(e.tier))}">${esc(String(e.tier))}</span></td>
         <td>${esc(e.model)}</td>
+        <td class="reason">${e.reason ? esc(e.reason) : '<span class="none">-</span>'}</td>
+        <td class="role">${e.role ? esc(e.role) : e.coordinator ? 'coordinator' : '<span class="none">-</span>'}${e.dispatched ? ' <span class="badge badge-retry" title="called the Agent tool">dispatched</span>' : ''}</td>
         <td>${e.priced === false ? '<span class="unknown" title="no pricing for this model">—</span>' : `$${(e.costCents / 100).toFixed(4)}`}</td>
         <td class="${e.priced === false ? 'unknown' : e.savedCents >= 0 ? 'positive' : 'negative'}">${e.priced === false ? '—' : `$${(e.savedCents / 100).toFixed(4)}`}</td>
         <td>${e.confidence.toFixed(2)}</td>
@@ -73,6 +112,7 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats)
       --gold: #ffd166;
       --green: #0ecb81;
       --red: #f6465d;
+      --violet: #b47cff;
       --steel: #8b95a7;
       --ink: #ece9e2;
       --ink-dim: #8f8a7e;
@@ -227,6 +267,7 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats)
     .tier-haiku       { background: linear-gradient(180deg, #14e695, #0bb371); color: #01180e; box-shadow: 0 0 16px rgba(14, 203, 129, 0.3); }
     .tier-sonnet      { background: linear-gradient(180deg, #ffa53d, #ef8a0e); color: #1d0e00; box-shadow: 0 0 16px rgba(247, 147, 26, 0.35); }
     .tier-opus        { background: linear-gradient(180deg, #ffdd85, #f5c04e); color: #1e1400; box-shadow: 0 0 16px rgba(255, 209, 102, 0.35); }
+    .tier-fable       { background: linear-gradient(180deg, #c79bff, #9d5ff0); color: #16022e; box-shadow: 0 0 16px rgba(180, 124, 255, 0.35); }
     .tier-passthrough { background: linear-gradient(180deg, #55607a, #414b61); color: #dde3ee; }
 
     .table-shell { padding: 4px; }
@@ -270,7 +311,15 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats)
     .badge-haiku       { background: rgba(14, 203, 129, 0.1);  color: var(--green);  border-color: rgba(14, 203, 129, 0.35); }
     .badge-sonnet      { background: rgba(247, 147, 26, 0.1);  color: var(--orange); border-color: rgba(247, 147, 26, 0.4); }
     .badge-opus        { background: rgba(255, 209, 102, 0.1); color: var(--gold);   border-color: rgba(255, 209, 102, 0.4); }
+    .badge-fable       { background: rgba(180, 124, 255, 0.1); color: var(--violet); border-color: rgba(180, 124, 255, 0.4); }
     .badge-passthrough { background: rgba(139, 149, 167, 0.1); color: var(--steel);  border-color: rgba(139, 149, 167, 0.35); }
+    td.reason          { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; color: var(--steel); }
+    td.role            { font-size: 12px; }
+    .stat-card .sub    { font-size: 11px; color: var(--steel); margin-top: 4px; }
+    .roles             { padding: 8px 16px; }
+    .role-row          { display: grid; grid-template-columns: 1fr auto auto; gap: 16px; padding: 6px 0; font-size: 13px; border-bottom: 1px solid rgba(139, 149, 167, 0.15); }
+    .role-row:last-child { border-bottom: 0; }
+    .role-name         { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
     .badge-retry       { background: rgba(246, 70, 93, 0.1);   color: var(--red);    border-color: rgba(246, 70, 93, 0.4); }
     .none { color: var(--ink-dim); }
     .unknown { color: var(--gold); }
@@ -335,6 +384,8 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats)
       <div class="label">Auto-retried</div>
       <div class="value">${retried}</div>
     </div>
+    ${dispatchCard}
+    ${counterfactualCard}
     ${lifetime ? (() => {
       const d = savedCentsDisplay(lifetime.savedCents);
       const toneClass = d.tone === 'neutral' ? '' : d.tone;
@@ -351,13 +402,13 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats)
     })() : ''}
   </div>
 
+  ${roleRows ? `<div class="section-label">By Role</div>
+  <div class="card roles">${roleRows}</div>` : ''}
+
   <div class="section-label">Tier Distribution</div>
   <div class="tier-shell card">
     <div class="tier-bar">
-      ${Number(haikuPct) > 0 ? `<div class="tier-haiku" style="width:${haikuPct}%">Haiku ${haikuPct}%</div>` : ''}
-      ${Number(sonnetPct) > 0 ? `<div class="tier-sonnet" style="width:${sonnetPct}%">Sonnet ${sonnetPct}%</div>` : ''}
-      ${Number(opusPct) > 0 ? `<div class="tier-opus" style="width:${opusPct}%">Opus ${opusPct}%</div>` : ''}
-      ${Number(passPct) > 0 ? `<div class="tier-passthrough" style="width:${passPct}%">Pass ${passPct}%</div>` : ''}
+      ${tierBars}
     </div>
   </div>
 
@@ -370,6 +421,8 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats)
             <th>Time</th>
             <th>Tier</th>
             <th>Model</th>
+            <th>Reason</th>
+            <th>Role</th>
             <th>Cost</th>
             <th>Saved</th>
             <th>Confidence</th>
@@ -379,7 +432,7 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats)
           </tr>
         </thead>
         <tbody>
-          ${rows || '<tr><td colspan="9" class="empty">No requests yet. Send requests to the proxy to see data here.</td></tr>'}
+          ${rows || '<tr><td colspan="11" class="empty">No requests yet. Send requests to the proxy to see data here.</td></tr>'}
         </tbody>
       </table>
     </div>
