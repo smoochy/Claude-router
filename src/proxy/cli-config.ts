@@ -18,6 +18,15 @@ export interface RouterPaths {
   claudeSettingsFile: string;
   zshrcFile: string;
   bashrcFile: string;
+  /** Persisted streak used by the delegation-pattern-drift alarm — see
+   * src/proxy/delegation.ts's `DelegationDriftState`. Not a secret on its own
+   * (just a counter), but kept 0600 like the rest of this directory. */
+  delegationDriftFile: string;
+  /** Written only when `--capture-system-prompt` is on (off by default). Holds
+   * a full, unredacted Claude Code `system` prompt the moment it is captured —
+   * treat it like a secret, delete it once you've copied what you need. See
+   * the flag's own help text in OPTIONS below. */
+  captureSystemPromptFile: string;
 }
 
 export function routerPaths(homeDir: string = os.homedir()): RouterPaths {
@@ -32,6 +41,8 @@ export function routerPaths(homeDir: string = os.homedir()): RouterPaths {
     claudeSettingsFile: path.join(homeDir, '.claude', 'settings.json'),
     zshrcFile: path.join(homeDir, '.zshrc'),
     bashrcFile: path.join(homeDir, '.bashrc'),
+    delegationDriftFile: path.join(configDir, 'delegation-drift.json'),
+    captureSystemPromptFile: path.join(configDir, 'captured-system-prompt.json'),
   };
 }
 
@@ -81,6 +92,16 @@ export interface FileConfig {
    * proxy edits a prompt. Only takes effect under forceRoute.
    */
   restoreDelegation?: boolean;
+  /**
+   * Opt-in diagnostic: on the next request that carries tools, write its raw
+   * `system` field to `~/.claude-router/captured-system-prompt.json` (one
+   * fixed, server-chosen path — never a client-supplied name) and stop. Off
+   * by default and never flipped on by this file's own scaffolded defaults —
+   * the written file is a full, unredacted Claude Code system prompt. Exists
+   * to re-cut `src/proxy/delegation.ts`'s patterns against current wording
+   * (see #4304); delete the file once you've copied what you need from it.
+   */
+  captureSystemPrompt?: boolean;
   /**
    * Route Claude Code subagents by role (default `'on'`): marker, `agents`
    * mapping, or read-only tool shape in the cheap direction. `'off'` classifies
@@ -136,6 +157,8 @@ export interface ServeOptions {
   sessionModel: string;
   /** Strip the client's injected anti-delegation lines (routed path only). */
   restoreDelegation: boolean;
+  /** Opt-in: capture the next tool-bearing request's raw system prompt to disk. See FileConfig.captureSystemPrompt. */
+  captureSystemPrompt: boolean;
   /** 'on' | 'off' — see FileConfig.roleRouting. */
   roleRouting: string;
   roles?: Partial<Record<string, Tier>>;
@@ -165,7 +188,7 @@ type OptionKind =
  */
 interface OptionSpec {
   /** Corresponding key on ServeOptions / FileConfig. */
-  key: 'port' | 'host' | 'verbose' | 'classifier' | 'provider' | 'region' | 'forceRoute' | 'routingMode' | 'upstream' | 'sessionModel' | 'restoreDelegation' | 'roleRouting';
+  key: 'port' | 'host' | 'verbose' | 'classifier' | 'provider' | 'region' | 'forceRoute' | 'routingMode' | 'upstream' | 'sessionModel' | 'restoreDelegation' | 'captureSystemPrompt' | 'roleRouting';
   flags: string[];
   kind: OptionKind;
   default: string | number | boolean;
@@ -207,6 +230,11 @@ export const OPTIONS: readonly OptionSpec[] = [
   // Off by default: the one place the proxy edits a prompt. See src/proxy/delegation.ts.
   { key: 'restoreDelegation', flags: ['--restore-delegation'], kind: { type: 'boolean' }, default: false, configAlways: true,
     help: 'Strip the injected "do not spawn agents" lines so a pinned session can still delegate' },
+  // Off by default, and configAlways is deliberately absent: a scaffolded
+  // config.json never mentions this key unless someone turned it on. The file
+  // it writes holds a full system prompt — see cli-config.ts's FileConfig doc.
+  { key: 'captureSystemPrompt', flags: ['--capture-system-prompt'], kind: { type: 'boolean' }, default: false,
+    help: 'One-shot diagnostic: write the next tool-bearing request\'s raw system prompt to ~/.claude-router/captured-system-prompt.json, then stop (file holds a FULL system prompt — treat it as a secret)' },
   // An enum rather than a boolean: the table's booleans can only be switched on,
   // and "off" is the interesting value here (the A/B baseline for the ledger).
   { key: 'roleRouting', flags: ['--role-routing'], kind: { type: 'enum', values: ['on', 'off'] }, default: 'on',

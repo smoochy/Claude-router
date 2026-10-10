@@ -7,6 +7,7 @@ import { createProxyApp } from './server.js';
 import { createProviderClient, DEFAULT_UPSTREAM, type Provider } from './handler.js';
 import { DEFAULT_MODELS, BEDROCK_MODELS, VERTEX_MODELS, DISPLAY_TIERS, DEFAULT_PRICING, counterfactualCents } from '../models.js';
 import { loadModelListPricing, defaultModelListCachePath, staleTierIds, warnStaleTierIds } from '../model-list.js';
+import { readDelegationDriftState, STALE_PATTERN_STREAK } from './delegation.js';
 import { DEFAULT_ROLE_TIERS, ROLES } from '../roles.js';
 import { installPolicyPlugin, uninstallPolicyPlugin, policyPluginStatus, PLUGIN_ID } from './policy.js';
 import type { Tier } from '../types.js';
@@ -254,6 +255,9 @@ async function cmdStart(args: string[], paths: RouterPaths): Promise<CommandResu
     forceRoute: options.forceRoute,
     sessionModel: options.sessionModel ? (options.sessionModel as Tier) : undefined,
     restoreDelegation: options.restoreDelegation,
+    // Only meaningful (and only persisted) when the strip itself is on.
+    delegationDriftFile: options.restoreDelegation ? paths.delegationDriftFile : undefined,
+    captureSystemPromptFile: options.captureSystemPrompt ? paths.captureSystemPromptFile : undefined,
     roleRouting: options.roleRouting !== 'off',
     roles: options.roles,
     agents: options.agents,
@@ -794,6 +798,12 @@ function liveProbes(paths: RouterPaths, options: ServeOptions): DoctorProbes {
     staleTierIds: async () => {
       const models = { ...modelsForProvider(options.provider), ...(options.tiers ?? {}) };
       return staleTierIds(models, await loadModelListPricing());
+    },
+    // undefined when restoreDelegation is off — there is no streak to have an
+    // opinion about, same reasoning as staleTierIds' built-in-only case.
+    delegationPatternsStale: () => {
+      if (!options.restoreDelegation) return undefined;
+      return readDelegationDriftState(paths.delegationDriftFile).consecutiveMisses >= STALE_PATTERN_STREAK;
     },
   };
 }

@@ -59,6 +59,10 @@ export interface DoctorProbes {
    * `staleTierIds`) — empty when every tier resolves, `undefined` when there
    * was nothing to validate against (built-in pricing only, no remote/cache). */
   staleTierIds(): Promise<Array<{ tier: Tier; id: string }> | undefined>;
+  /** Has `restoreDelegation` matched nothing for `STALE_PATTERN_STREAK` starts
+   * in a row (see src/proxy/delegation.ts)? `undefined` when `restoreDelegation`
+   * is off — there is no streak to report on. */
+  delegationPatternsStale(): boolean | undefined;
 }
 
 export interface DoctorOptions {
@@ -120,6 +124,20 @@ export async function runDiagnostics(
         ? 'Tier model ids match the current model list'
         : `Stale tier id(s): ${stale.map((s) => `${s.tier}="${s.id}"`).join(', ')} — may be a previous generation`,
       hint: 'Check the "tiers" config against the current model ids (routing and pricing are unaffected)',
+      warnOnly: true,
+    });
+  }
+
+  // Same "may be a previous generation" reasoning as staleTierIds above, one
+  // layer further down: a vendor wording change rather than a stale config value.
+  const delegationStale = probes.delegationPatternsStale();
+  if (delegationStale !== undefined) {
+    diagnostics.push({
+      ok: !delegationStale,
+      label: delegationStale
+        ? 'restore-delegation has matched nothing for several starts in a row — the known lines may be stale'
+        : 'restore-delegation is matching the current anti-delegation lines',
+      hint: 'Capture a fresh prompt (claude-router start --capture-system-prompt) and refresh src/proxy/delegation.ts against it',
       warnOnly: true,
     });
   }

@@ -1,4 +1,6 @@
 import type { Context } from 'hono';
+import fs from 'node:fs';
+import path from 'node:path';
 import Anthropic from '@anthropic-ai/sdk';
 import {
   classify as classifyUnified,
@@ -16,7 +18,13 @@ import { appendEvent } from './history.js';
 import { buildRouteEvent, errorRouteEvent, passthroughRouteEvent, type RouteContext, type RouteEvent } from './route-event.js';
 import { resolveRole } from '../roles.js';
 import { isValidSessionId } from './session-names.js';
-import { stripDelegationBlockers, describeStrip } from './delegation.js';
+import {
+  stripDelegationBlockers,
+  describeStrip,
+  readDelegationDriftState,
+  writeDelegationDriftState,
+  nextDriftState,
+} from './delegation.js';
 import type { ClassifyInput, ClassifyResult, ModelPricing, RoutingTuning, Tier } from '../types.js';
 
 export type Provider = 'anthropic' | 'bedrock' | 'vertex';
@@ -53,6 +61,20 @@ export interface HandlerConfig {
    * so it needs `forceRoute` — passthrough forwards the client's exact bytes.
    */
   restoreDelegation?: boolean;
+  /**
+   * Where to persist the delegation-pattern-drift streak (see
+   * src/proxy/delegation.ts's `DelegationDriftState`). Set by the CLI only
+   * when `restoreDelegation` is on; undefined skips the drift alarm entirely
+   * (stays in-memory, per-process reporting only via `describeStrip`).
+   */
+  delegationDriftFile?: string;
+  /**
+   * One-shot diagnostic (off unless `--capture-system-prompt` is set): write
+   * the next tool-bearing request's raw `system` field to this path, then
+   * stop. See `--capture-system-prompt` in cli-config.ts for why this is
+   * never a client-supplied path.
+   */
+  captureSystemPromptFile?: string;
   /**
    * Route Claude Code subagents by role (default on): a `<!-- claude-router:role=… -->`
    * marker on the agent definition's first line, an `agents` mapping by
@@ -118,12 +140,52 @@ let delegationStripReported = false;
 export function resetDelegationReport(): void {
   delegationStripReported = false;
 }
-function noteDelegationStrip(removed: number, hasTools: boolean): void {
+/**
+ * `driftFile` is the cross-restart escalation on top of the per-process report
+ * above: this run's outcome (matched something or not) is folded into the
+ * persisted streak, and crossing {@link STALE_PATTERN_STREAK} upgrades the
+ * neutral per-process line into a loud one. See src/proxy/delegation.ts.
+ */
+function noteDelegationStrip(removed: number, hasTools: boolean, driftFile?: string): void {
   if (delegationStripReported) return;
   // A tool-less request that matched nothing proves nothing — stay quiet.
   if (removed === 0 && !hasTools) return;
   delegationStripReported = true;
   console.warn(`${term.dim('[claude-router]')} ${describeStrip(removed)}`);
+
+  if (!driftFile) return;
+  const { state, stale } = nextDriftState(readDelegationDriftState(driftFile), removed > 0);
+  writeDelegationDriftState(driftFile, state);
+  if (stale) {
+    console.warn(
+      `${term.dim('[claude-router]')} restore-delegation has matched nothing for ${state.consecutiveMisses} starts in a row — the known lines are probably stale again (see src/proxy/delegation.ts, or run: claude-router doctor)`,
+    );
+  }
+}
+
+/**
+ * Opt-in, one-shot: dump the next tool-bearing request's raw `system` field to
+ * `path` so it can become delegation.ts's next test fixture. Off unless
+ * `config.captureSystemPromptFile` is set (see `--capture-system-prompt`).
+ * **The written file contains a full, unredacted system prompt** — treat it
+ * like a secret.
+ */
+let systemPromptCaptured = false;
+export function resetSystemPromptCapture(): void {
+  systemPromptCaptured = false;
+}
+function captureSystemPromptIfRequested(filePath: string | undefined, system: unknown, hasTools: boolean): void {
+  if (!filePath || systemPromptCaptured || !hasTools) return;
+  systemPromptCaptured = true;
+  try {
+    // Same convention as daemon.ts's writeDaemonState: the directory may not
+    // exist yet on a first `start` with no prior `init`.
+    fs.mkdirSync(path.dirname(filePath), { recursive: true, mode: 0o700 });
+    fs.writeFileSync(filePath, JSON.stringify(system, null, 2), { encoding: 'utf8', mode: 0o600 });
+    console.warn(`${term.dim('[claude-router]')} captured a system prompt to ${filePath} — it contains a FULL, unredacted prompt; delete it once you're done with it`);
+  } catch (err) {
+    console.warn(`${term.dim('[claude-router]')} could not write captured system prompt to ${filePath}: ${String(err)}`);
+  }
 }
 
 /**
@@ -423,13 +485,18 @@ export async function handleMessages(
   // turn from a meta-call, for both the delegation report and the session pin.
   const hasTools = Array.isArray(body.tools) && body.tools.length > 0;
 
+  // Opt-in diagnostic, independent of restoreDelegation: capture the *raw*
+  // prompt (before any stripping below) so the fixture reflects what the
+  // vendor actually sends, not what this proxy already edited out of it.
+  captureSystemPromptIfRequested(config.captureSystemPromptFile, body.system, hasTools);
+
   // Restore delegation before anything reads `system`: the injected lines are not
   // the user's instruction and must not reach the model — nor influence routing.
   // Routed path only; passthrough forwards the client's exact bytes by contract.
   if (config.restoreDelegation) {
     const stripped = stripDelegationBlockers(body.system);
     if (stripped.removed > 0) body.system = stripped.system;
-    noteDelegationStrip(stripped.removed, hasTools);
+    noteDelegationStrip(stripped.removed, hasTools, config.delegationDriftFile);
   }
 
   // Coordinator-session pin (Claude Code): a request WITHOUT x-claude-code-agent-id
