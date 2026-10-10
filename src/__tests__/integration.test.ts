@@ -665,9 +665,25 @@ const WRITE_TOOLS = ['Read', 'Edit', 'Write', 'Bash'].map((name) => ({ name, des
 
 function subagentRequest(
   base: string,
-  opts: { body?: string; tools: unknown[]; model: string; prompt?: string; stream?: boolean; subagent?: boolean; nested?: boolean },
+  opts: {
+    body?: string;
+    tools: unknown[];
+    model: string;
+    prompt?: string;
+    stream?: boolean;
+    subagent?: boolean;
+    nested?: boolean;
+    sessionId?: string;
+  },
 ): Promise<Response> {
-  const headers: Record<string, string> = { 'content-type': 'application/json', 'x-claude-code-session-id': 'sess_1' };
+  // A UUID shape, not just any token (#4273) — the real header the proxy
+  // accepts is a genuine session id, and the handler now rejects anything
+  // else before it reaches a RouteEvent. Tests that need a different (or
+  // traversal-shaped) value pass `sessionId` explicitly.
+  const headers: Record<string, string> = {
+    'content-type': 'application/json',
+    'x-claude-code-session-id': opts.sessionId ?? '11111111-1111-1111-1111-111111111111',
+  };
   if (opts.subagent !== false) headers['x-claude-code-agent-id'] = 'agent_1';
   if (opts.nested) headers['x-claude-code-parent-agent-id'] = 'agent_0';
   return fetch(`${base}/v1/messages`, {
@@ -790,8 +806,22 @@ describe('orchestration measurement', () => {
     assert.equal(last.coordinator, true);
     assert.equal(last.dispatchable, true);
     assert.equal(last.dispatched, true);
-    assert.equal(last.sessionId, 'sess_1');
+    assert.equal(last.sessionId, '11111111-1111-1111-1111-111111111111');
     assert.equal(last.subagent, undefined);
+  });
+
+  it('a traversal-shaped session id is rejected, not stored, but the event still records and renders (#4273)', async () => {
+    const { base } = await setup({ dispatchModels: [DEFAULT_MODELS.opus], config: { sessionModel: 'opus' } });
+    const res = await subagentRequest(base, {
+      subagent: false,
+      tools: [...CODER_TOOLS, AGENT_TOOL],
+      model: 'claude-opus-4-8',
+      sessionId: '../../../../etc/passwd',
+    });
+    assert.equal(res.status, 200);
+    const last = routeHistory[routeHistory.length - 1]!;
+    assert.equal(last.sessionId, undefined, 'a malformed id is dropped, never stored on the event');
+    assert.equal(last.coordinator, true, 'the row itself is still recorded — rejection drops the field, not the event (#4253)');
   });
 
   it('a coordinator turn without the Agent tool is not dispatchable, so it cannot count as dispatched', async () => {
