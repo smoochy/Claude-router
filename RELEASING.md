@@ -29,3 +29,9 @@ Tags use the upstream base plus a `-smoo.<n>` prerelease suffix, e.g. `0.4.0-smo
 ## Pricing freshness
 
 `PRICING_LAST_CHECKED` in `src/models.ts` is a dated claim that the table was verified. Bump it whenever you re-verify, even with no changes. The weekly workflow opens an issue past 60 days; `claude-router doctor` warns past 90.
+
+## Mac install
+
+Installing the release tarball on the Mac is two manual commands, run per release: `npm install -g <url of the .tgz release asset>`, then `claude-router install` - the second command is still required because it is what writes `~/.claude-router/config.json`, applies `CLAUDE_CODE_PROFILE` (`src/proxy/cli-config.ts:366-370`) and wires the statusline.
+
+This stays a manual step per release rather than something automated: the version is a semver prerelease (`0.4.0-smoo.1`) that deliberately sorts below the plain `0.4.0`, so it is not resolvable through an npm range and no range-based auto-update is possible anyway.
