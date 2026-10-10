@@ -1,26 +1,29 @@
 # Releasing
 
-Every npm version must be reproducible from a tag on `master`. 0.3.2 and 0.3.3 were published by hand from a side branch and could not be; the `publish` workflow now refuses a tag that is not on `master` or does not match `package.json`.
+This fork does not publish to npm - `@sheruq/claude-router` on the registry belongs to upstream, not to this fork. A release here is a GitHub Release with a tarball attached, built by `npm pack` and installed with `npm install -g <release-asset-url>`.
+
+Every release must be reproducible from a tag on `smoo/main`. 0.3.2 and 0.3.3 (upstream's own releases, before this fork existed) were published by hand from a side branch and could not be reproduced; the `publish` workflow refuses a tag that is not on `smoo/main` or does not match `package.json`.
+
+Tags use the upstream base plus a `-smoo.<n>` prerelease suffix, e.g. `0.4.0-smoo.1` for the first fork-only release on top of upstream's `0.4.0`, `0.4.0-smoo.2` for the next, and so on. A prerelease sorts below the plain `0.4.0` by semver - accepted, since installs come from a tarball URL, never from an npm range resolution.
 
 ## Checklist
 
-1. `git checkout master && git pull` — release only from an up-to-date master.
-2. In `CHANGELOG.md`, rename `## [Unreleased]` to `## [x.y.z] — YYYY-MM-DD` and open a fresh empty `## [Unreleased]` above it. Pre-1.0: minor = features, patch = fixes.
-3. `npm version x.y.z --no-git-tag-version` (updates `package.json` and the lockfile).
-4. `npm test`, then `npm pack --dry-run` and compare the file list with the previous release (`npm view @sheruq/claude-router@latest dist.fileCount`).
-5. Open a PR titled `chore(release): x.y.z` with those two changes; squash-merge it.
+1. `git checkout smoo/main && git pull` — release only from an up-to-date `smoo/main`.
+2. In `CHANGELOG.md`, rename `## [Unreleased]` to `## [x.y.z-smoo.n] — YYYY-MM-DD` and open a fresh empty `## [Unreleased]` above it. Pre-1.0: minor = features, patch = fixes.
+3. `npm version x.y.z-smoo.n --no-git-tag-version` (updates `package.json` and the lockfile).
+4. `npm test`, then `npm pack --dry-run` and compare the file list with the previous release.
+5. Open a PR titled `chore(release): x.y.z-smoo.n` with those two changes; squash-merge it.
 6. Tag the merge commit and push the tag:
    ```sh
-   git checkout master && git pull
-   git tag -a vx.y.z -m "x.y.z"
-   git push origin vx.y.z
+   git checkout smoo/main && git pull
+   git tag -a vx.y.z-smoo.n -m "x.y.z-smoo.n"
+   git push origin vx.y.z-smoo.n
    ```
-7. The `publish` workflow tests, verifies tag ⇔ version ⇔ master, publishes with provenance, and creates the GitHub release from the CHANGELOG section.
-8. Confirm: `npm view @sheruq/claude-router gitHead` equals the tag's commit.
+7. The `publish` workflow tests, verifies tag ⇔ version ⇔ `smoo/main`, packs the tarball, and creates the GitHub release with that tarball attached.
+8. Confirm: the release page has the `.tgz` asset, and `npm install -g <that asset's URL>` installs it.
 
 ## Prerequisites (one-time)
 
-- npm **trusted publishing** for `@sheruq/claude-router` pointing at `serhiileniv/claude-router` / `publish.yml`. Without it the publish step fails with an auth error and nothing is released.
 - The `maintenance` label exists (the weekly `pricing-check` workflow applies it).
 
 ## Pricing freshness

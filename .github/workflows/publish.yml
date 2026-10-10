@@ -1,14 +1,14 @@
 name: publish
 
-# Publishes to npm when a `v*` tag is pushed — and only when that tag points at
-# a commit on smoo/main (this fork's work/release branch; master stays a pure
-# upstream mirror) whose package.json version matches. 0.3.2 and 0.3.3 were
-# published by hand from a side branch, so npm carried code that master did not;
-# this workflow is the guard against a repeat: no side-branch tag can publish,
-# and the provenance attestation ties every tarball to the exact commit.
-#
-# Requires npm trusted publishing (OIDC) to be configured for this package →
-# repository/workflow pair on npmjs.com. No NPM_TOKEN secret is used.
+# Builds a release tarball when a `v*` tag is pushed on smoo/main — never
+# publishes to npm. This fork does not own @sheruq/claude-router on the
+# registry, so no `npm publish`, no OIDC trusted-publishing exchange, no
+# provenance attestation: those steps targeted a package that isn't ours and
+# are gone. What stays from the inherited workflow is the guard against the
+# 0.3.2/0.3.3 failure mode (a tag not matching package.json, or not reachable
+# from the fork's release branch) plus `npm test` and `npm pack`. What is new
+# is attaching the packed tarball to the GitHub release as a downloadable
+# asset, so `npm install -g <release-asset-url>` is how this fork is installed.
 
 on:
   push:
@@ -16,7 +16,6 @@ on:
 
 permissions:
   contents: write
-  id-token: write
 
 jobs:
   publish:
@@ -25,16 +24,10 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      # No `registry-url` here on purpose: setup-node would write an .npmrc with a
-      # placeholder `_authToken`, and npm then sends that bogus token instead of
-      # attempting the OIDC exchange trusted publishing relies on (the symptom is
-      # an E404 on PUT). With no token configured, npm >= 11.5 uses OIDC.
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
-      # Trusted publishing needs npm >= 11.5; Node 22's bundled npm is older.
-      - run: npm install -g npm@latest
       - run: npm ci
       - run: npm test
 
@@ -50,26 +43,13 @@ jobs:
         run: |
           git fetch origin smoo/main --depth=200
           if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/smoo/main; then
-            echo "$GITHUB_SHA is not reachable from origin/smoo/main — refusing to publish from a side branch"; exit 1
+            echo "$GITHUB_SHA is not reachable from origin/smoo/main — refusing to release from a side branch"; exit 1
           fi
 
-      - name: Tarball must match the previous release's shape
-        run: npm pack --dry-run 2>&1 | tail -40
+      - name: Pack the release tarball
+        run: npm pack
 
-      # Diagnostics for trusted publishing: the exact claims npm matches the
-      # publisher entry against, so a mismatch (owner casing, workflow file name,
-      # environment) is visible in the log rather than guessed at.
-      - name: OIDC claims npm will see
-        run: |
-          echo "npm $(npm --version)"
-          TOKEN=$(curl -sS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=npm:registry.npmjs.org" | node -pe 'JSON.parse(require("fs").readFileSync(0,"utf8")).value')
-          echo "$TOKEN" | cut -d. -f2 | base64 -d 2>/dev/null | node -pe 'const c=JSON.parse(require("fs").readFileSync(0,"utf8")); JSON.stringify({repository:c.repository, repository_owner:c.repository_owner, workflow_ref:c.workflow_ref, job_workflow_ref:c.job_workflow_ref, environment:c.environment ?? null, ref:c.ref}, null, 2)'
-
-      - run: npm publish --provenance --access public
-        env:
-          NPM_CONFIG_LOGLEVEL: verbose
-
-      - name: GitHub release from the CHANGELOG section
+      - name: GitHub release from the CHANGELOG section, with the tarball attached
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -79,4 +59,4 @@ jobs:
             on && /^## \[/ { exit }
             on { print }
           ' CHANGELOG.md > release-notes.md
-          gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes-file release-notes.md
+          gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes-file release-notes.md ./*.tgz
