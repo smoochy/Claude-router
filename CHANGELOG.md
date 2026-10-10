@@ -30,6 +30,30 @@ This fork's own sections use the upstream version plus a `-smoo.<n>` prerelease 
 
 - `RELEASING.md` now documents the Mac install path (`npm install -g <release-asset-url>` then `claude-router install`) as a manual per-release step, and `docs/BRANCHING.md` now documents the upstream-sync cadence (manual, on demand, conflicts resolved by hand, the `-smoo.<n>` counter reset on a new upstream base) (homelab-private#4252).
 
+## [0.4.0-smoo.2] — 2026-10-10
+
+### Security
+
+- Path traversal in the session-title lookup closed (HIGH, homelab-private#4273): the `x-claude-code-session-id` request header was stored on `RouteEvent` with no validation and later built a file path from it with no containment check, so a crafted header could read a file outside the intended `~/.claude/projects/<dir>/` directory. The header is now validated against the real UUID shape at the point it is read, in `src/proxy/handler.ts`. A rejected or missing id is dropped, same as no session id sent; the event still records and renders.
+
+### Added
+
+- `requestedModel` recorded on `RouteEvent` and rendered as a derived Pin column on the dashboard (honored vs overridden), so a pilotfish pin can be told apart from a router override (homelab-private#4264).
+- `GET /dashboard` filters for role, model, tier, session and time window, AND-combined, with readable session names and a user-controlled auto-update toggle (homelab-private#4267).
+
+### Fixed
+
+- Dashboard layout: wider table with no horizontal scroll, a readable mode dropdown, compact stat cards, absolute counts shown alongside the tier bar percentages, and the footer's request count now comes from the filtered history instead of `totals.requests` (homelab-private#4261).
+
+### Changed
+
+- Dependency: `hono` bumped to 4.13.13, clearing GHSA-hxh3-vqpv-xpqv (homelab-private#4274).
+- README's badge row now shows this fork's own CI and release badges; the upstream npm and funding badges are gone (homelab-private#4270).
+
+### Documentation
+
+- README gained a warning block, the fork's own `FUNDING.yml`, tip badges, and an upstream credit line (homelab-private#4271).
+
 ## [0.4.0-smoo.1] — 2026-10-10
 
 ### Changed
