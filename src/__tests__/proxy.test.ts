@@ -231,8 +231,8 @@ describe('renderDashboard', () => {
 
     const html = renderDashboard(events);
     assert.ok(html.includes('tier-fable'), 'fable gets a bar');
-    assert.ok(html.includes('Fable 50.0%'), 'fable is half of two requests');
-    assert.ok(html.includes('Sonnet 50.0%'), 'and sonnet is the other half');
+    assert.ok(html.includes('Fable 1 (50.0%)'), 'fable is half of two requests');
+    assert.ok(html.includes('Sonnet 1 (50.0%)'), 'and sonnet is the other half');
     assert.ok(html.includes('badge-fable'), 'fable rows get a styled badge');
   });
 
