@@ -54,9 +54,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          awk -v v="$VERSION" '
-            $0 ~ "^## \\[" v "\\]" { on=1; next }
-            on && /^## \[/ { exit }
+          awk -v v="## [$VERSION]" '
+            index($0, v) == 1 { on=1; next }
+            on && index($0, "## [") == 1 { exit }
             on { print }
           ' CHANGELOG.md > release-notes.md
           gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes-file release-notes.md ./*.tgz
