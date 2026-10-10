@@ -140,11 +140,11 @@ describe('createProxyApp', () => {
       const res = await app.request('/statusline');
       assert.equal(res.status, 200);
       assert.ok(res.headers.get('content-type')?.startsWith('text/plain'));
-      assert.equal(await res.text(), '[auto:ready #0]', 'reads "ready" before any traffic');
+      assert.equal(await res.text(), '[observe:ready #0]', 'reads "ready" before any traffic');
 
       routeHistory.push(statuslineEvent('sonnet'));
       routeCounters.recorded = 1;
-      assert.equal(await (await app.request('/statusline')).text(), '[auto:sonnet #1]');
+      assert.equal(await (await app.request('/statusline')).text(), '[observe:sonnet #1]');
     } finally {
       routeCounters.recorded = savedCount;
       routeHistory.length = 0;
@@ -611,6 +611,7 @@ describe('passthrough recording (hermetic — stubbed upstream)', () => {
     assert.equal(routeHistory.length, before + 1);
     const e = routeHistory[routeHistory.length - 1]!;
     assert.equal(e.tier, 'passthrough');
+    assert.equal(e.routingMode, 'observe');
     assert.equal(e.classifier, 'passthrough');
     assert.equal(e.reason, 'passthrough:explicit-model');
     assert.equal(e.model, 'claude-sonnet-5');
@@ -666,6 +667,22 @@ describe('passthrough recording (hermetic — stubbed upstream)', () => {
     await app.request('/v1/messages/count_tokens', { method: 'POST', headers: { 'x-api-key': 'k' }, body: '{"model":"claude-sonnet-5","messages":[]}' });
     await app.request('/api/hello');
     assert.equal(routeHistory.length, before);
+  });
+
+  it('routingMode: off forwards the traffic but records nothing', async () => {
+    const offApp = createProxyApp({
+      classifier: 'heuristic', defaultModel: 'claude-sonnet-5', verbose: false,
+      provider: 'anthropic', models: DEFAULT_MODELS, forceRoute: false, routingMode: 'off',
+    });
+    globalThis.fetch = (async () => new Response(JSON.stringify(message), { status: 200, headers: { 'content-type': 'application/json' } })) as typeof fetch;
+    const before = routeHistory.length;
+    const res = await offApp.request('/v1/messages', {
+      method: 'POST', headers: { 'content-type': 'application/json', 'x-api-key': 'k' },
+      body: JSON.stringify({ model: 'claude-sonnet-5', messages: [{ role: 'user', content: 'hi' }], max_tokens: 10 }),
+    });
+    assert.equal(res.status, 200);
+    assert.deepEqual(await res.json(), message, 'the body still reaches the client unchanged');
+    assert.equal(routeHistory.length, before, 'off means no recording, not just no routing');
   });
 
   it('strips hop-by-hop headers in both directions', async () => {

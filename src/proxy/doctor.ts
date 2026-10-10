@@ -112,6 +112,17 @@ export async function runDiagnostics(
     hint: 'Start it: claude-router start -d',
   });
 
+  // Not pass/fail — routingMode is a deliberate choice (the three-mode
+  // comparison runs `off` on purpose), so this just names the live mode, and
+  // flags `off` since that one silently drops routing AND recording.
+  if (health) {
+    diagnostics.push({
+      ok: health.routingMode !== 'off',
+      label: `Routing mode: ${health.routingMode}${health.routingMode === 'off' ? ' (no routing, no recording)' : ''}`,
+      warnOnly: true,
+    });
+  }
+
   // Either route counts: Claude Code's settings.json env (what `install` writes)
   // or the shell variable (api-only installs and SDK apps).
   const claudeEnvOk = probes.isClaudeCodeEnvSet(options.port);
