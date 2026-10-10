@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import { createProxyApp } from './server.js';
 import { createProviderClient, DEFAULT_UPSTREAM, type Provider } from './handler.js';
 import { DEFAULT_MODELS, BEDROCK_MODELS, VERTEX_MODELS, DISPLAY_TIERS, DEFAULT_PRICING, counterfactualCents } from '../models.js';
-import { loadModelListPricing, defaultModelListCachePath } from '../model-list.js';
+import { loadModelListPricing, defaultModelListCachePath, staleTierIds, warnStaleTierIds } from '../model-list.js';
 import { DEFAULT_ROLE_TIERS, ROLES } from '../roles.js';
 import { installPolicyPlugin, uninstallPolicyPlugin, policyPluginStatus, PLUGIN_ID } from './policy.js';
 import type { Tier } from '../types.js';
@@ -240,6 +240,9 @@ async function cmdStart(args: string[], paths: RouterPaths): Promise<CommandResu
   // dead network just means `source: 'built-in'` and nothing else changes.
   const modelList = await loadModelListPricing();
   const pricing = { ...modelList.pricing, ...options.pricing };
+  // Reuses the list just loaded for pricing — no second fetch, and nothing to
+  // validate against when that load fell through to the compiled-in table.
+  warnStaleTierIds(models, modelList);
 
   const app = createProxyApp({
     classifier: options.classifier,
@@ -765,7 +768,7 @@ function cmdInit(args: string[], paths: RouterPaths): CommandResult {
 // ── doctor ─────────────────────────────────────────────────────────────────
 
 /** The live probes — the production adapter for {@link DoctorProbes}. */
-function liveProbes(paths: RouterPaths): DoctorProbes {
+function liveProbes(paths: RouterPaths, options: ServeOptions): DoctorProbes {
   return {
     nodeVersion: process.versions.node,
     platform: platformName(),
@@ -788,6 +791,10 @@ function liveProbes(paths: RouterPaths): DoctorProbes {
         return undefined;
       }
     },
+    staleTierIds: async () => {
+      const models = { ...modelsForProvider(options.provider), ...(options.tiers ?? {}) };
+      return staleTierIds(models, await loadModelListPricing());
+    },
   };
 }
 
@@ -795,7 +802,7 @@ async function cmdDoctor(args: string[], paths: RouterPaths): Promise<CommandRes
   const { options, warnings } = resolveOptions(args, paths);
   const diagnostics = await runDiagnostics(
     { port: options.port, provider: options.provider, configFile: paths.configFile },
-    liveProbes(paths),
+    liveProbes(paths, options),
   );
 
   return {
