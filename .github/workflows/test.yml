@@ -2,7 +2,7 @@ name: test
 
 on:
   push:
-    branches: [master]
+    branches: [smoo/main]
   pull_request:
 
 permissions:

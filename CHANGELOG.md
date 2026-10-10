@@ -8,6 +8,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versioning follo
 ### Changed
 
 - `smoo/main` is now this fork's work/release branch and default branch; `master` stays a pure upstream mirror. `publish.yml`'s "Tag must be on master" guard now checks `origin/smoo/main` instead. See `docs/BRANCHING.md` for the branch relationship and how upstream pulls reach `smoo/main`.
+- **Every inherited workflow written for upstream's outside-contributor flow is gone.** `welcome.yml` (first-time-contributor greeting), `label.yml` plus its `.github/labeler.yml` config (PR area labelling), and `pages.yml` (published to `serhii-leniv.github.io`, a site this fork does not own) are deleted. `test.yml` stays, with its `push` trigger pointed at `smoo/main` instead of `master`. `pricing-check.yml` is unchanged; it already works for this fork.
+- `package.json`'s `repository`, `homepage` and `bugs` now point at `smoochy/Claude-router` instead of `Serhii-Leniv/claude-router`, so issues filed from an installed fork build land in the right tracker.
 
 ## [0.4.0] — 2026-09-04
 
