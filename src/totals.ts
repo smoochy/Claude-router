@@ -22,6 +22,14 @@ export interface RouteTotals {
    * would present a failure as a $0.00 success.
    */
   errors: number;
+  /**
+   * The negative side of `savedCents`: priced events whose served model cost
+   * more than the baseline. `cents` is the magnitude (positive), so gross
+   * saved = savedCents + extra.cents. The `unknown*` pair is the slice of those
+   * events with no `requestedModel` (written before #4264): their baseline is
+   * not recoverable, so they are counted apart rather than excluded or folded in.
+   */
+  extra: { events: number; cents: number; unknownEvents: number; unknownCents: number };
   /** Count per tier label (may include 'passthrough'); only seen labels appear. */
   tiers: Record<string, number>;
   /** Per-day aggregates keyed by YYYY-MM-DD; empty when events carry no timestamp. */
@@ -72,6 +80,8 @@ export interface RouteOutcomeLike {
   priced?: boolean;
   /** Set when the request failed mid-flight; the event counts only toward `errors`. */
   error?: string;
+  /** The client's explicit model pin; absent on lines written before #4264. */
+  requestedModel?: string;
   /** Subagent role (pinned or inferred); see src/roles.ts. */
   role?: string;
   /** The main session's agent turn (no agent id, tools present). */
@@ -95,6 +105,7 @@ export function emptyTotals(): RouteTotals {
     savedCents: 0,
     retried: 0,
     errors: 0,
+    extra: { events: 0, cents: 0, unknownEvents: 0, unknownCents: 0 },
     tiers: {},
     byDay: {},
     unpricedModels: {},
@@ -129,6 +140,14 @@ export function foldOutcome(acc: RouteTotals, e: RouteOutcomeLike): void {
   acc.costCents += e.costCents;
   acc.savedCents += e.savedCents;
   if (e.retried) acc.retried++;
+  if (e.priced !== false && e.savedCents < 0) {
+    acc.extra.events++;
+    acc.extra.cents -= e.savedCents;
+    if (!e.requestedModel) {
+      acc.extra.unknownEvents++;
+      acc.extra.unknownCents -= e.savedCents;
+    }
+  }
   acc.tiers[e.tier] = (acc.tiers[e.tier] ?? 0) + 1;
   if (e.priced === false) {
     const model = e.model || 'unknown';

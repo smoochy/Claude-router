@@ -76,7 +76,7 @@ export function createProxyApp(
       // The form sends a hidden auto=0 first and the checkbox auto=1 after it; the last value wins.
       auto: c.req.queries('auto')?.at(-1) !== '0',
     };
-    return c.html(renderDashboard(routeHistory, lifetime, filters));
+    return c.html(renderDashboard(routeHistory, lifetime, filters, config.models.opus));
   });
 
   app.post('/v1/messages', (c) => handleMessages(c, config, providerClient));

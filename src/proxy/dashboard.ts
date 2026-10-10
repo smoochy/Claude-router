@@ -175,7 +175,23 @@ function deriveSessionLabel(events: RouteEvent[]): string {
   return parts.join(' - ');
 }
 
-export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats, filters: DashboardFilters = {}): string {
+/**
+ * Explains a net saved figure that has a negative side: gross saved vs the
+ * extra cost of events served on a model priced above the baseline, with the
+ * pre-#4264 events (no requestedModel, baseline unknown) as their own slice.
+ * Empty when nothing was extra, so a plain positive figure stays unadorned.
+ */
+export function extraCostNote(t: LifetimeStats): string {
+  if (t.extra.events === 0) return '';
+  const usd = (c: number): string => `$${(c / 100).toFixed(2)}`;
+  const unknown = t.extra.unknownEvents > 0
+    ? ` · ${t.extra.unknownEvents} without requestedModel (${usd(t.extra.unknownCents)}, baseline unknown)`
+    : '';
+  return `<div class="sub">net of ${usd(t.savedCents + t.extra.cents)} saved and <span class="negative">${usd(t.extra.cents)} extra cost</span> (${t.extra.events} event${t.extra.events === 1 ? '' : 's'} on a model above the baseline${unknown})</div>`;
+}
+
+/** `opusModel` is the effective `config.tiers.opus`; defaults to the compiled-in one. */
+export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats, filters: DashboardFilters = {}, opusModel: string = DEFAULT_MODELS.opus): string {
   const mode = filters.mode ?? 'all';
   const filtered = filterHistory(history, filters);
   const totals = emptyTotals();
@@ -195,13 +211,13 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
     </div>`
     : '';
   const allOpus = totals.tokens.input + totals.tokens.output > 0
-    ? counterfactualCents(totals.tokens, DEFAULT_MODELS.opus, DEFAULT_PRICING)
+    ? counterfactualCents(totals.tokens, opusModel, DEFAULT_PRICING)
     : 0;
   const counterfactualCard = allOpus > 0
     ? `<div class="stat-card card">
       <div class="label">vs All-Opus</div>
       <div class="value orange">$${(allOpus / 100).toFixed(4)}</div>
-      <div class="sub">same tokens on ${esc(DEFAULT_MODELS.opus)} · upper bound</div>
+      <div class="sub">same tokens on ${esc(opusModel)} · upper bound</div>
     </div>`
     : '';
   const roleRows = Object.entries(totals.byRole)
@@ -646,6 +662,7 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
       return `<div class="stat-card card">
       <div class="label">Session Saved</div>
       <div class="value${toneClass ? ` ${toneClass}` : ''}">${d.text}</div>
+      ${extraCostNote(totals)}
       ${sessionUnpriced}
     </div>`;
     })()}
@@ -662,6 +679,7 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
     <div class="stat-card card">
       <div class="label">Lifetime Saved</div>
       <div class="value${toneClass ? ` ${toneClass}` : ''}">${d.text}</div>
+      ${extraCostNote(lifetime)}
       ${lifetimeUnpriced}
     </div>
     <div class="stat-card card">

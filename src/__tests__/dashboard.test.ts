@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { filterByMode, filterHistory, renderDashboard, sessionLabel } from '../proxy/dashboard.js';
+import { extraCostNote, filterByMode, filterHistory, renderDashboard, sessionLabel } from '../proxy/dashboard.js';
+import { emptyTotals, foldOutcome } from '../totals.js';
 import type { RouteEvent } from '../proxy/route-event.js';
 
 function e(overrides: Partial<RouteEvent> = {}): RouteEvent {
@@ -121,5 +122,38 @@ describe('sessionLabel - readable session names', () => {
 
   it('never throws when the transcript directory does not exist', () => {
     assert.doesNotThrow(() => sessionLabel('no-such-session-id', []));
+  });
+});
+
+describe('renderDashboard - net saved, extra cost and the All-Opus card', () => {
+  const history = [
+    e({ savedCents: 4, requestedModel: 'claude-opus-5-5', model: 'claude-sonnet-5-5' }),
+    e({ savedCents: -3, requestedModel: 'claude-sonnet-5-5', model: 'claude-opus-5-5' }),
+    e({ savedCents: -2 }),
+    e({ savedCents: 0, priced: false }),
+  ];
+  const lifetime = emptyTotals();
+  for (const ev of history) foldOutcome(lifetime, ev);
+
+  it('folds only priced negative events into extra, with the pre-#4264 events as their own slice', () => {
+    assert.deepEqual(lifetime.extra, { events: 2, cents: 5, unknownEvents: 1, unknownCents: 2 });
+  });
+
+  it('explains the net headline with gross saved, extra cost and the unknown slice', () => {
+    const html = renderDashboard(history, lifetime);
+    assert.match(html, /net of \$0\.04 saved and <span class="negative">\$0\.05 extra cost<\/span> \(2 events/);
+    assert.match(html, /1 without requestedModel \(\$0\.02, baseline unknown\)/);
+  });
+
+  it('adds no extra-cost line when nothing was negative', () => {
+    assert.equal(extraCostNote(emptyTotals()), '');
+  });
+
+  it('names the configured opus tier on the All-Opus card, not the compiled-in default', () => {
+    assert.match(renderDashboard([e()], undefined, {}, 'claude-opus-9-9'), /same tokens on claude-opus-9-9/);
+  });
+
+  it('defaults the All-Opus card to the compiled-in 5.5 tier', () => {
+    assert.match(renderDashboard([e()]), /same tokens on claude-opus-5-5/);
   });
 });

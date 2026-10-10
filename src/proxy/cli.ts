@@ -418,6 +418,8 @@ async function cmdStatus(args: string[], paths: RouterPaths): Promise<CommandRes
 function cmdStats(args: string[], paths: RouterPaths): CommandResult {
   const asJson = args.includes('--json');
   const stats = readLifetimeStats(paths.historyFile);
+  const { options } = resolveOptions([], paths);
+  const effectiveModels = { ...modelsForProvider(options.provider), ...(options.tiers ?? {}) };
 
   if (asJson) return ok([out(JSON.stringify(stats, null, 2))]);
 
@@ -441,6 +443,12 @@ function cmdStats(args: string[], paths: RouterPaths): CommandResult {
     ['Tiers', tierLine || term.dim('none')],
   ];
 
+  if (stats.extra.events > 0) {
+    const usd = (c: number): string => `$${(c / 100).toFixed(2)}`;
+    const unknown = stats.extra.unknownEvents > 0 ? `; ${stats.extra.unknownEvents} without requestedModel, ${usd(stats.extra.unknownCents)}` : '';
+    rows.push(['Extra cost', `${term.red(usd(stats.extra.cents))} ${term.dim(`(${stats.extra.events} events above the baseline${unknown}; gross saved ${usd(stats.savedCents + stats.extra.cents)})`)}`]);
+  }
+
   // Mid-flight failures (e.g. a stream that died after headers went out) are
   // counted apart from the money figures — shown only when there are any.
   if (stats.errors > 0) {
@@ -463,8 +471,9 @@ function cmdStats(args: string[], paths: RouterPaths): CommandResult {
   }
   const tokens = stats.tokens;
   if (tokens.input + tokens.output > 0) {
-    const allOpus = counterfactualCents(tokens, DEFAULT_MODELS.opus, DEFAULT_PRICING);
-    rows.push(['vs all-opus', `$${(allOpus / 100).toFixed(2)} ${term.dim(`(same tokens on ${DEFAULT_MODELS.opus}; an upper bound)`)}`]);
+    const opusModel = effectiveModels.opus;
+    const allOpus = counterfactualCents(tokens, opusModel, DEFAULT_PRICING);
+    rows.push(['vs all-opus', `$${(allOpus / 100).toFixed(2)} ${term.dim(`(same tokens on ${opusModel}; an upper bound)`)}`]);
   }
 
   // The totals above exclude every unpriced call. Saying so is the difference

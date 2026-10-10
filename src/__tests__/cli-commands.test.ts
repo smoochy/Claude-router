@@ -94,6 +94,22 @@ describe('stats', () => {
     assert.match(shown, /fable 1/, 'a fable route must not vanish from the tier line');
   });
 
+  it('names the configured opus tier on the all-opus line and explains extra cost', async () => {
+    const paths = tempHome();
+    fs.mkdirSync(paths.configDir, { recursive: true });
+    fs.writeFileSync(paths.configFile, JSON.stringify({ tiers: { opus: 'claude-opus-9-9' } }), 'utf8');
+    const ev = { confidence: 1, retried: false, retryReason: null, inputTokens: 1000, outputTokens: 100, tier: 'opus', model: 'claude-opus-5-5', costCents: 3, classifier: 'heuristic' };
+    const events = [
+      { ...ev, timestamp: '2026-10-10T10:00:00.000Z', savedCents: 2, requestedModel: 'claude-opus-5-5' },
+      { ...ev, timestamp: '2026-10-10T10:00:01.000Z', savedCents: -1 },
+    ];
+    fs.writeFileSync(paths.historyFile, events.map((x) => JSON.stringify(x)).join('\n') + '\n', 'utf8');
+
+    const shown = text(await main(['stats'], paths));
+    assert.match(shown, /same tokens on claude-opus-9-9/);
+    assert.match(shown, /Extra cost\s+\$0\.01 \(1 events above the baseline; 1 without requestedModel, \$0\.01; gross saved \$0\.02\)/);
+  });
+
   it('shows dispatch rate, by-role cost and the all-opus counterfactual once orchestration rows exist', async () => {
     const paths = tempHome();
     fs.mkdirSync(paths.configDir, { recursive: true });
