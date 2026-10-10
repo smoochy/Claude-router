@@ -21,7 +21,7 @@ function e(overrides: Partial<RouteEvent> = {}): RouteEvent {
 }
 
 describe('filterByMode', () => {
-  it('"all" returns the full set, including pre-#4239 lines with no routingMode', () => {
+  it('"all" returns the full set, including lines with no routingMode', () => {
     const history = [e({ routingMode: 'route' }), e({ routingMode: undefined })];
     assert.equal(filterByMode(history, 'all').length, 2);
   });
@@ -37,7 +37,7 @@ describe('filterByMode', () => {
     assert.equal(filterByMode(history, 'off').length, 1);
   });
 
-  it('"unknown" picks up pre-#4239 lines that carry no routingMode at all', () => {
+  it('"unknown" picks up lines that carry no routingMode at all', () => {
     const history = [e({ routingMode: 'route' }), e({ routingMode: undefined })];
     const unknown = filterByMode(history, 'unknown');
     assert.equal(unknown.length, 1);
@@ -71,7 +71,7 @@ describe('renderDashboard — recomputation per mode', () => {
   });
 });
 
-describe('filterHistory — AND combination across the #4267 filters', () => {
+describe('filterHistory - AND combination across all filters', () => {
   const history = [
     e({ role: 'recon', model: 'claude-haiku-5', tier: 'haiku', sessionId: 'sess-a', timestamp: '2026-09-04T10:00:00.000Z' }),
     e({ role: 'builder', model: 'claude-sonnet-5', tier: 'sonnet', sessionId: 'sess-a', timestamp: '2026-09-04T10:05:00.000Z' }),
@@ -93,7 +93,7 @@ describe('filterHistory — AND combination across the #4267 filters', () => {
     assert.equal(filterHistory(history, { session: 'sess-b' }).length, 1);
   });
 
-  it('the NONE sentinel picks up events missing that field — its own slice, never silently excluded (#4253 precedent)', () => {
+  it('the NONE sentinel picks up events missing that field - its own slice, never silently excluded', () => {
     const noRole = filterHistory(history, { role: '__none__' });
     assert.equal(noRole.length, 1);
     assert.equal(noRole[0]!.role, undefined);
@@ -107,7 +107,7 @@ describe('filterHistory — AND combination across the #4267 filters', () => {
   });
 });
 
-describe('sessionLabel — readable session names (#4267)', () => {
+describe('sessionLabel - readable session names', () => {
   it('falls back to a derived label when the transcript resolves no title', () => {
     const events = [
       e({ sessionId: 'sess-x', role: 'coordinator', coordinator: true, timestamp: '2026-10-10T17:03:00.000Z' }),

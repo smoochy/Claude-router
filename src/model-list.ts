@@ -5,10 +5,10 @@ import type { ModelPricing } from './types.js';
 import { DEFAULT_PRICING } from './models.js';
 
 /**
- * `smoochy/openrouter-model-list`'s published Anthropic list (decided in
- * homelab-private#4226, built in #4240). It is a **bare JSON array**, sorted
- * by `id` — deliberately no `generated_at`/`schema_version` envelope, because
- * adding one would break an existing consumer (#4224). Don't wrap-expect it.
+ * `smoochy/openrouter-model-list`'s published Anthropic list. It is a **bare
+ * JSON array**, sorted by `id` - deliberately no `generated_at`/`schema_version`
+ * envelope, because adding one would break an existing consumer. Don't
+ * wrap-expect it.
  */
 export const MODEL_LIST_URL =
   'https://raw.githubusercontent.com/smoochy/openrouter-model-list/main/anthropic-models.json';
