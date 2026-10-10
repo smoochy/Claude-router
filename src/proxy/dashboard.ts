@@ -100,6 +100,12 @@ function roleLabel(e: RouteEvent): string | undefined {
   return e.role ?? (e.coordinator ? 'coordinator' : undefined);
 }
 
+/** Stored timestamps are UTC ISO; the dashboard shows them in the host's own locale and timezone. */
+export function localStamp(timestamp: string): string {
+  const t = new Date(timestamp);
+  return Number.isNaN(t.getTime()) ? timestamp : t.toLocaleString();
+}
+
 function inWindow(timestamp: string, window: TimeWindow): boolean {
   if (window === 'all') return true;
   const t = new Date(timestamp);
@@ -107,9 +113,9 @@ function inWindow(timestamp: string, window: TimeWindow): boolean {
   if (window === 'hour') return Date.now() - t.getTime() <= 60 * 60 * 1000;
   const now = new Date();
   return (
-    t.getUTCFullYear() === now.getUTCFullYear() &&
-    t.getUTCMonth() === now.getUTCMonth() &&
-    t.getUTCDate() === now.getUTCDate()
+    t.getFullYear() === now.getFullYear() &&
+    t.getMonth() === now.getMonth() &&
+    t.getDate() === now.getDate()
   );
 }
 
@@ -168,11 +174,7 @@ function deriveSessionLabel(events: RouteEvent[]): string {
 
   const parts: string[] = [];
   if (!Number.isNaN(start.getTime())) {
-    const dd = String(start.getUTCDate()).padStart(2, '0');
-    const mm = String(start.getUTCMonth() + 1).padStart(2, '0');
-    const hh = String(start.getUTCHours()).padStart(2, '0');
-    const min = String(start.getUTCMinutes()).padStart(2, '0');
-    parts.push(`${dd}.${mm}. ${hh}:${min}`);
+    parts.push(start.toLocaleString(undefined, { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }));
   }
   if (minutes > 0) parts.push(`${minutes}m`);
   parts.push(`${events.length} req`);
@@ -319,7 +321,7 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
     .map(
       (e) => `
       <tr>
-        <td>${esc(e.timestamp.replace('T', ' ').slice(0, 19))}</td>
+        <td>${esc(localStamp(e.timestamp))}</td>
         <td><span class="badge badge-${esc(String(e.tier))}">${esc(String(e.tier))}</span></td>
         <td>${esc(e.model)}</td>
         <td class="pin">${pinLabel(e)}</td>

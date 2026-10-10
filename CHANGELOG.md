@@ -7,6 +7,10 @@ This fork's own sections use the upstream version plus a `-smoo.<n>` prerelease 
 
 ## [Unreleased]
 
+### Changed
+
+- Dashboard shows request times and derived session labels in the proxy host's own locale and timezone instead of raw UTC, and the `today` window is now the host-local calendar day.
+
 ### Fixed
 
 - Dashboard Auto-update checkbox could never stay on: the form submits a hidden `auto=0` followed by the checkbox's `auto=1`, and `GET /dashboard` read the first value, so a ticked box came back unticked with "refresh off". The last value now wins.

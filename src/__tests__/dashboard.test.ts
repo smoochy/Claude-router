@@ -115,7 +115,8 @@ describe('sessionLabel - readable session names', () => {
       e({ sessionId: 'sess-x', role: 'coordinator', coordinator: true, timestamp: '2026-10-10T17:03:00.000Z' }),
     ];
     const label = sessionLabel('sess-x-does-not-exist-anywhere', events);
-    assert.match(label, /^10\.10\. 17:03/);
+    const start = new Date('2026-10-10T17:03:00.000Z').toLocaleString(undefined, { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+    assert.ok(label.startsWith(start), `${label} should start with ${start}`);
     assert.match(label, /2 req/);
     assert.match(label, /coordinator/);
   });
