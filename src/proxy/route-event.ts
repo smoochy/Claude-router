@@ -31,6 +31,15 @@ export interface RouteEvent {
    */
   routingMode?: 'route' | 'observe' | 'off';
   model: string;
+  /**
+   * The model the client's request body explicitly named (pilotfish's resolved
+   * frontmatter pin, when present) — before routing substituted the billed
+   * `model`/`tier`. Absent when the client sent `model: "auto"` or no model at
+   * all (nothing to compare against), and absent on lines written before this
+   * field existed. The dashboard derives a pin-honored/overridden label by
+   * comparing this to the billed model rather than carrying that verdict here.
+   */
+  requestedModel?: string;
   costCents: number;
   savedCents: number;
   confidence: number;
@@ -96,6 +105,8 @@ export interface RouteContext {
 export interface RouteEventInput {
   tier: Tier;
   model: string;
+  /** The client's explicit `model`, when it named one other than `auto`. See {@link RouteEvent.requestedModel}. */
+  requestedModel?: string;
   cost: RouteCost;
   classifyResult: ClassifyResult;
   context?: RouteContext;
@@ -107,12 +118,13 @@ export interface RouteEventInput {
 
 /** Record of one completed routed call. */
 export function buildRouteEvent(input: RouteEventInput): RouteEvent {
-  const { tier, model, cost, classifyResult, context, dispatched, retried = false, retryReason = null } = input;
+  const { tier, model, requestedModel, cost, classifyResult, context, dispatched, retried = false, retryReason = null } = input;
   return {
     timestamp: new Date().toISOString(),
     tier,
     routingMode: 'route',
     model,
+    ...(requestedModel ? { requestedModel } : {}),
     confidence: classifyResult.confidence,
     classifier: classifyResult.method,
     classifierMs: classifyResult.ms,
@@ -134,16 +146,18 @@ export function buildRouteEvent(input: RouteEventInput): RouteEvent {
 export function errorRouteEvent(input: {
   tier: Tier;
   model: string;
+  requestedModel?: string;
   classifyResult: ClassifyResult;
   context?: RouteContext;
   error: unknown;
 }): RouteEvent {
-  const { tier, model, classifyResult, context, error } = input;
+  const { tier, model, requestedModel, classifyResult, context, error } = input;
   return {
     timestamp: new Date().toISOString(),
     tier,
     routingMode: 'route',
     model,
+    ...(requestedModel ? { requestedModel } : {}),
     costCents: 0,
     savedCents: 0,
     confidence: classifyResult.confidence,

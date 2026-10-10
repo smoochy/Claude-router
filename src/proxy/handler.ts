@@ -512,12 +512,17 @@ export async function handleMessages(
   // Resolved here because `apiParams` has `model` stripped below — this is the
   // last point that still knows what the client actually asked for.
   const baselineModel = resolveBaselineModel(requestedModel, config);
+  // Pilotfish's resolved frontmatter pin, carried onto the ledger row so the
+  // dashboard can tell "pin honored" from "router overrode it" by comparing
+  // this to the billed model — nothing to compare when the client sent
+  // "auto" or no model at all.
+  const pinnedModel = requestedModel && requestedModel !== 'auto' ? requestedModel : undefined;
 
   if (isStreaming) {
-    return handleStreaming(c, client, apiParams, tier, classifyResult, context, config, baselineModel, anthropicBeta);
+    return handleStreaming(c, client, apiParams, tier, classifyResult, context, config, baselineModel, pinnedModel, anthropicBeta);
   }
 
-  return handleNonStreaming(c, client, apiParams, tier, classifyResult, context, config, baselineModel, anthropicBeta);
+  return handleNonStreaming(c, client, apiParams, tier, classifyResult, context, config, baselineModel, pinnedModel, anthropicBeta);
 }
 
 /** SDK request options that relay the client's anthropic-beta header, if any. */
@@ -534,6 +539,7 @@ async function handleNonStreaming(
   context: RouteContext,
   config: HandlerConfig,
   baselineModel: string,
+  pinnedModel: string | undefined,
   anthropicBeta?: string,
 ): Promise<Response> {
   const reqOpts = betaRequestOptions(anthropicBeta);
@@ -555,6 +561,7 @@ async function handleNonStreaming(
     recordEvent(buildRouteEvent({
       tier: result.tier,
       model: result.model,
+      requestedModel: pinnedModel,
       cost,
       classifyResult,
       context,
@@ -607,6 +614,7 @@ async function handleStreaming(
   context: RouteContext,
   config: HandlerConfig,
   baselineModel: string,
+  pinnedModel: string | undefined,
   anthropicBeta?: string,
 ): Promise<Response> {
   // Pre-stream phase: everything before the Response is committed. The SDK
@@ -661,7 +669,7 @@ async function handleStreaming(
           log(tier, model, classifyResult, cost.costCents, cost.savedCents, baselineModel, false, null, cost.priced);
         }
 
-        recordEvent(buildRouteEvent({ tier, model, cost, classifyResult, context, dispatched: dispatchedIn(finalMessage.content) }), config);
+        recordEvent(buildRouteEvent({ tier, model, requestedModel: pinnedModel, cost, classifyResult, context, dispatched: dispatchedIn(finalMessage.content) }), config);
 
         controller.close();
       } catch (err) {
@@ -676,7 +684,7 @@ async function handleStreaming(
             `${term.dim('[claude-router]')} ${term.red('stream error')} → ${tier} (${model}): ${String(err)}`,
           );
         }
-        recordEvent(errorRouteEvent({ tier, model, classifyResult, context, error: err }), config);
+        recordEvent(errorRouteEvent({ tier, model, requestedModel: pinnedModel, classifyResult, context, error: err }), config);
         controller.close();
       }
     },
