@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { appendEvent, readLifetimeStats, resetHistoryCache } from '../proxy/history.js';
+import { appendEvent, readHistoryTail, readLifetimeStats, resetHistoryCache } from '../proxy/history.js';
 import type { RouteEvent } from '../proxy/route-event.js';
 
 function makeEvent(overrides: Partial<RouteEvent> = {}): RouteEvent {
@@ -27,6 +27,26 @@ function tempFile(): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'crouter-history-'));
   return path.join(dir, 'history.jsonl');
 }
+
+describe('readHistoryTail', () => {
+  it('returns only the last N events, oldest first, across chunk boundaries', () => {
+    const file = tempFile();
+    const pad = 'x'.repeat(2000); // ~2 KB lines so 300 lines span several 256 KB chunks
+    for (let i = 0; i < 300; i++) appendEvent(file, makeEvent({ model: `m${i}`, reason: pad }));
+    const tail = readHistoryTail(file, 5);
+    assert.deepEqual(tail.map((e) => e.model), ['m295', 'm296', 'm297', 'm298', 'm299']);
+    assert.equal(readHistoryTail(file, 1000).length, 300, 'shorter file returns everything');
+  });
+
+  it('skips corrupt and partial lines, and tolerates a missing file', () => {
+    const file = tempFile();
+    appendEvent(file, makeEvent({ model: 'a' }));
+    fs.appendFileSync(file, 'not json\n{"half":\n');
+    appendEvent(file, makeEvent({ model: 'b' }));
+    assert.deepEqual(readHistoryTail(file).map((e) => e.model), ['a', 'b']);
+    assert.deepEqual(readHistoryTail(path.join(os.tmpdir(), 'nope', 'missing.jsonl')), []);
+  });
+});
 
 describe('history', () => {
   beforeEach(() => resetHistoryCache());

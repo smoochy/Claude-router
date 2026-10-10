@@ -3,7 +3,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { handleMessages, handlePassthrough, registerAgent, routeHistory, routeCounters, type HandlerConfig } from './handler.js';
 import { getVersion } from './cli-config.js';
 import { renderDashboard, DASHBOARD_MODES, TIME_WINDOWS, type DashboardMode, type DashboardFilters } from './dashboard.js';
-import { readLifetimeStats } from './history.js';
+import { readHistoryTail, readLifetimeStats } from './history.js';
 import { buildHealth, formatStatusLine } from './health.js';
 
 export function createProxyApp(
@@ -75,8 +75,11 @@ export function createProxyApp(
       window,
       // The form sends a hidden auto=0 first and the checkbox auto=1 after it; the last value wins.
       auto: c.req.queries('auto')?.at(-1) !== '0',
+      scope: c.req.query('scope') === 'all' ? 'all' : 'session',
     };
-    return c.html(renderDashboard(routeHistory, lifetime, filters, config.models.opus));
+    // 'all' swaps the in-memory rows for the tail of the ledger; lifetime cards stay as-is.
+    const rows = filters.scope === 'all' && config.historyFile ? readHistoryTail(config.historyFile) : routeHistory;
+    return c.html(renderDashboard(rows, lifetime, filters, config.models.opus));
   });
 
   app.post('/v1/messages', (c) => handleMessages(c, config, providerClient));
