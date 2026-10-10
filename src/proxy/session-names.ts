@@ -24,6 +24,21 @@ function projectsRoot(): string {
   return process.env.CLAUDE_PROJECTS_DIR ?? join(homedir(), '.claude', 'projects');
 }
 
+/**
+ * A real Claude Code session id is a UUID. Validating it to that shape at the
+ * point the header is read (handler.ts) is what keeps a crafted id — e.g.
+ * `../../../../etc/passwd` — from ever reaching {@link lookupSessionTitle}'s
+ * `join(root, dir, \`${sessionId}.jsonl\`)`, which performs no containment
+ * check of its own (CWE-22; homelab-private#4273). A rejected id is simply
+ * never stored on the event, so the dashboard's #4267 derived-label fallback
+ * renders in its place — the row itself is never dropped (#4253).
+ */
+const SESSION_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function isValidSessionId(sessionId: string): boolean {
+  return SESSION_ID_RE.test(sessionId);
+}
+
 // ponytail: full directory scan per cache miss (the project-dir for a given
 // sessionId isn't known up front), cached forever per process since a title
 // essentially never changes after it's set. Fine at dashboard scale (tens of
