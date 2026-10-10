@@ -1,8 +1,13 @@
 import { emptyTotals, foldOutcome, tierBreakdown } from '../totals.js';
 import { DISPLAY_TIERS, DEFAULT_MODELS, DEFAULT_PRICING, counterfactualCents, type DisplayTier } from '../models.js';
 import { savedCentsDisplay } from './format.js';
+import { lookupSessionTitle } from './session-names.js';
 import type { RouteEvent } from './route-event.js';
 import type { LifetimeStats } from './history.js';
+
+/** Sentinel option value for "events with no value on this field" — its own
+ * slice rather than silently excluded, the precedent #4253 set for routingMode. */
+const NONE = '__none__';
 
 const TIER_BAR_LABEL: Record<DisplayTier, string> = {
   haiku: 'Haiku',
@@ -63,8 +68,116 @@ export function filterByMode(history: RouteEvent[], mode: DashboardMode): RouteE
   return history.filter((e) => e.routingMode === mode);
 }
 
-export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats, mode: DashboardMode = 'all'): string {
-  const filtered = filterByMode(history, mode);
+export const TIME_WINDOWS = ['all', 'today', 'hour'] as const;
+export type TimeWindow = (typeof TIME_WINDOWS)[number];
+
+const WINDOW_LABEL: Record<TimeWindow, string> = { all: 'All time', today: 'Today', hour: 'Last hour' };
+
+/**
+ * The five filters from #4267, on top of the #4246 mode filter. All read
+ * fields already on `RouteEvent` — no new recording. A field left undefined
+ * (or `'all'` for window) means "no constraint from this control"; `NONE`
+ * means "only events where this field is absent" — role and session are both
+ * optional on the event, so "absent" is a real, selectable case rather than a
+ * silent exclusion (#4253's precedent for pre-field history).
+ */
+export interface DashboardFilters {
+  mode?: DashboardMode;
+  role?: string;
+  model?: string;
+  tier?: string;
+  session?: string;
+  window?: TimeWindow;
+  auto?: boolean;
+}
+
+function roleLabel(e: RouteEvent): string | undefined {
+  return e.role ?? (e.coordinator ? 'coordinator' : undefined);
+}
+
+function inWindow(timestamp: string, window: TimeWindow): boolean {
+  if (window === 'all') return true;
+  const t = new Date(timestamp);
+  if (Number.isNaN(t.getTime())) return false;
+  if (window === 'hour') return Date.now() - t.getTime() <= 60 * 60 * 1000;
+  const now = new Date();
+  return (
+    t.getUTCFullYear() === now.getUTCFullYear() &&
+    t.getUTCMonth() === now.getUTCMonth() &&
+    t.getUTCDate() === now.getUTCDate()
+  );
+}
+
+/** Applies every active control as one AND, recomputed from the full history — exported for the filter/recomputation tests. */
+export function filterHistory(history: RouteEvent[], filters: DashboardFilters): RouteEvent[] {
+  let out = filterByMode(history, filters.mode ?? 'all');
+  if (filters.role) out = out.filter((e) => (filters.role === NONE ? roleLabel(e) === undefined : roleLabel(e) === filters.role));
+  if (filters.model) out = out.filter((e) => e.model === filters.model);
+  if (filters.tier) out = out.filter((e) => String(e.tier) === filters.tier);
+  if (filters.session) out = out.filter((e) => (filters.session === NONE ? e.sessionId === undefined : e.sessionId === filters.session));
+  if (filters.window) out = out.filter((e) => inWindow(e.timestamp, filters.window!));
+  return out;
+}
+
+/** Distinct, present-in-the-history values for one filter's options — never a hardcoded list (#4267). */
+function distinct(history: RouteEvent[], pick: (e: RouteEvent) => string | undefined): { values: string[]; hasNone: boolean } {
+  const seen = new Set<string>();
+  let hasNone = false;
+  for (const e of history) {
+    const v = pick(e);
+    if (v === undefined) hasNone = true;
+    else seen.add(v);
+  }
+  return { values: [...seen].sort(), hasNone };
+}
+
+/**
+ * Readable label for the session filter's options (#4267): the session's own
+ * name when the transcript resolves one, else a label derived purely from
+ * this session's slice of the history — start time, duration, request count,
+ * most frequent role. Never throws; `lookupSessionTitle` is already best-effort.
+ */
+export function sessionLabel(sessionId: string, eventsForSession: RouteEvent[]): string {
+  const own = lookupSessionTitle(sessionId);
+  if (own) return own;
+  return deriveSessionLabel(eventsForSession);
+}
+
+function deriveSessionLabel(events: RouteEvent[]): string {
+  if (events.length === 0) return 'empty session';
+  const sorted = [...events].sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+  const start = new Date(sorted[0]!.timestamp);
+  const end = new Date(sorted[sorted.length - 1]!.timestamp);
+  const minutes = Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())
+    ? 0
+    : Math.max(0, Math.round((end.getTime() - start.getTime()) / 60000));
+
+  const roleCounts = new Map<string, number>();
+  for (const e of events) {
+    const label = roleLabel(e);
+    if (label) roleCounts.set(label, (roleCounts.get(label) ?? 0) + 1);
+  }
+  let topRole = '';
+  let topCount = 0;
+  for (const [role, count] of roleCounts) if (count > topCount) { topRole = role; topCount = count; }
+
+  const parts: string[] = [];
+  if (!Number.isNaN(start.getTime())) {
+    const dd = String(start.getUTCDate()).padStart(2, '0');
+    const mm = String(start.getUTCMonth() + 1).padStart(2, '0');
+    const hh = String(start.getUTCHours()).padStart(2, '0');
+    const min = String(start.getUTCMinutes()).padStart(2, '0');
+    parts.push(`${dd}.${mm}. ${hh}:${min}`);
+  }
+  if (minutes > 0) parts.push(`${minutes}m`);
+  parts.push(`${events.length} req`);
+  if (topRole) parts.push(topRole);
+  return parts.join(' - ');
+}
+
+export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats, filters: DashboardFilters = {}): string {
+  const mode = filters.mode ?? 'all';
+  const filtered = filterHistory(history, filters);
   const totals = emptyTotals();
   for (const e of filtered) foldOutcome(totals, e);
 
@@ -128,6 +241,58 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
     (m) => `<option value="${m}"${m === mode ? ' selected' : ''}>${esc(MODE_LABEL[m])}</option>`,
   ).join('');
 
+  // Option lists come from the full history, not a hardcoded list (#4267) —
+  // a role/model/tier that never ran never appears, and one that did always does.
+  const roleValues = distinct(history, roleLabel);
+  const modelValues = distinct(history, (e) => e.model);
+  const tierValues = distinct(history, (e) => String(e.tier));
+  const sessionValues = distinct(history, (e) => e.sessionId);
+
+  const simpleOptions = (values: string[], hasNone: boolean, noneLabel: string, selected: string | undefined): string => {
+    const opts = values.map((v) => `<option value="${esc(v)}"${v === selected ? ' selected' : ''}>${esc(v)}</option>`);
+    if (hasNone) opts.push(`<option value="${NONE}"${selected === NONE ? ' selected' : ''}>${esc(noneLabel)}</option>`);
+    return [`<option value=""${selected ? '' : ' selected'}>All</option>`, ...opts].join('');
+  };
+
+  // Session options need a readable label, not the raw id (#4267) — resolved
+  // from the session's own transcript title, falling back to a label derived
+  // from that session's own slice of the (unfiltered) history.
+  const eventsBySession = new Map<string, RouteEvent[]>();
+  for (const e of history) {
+    if (e.sessionId === undefined) continue;
+    (eventsBySession.get(e.sessionId) ?? eventsBySession.set(e.sessionId, []).get(e.sessionId)!).push(e);
+  }
+  const sessionOptionsBody = sessionValues.values
+    .map((id) => `<option value="${esc(id)}"${id === filters.session ? ' selected' : ''}>${esc(sessionLabel(id, eventsBySession.get(id) ?? []))}</option>`)
+    .join('');
+  const sessionOptions = [
+    `<option value=""${filters.session ? '' : ' selected'}>All</option>`,
+    sessionOptionsBody,
+    sessionValues.hasNone ? `<option value="${NONE}"${filters.session === NONE ? ' selected' : ''}>No session id</option>` : '',
+  ].join('');
+
+  const windowOptions = TIME_WINDOWS.map(
+    (w) => `<option value="${w}"${w === (filters.window ?? 'all') ? ' selected' : ''}>${esc(WINDOW_LABEL[w])}</option>`,
+  ).join('');
+
+  const roleOptions = simpleOptions(roleValues.values, roleValues.hasNone, 'No role', filters.role);
+  const modelOptions = simpleOptions(modelValues.values, false, '', filters.model);
+  const tierOptions = simpleOptions(tierValues.values, false, '', filters.tier);
+
+  const auto = filters.auto !== false;
+  // Carries the active filters as query params so the refresh target keeps
+  // them — otherwise auto-refresh resets every control to "All" every 10s.
+  const refreshParams = new URLSearchParams();
+  if (filters.mode && filters.mode !== 'all') refreshParams.set('mode', filters.mode);
+  if (filters.role) refreshParams.set('role', filters.role);
+  if (filters.model) refreshParams.set('model', filters.model);
+  if (filters.tier) refreshParams.set('tier', filters.tier);
+  if (filters.session) refreshParams.set('session', filters.session);
+  if (filters.window && filters.window !== 'all') refreshParams.set('window', filters.window);
+  refreshParams.set('auto', '1');
+  const refreshUrl = `/dashboard?${refreshParams.toString()}`;
+  const metaRefresh = auto ? `<meta http-equiv="refresh" content="10;url=${refreshUrl}">` : '';
+
   const rows = recent
     .map(
       (e) => `
@@ -153,7 +318,7 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta http-equiv="refresh" content="10">
+  ${metaRefresh}
   <title>claude-router dashboard</title>
   <style>
     :root {
@@ -251,6 +416,11 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
     }
     @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
 
+    .filter-bar {
+      display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+      padding: 10px 16px; margin-bottom: 18px;
+    }
+    .auto-toggle label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
     .mode-filter { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 11px; color: var(--ink-dim); }
     .mode-filter select {
       background: var(--void);
@@ -427,12 +597,39 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
       <h1>claude-router dashboard</h1>
       <div class="tagline">routing ledger &middot; cost engine</div>
     </div>
-    <form class="mode-filter" method="GET" action="/dashboard">
+    <div class="live"><span class="dot"></span>live &middot; refresh ${auto ? 'on' : 'off'}</div>
+  </header>
+
+  <form class="filter-bar card" method="GET" action="/dashboard">
+    <div class="mode-filter">
       <label for="mode">Mode</label>
       <select id="mode" name="mode" onchange="this.form.submit()">${modeOptions}</select>
-    </form>
-    <div class="live"><span class="dot"></span>live &middot; refresh 10s</div>
-  </header>
+    </div>
+    <div class="mode-filter">
+      <label for="role">Role</label>
+      <select id="role" name="role" onchange="this.form.submit()">${roleOptions}</select>
+    </div>
+    <div class="mode-filter">
+      <label for="model">Model</label>
+      <select id="model" name="model" onchange="this.form.submit()">${modelOptions}</select>
+    </div>
+    <div class="mode-filter">
+      <label for="tier">Tier</label>
+      <select id="tier" name="tier" onchange="this.form.submit()">${tierOptions}</select>
+    </div>
+    <div class="mode-filter">
+      <label for="session">Session</label>
+      <select id="session" name="session" onchange="this.form.submit()">${sessionOptions}</select>
+    </div>
+    <div class="mode-filter">
+      <label for="window">Window</label>
+      <select id="window" name="window" onchange="this.form.submit()">${windowOptions}</select>
+    </div>
+    <div class="mode-filter auto-toggle">
+      <input type="hidden" name="auto" value="0">
+      <label for="auto"><input type="checkbox" id="auto" name="auto" value="1"${auto ? ' checked' : ''} onchange="this.form.submit()"> Auto-update</label>
+    </div>
+  </form>
 
   <div class="stats">
     <div class="stat-card card">
