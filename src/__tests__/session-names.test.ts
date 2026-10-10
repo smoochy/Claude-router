@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { lookupSessionTitle } from '../proxy/session-names.js';
+import { lookupSessionTitle, isValidSessionId } from '../proxy/session-names.js';
 
 function withProjectsDir(fn: (root: string) => void): void {
   const root = mkdtempSync(join(tmpdir(), 'session-names-test-'));
@@ -60,5 +60,21 @@ describe('lookupSessionTitle', () => {
       mkdirSync(join(root, 'proj'));
       assert.equal(lookupSessionTitle('no-such-session', root), undefined);
     });
+  });
+});
+
+describe('isValidSessionId', () => {
+  it('accepts a real session id (UUID)', () => {
+    assert.equal(isValidSessionId('11111111-1111-1111-1111-111111111111'), true);
+  });
+
+  it('rejects a traversal-shaped id (#4273)', () => {
+    assert.equal(isValidSessionId('../../../../etc/passwd'), false);
+    assert.equal(isValidSessionId('..\\..\\windows\\system32\\config\\sam'), false);
+  });
+
+  it('rejects anything else that is not a UUID', () => {
+    assert.equal(isValidSessionId('sess_1'), false);
+    assert.equal(isValidSessionId(''), false);
   });
 });
