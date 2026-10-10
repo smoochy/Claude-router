@@ -44,7 +44,8 @@ describe('main — dispatch', () => {
   it('prints the bare version for -V', async () => {
     const result = await main(['--version'], tempHome());
     assert.equal(result.exitCode, 0);
-    assert.match(text(result), /^\d+\.\d+\.\d+$/);
+    // Allows a `-smoo.<n>` prerelease suffix (this fork's version scheme, see RELEASING.md).
+    assert.match(text(result), /^\d+\.\d+\.\d+(-smoo\.\d+)?$/);
   });
 
   it('suggests the nearest command and exits 1 on a typo', async () => {
