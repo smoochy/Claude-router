@@ -11,7 +11,13 @@ export function createProxyApp(
   providerClient: Anthropic | null = null,
 ): Hono {
   const app = new Hono();
-  const health = { ...config, version: getVersion() };
+  // routingMode is optional on HandlerConfig (tests built pre-dating it still
+  // construct configs with only `forceRoute`) — buildHealth needs it resolved.
+  const health = {
+    ...config,
+    routingMode: config.routingMode ?? (config.forceRoute ? ('route' as const) : ('observe' as const)),
+    version: getVersion(),
+  };
 
   // Deliberately NO CORS middleware. Every legitimate consumer is same-origin
   // (the dashboard) or CORS-exempt (Node fetch from the CLI/statusline). A

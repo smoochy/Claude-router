@@ -162,7 +162,7 @@ export function startBanner(
     ['Dashboard', `http://${displayHost}:${options.port}/dashboard`],
     ['Provider', options.provider],
     ['Classifier', options.classifier],
-    ['Force-route', options.forceRoute ? term.green('on') : term.dim('off')],
+    ['Routing mode', options.routingMode === 'route' ? term.green('route') : options.routingMode === 'observe' ? term.dim('observe') : term.yellow('off')],
     ['Tiers', `${term.tier('haiku')} ${term.dim('→')} ${models.haiku}`],
     ['', `${term.tier('sonnet')} ${term.dim('→')} ${models.sonnet}`],
     ['', `${term.tier('opus')} ${term.dim('→')} ${models.opus}`],
@@ -171,27 +171,27 @@ export function startBanner(
   // A pinned coordinator changes routing meaningfully (the main session skips the
   // classifier), so surface it — and flag when it can't take effect.
   if (options.sessionModel) {
-    const note = options.forceRoute
+    const note = options.routingMode === 'route'
       ? term.dim('(subagents still routed)')
-      : term.yellow('(needs --force-route to take effect)');
+      : term.yellow("(needs --routing-mode route to take effect)");
     rows.push(['Session', `${term.tier(options.sessionModel as Tier)} pinned ${note}`]);
   }
   // Editing the client's system prompt is the one thing the proxy otherwise never
-  // does, so it is never silent — and it is useless without --force-route, since
-  // passthrough forwards the client's exact bytes.
+  // does, so it is never silent — and it is useless outside routing mode route,
+  // since observe/off forward the client's exact bytes.
   if (options.restoreDelegation) {
-    const note = options.forceRoute
+    const note = options.routingMode === 'route'
       ? term.dim('(removes injected anti-delegation lines)')
-      : term.yellow('(needs --force-route to take effect)');
+      : term.yellow("(needs --routing-mode route to take effect)");
     rows.push(['Delegation', `${term.green('restored')} ${note}`]);
   }
   // Subagent role routing: show the effective role→tier map (overrides included)
-  // or that it is off. Like the session pin, it does nothing without --force-route.
+  // or that it is off. Like the session pin, it does nothing outside routing mode route.
   if (options.roleRouting === 'off') {
     rows.push(['Roles', term.dim('off (subagents classified like any request)')]);
   } else {
     const map = ROLES.map((r) => `${r}→${term.tier(options.roles?.[r] ?? DEFAULT_ROLE_TIERS[r])}`).join(term.dim(' · '));
-    const note = options.forceRoute ? '' : ` ${term.yellow('(needs --force-route to take effect)')}`;
+    const note = options.routingMode === 'route' ? '' : ` ${term.yellow("(needs --routing-mode route to take effect)")}`;
     rows.push(['Roles', `${map}${note}`]);
   }
   // A redirected upstream means requests are NOT going to Anthropic. That is the
@@ -238,6 +238,7 @@ async function cmdStart(args: string[], paths: RouterPaths): Promise<CommandResu
     verbose: options.verbose,
     provider: options.provider,
     models,
+    routingMode: options.routingMode,
     forceRoute: options.forceRoute,
     sessionModel: options.sessionModel ? (options.sessionModel as Tier) : undefined,
     restoreDelegation: options.restoreDelegation,
@@ -339,7 +340,7 @@ async function cmdRestart(args: string[], paths: RouterPaths): Promise<CommandRe
   if (args.length === 0 && !state) {
     lines.push(
       warnLine(
-        'No previous daemon state found — restarting with defaults. Any flags the old daemon ran with (e.g. --force-route, --provider) are not carried over; pass them again if needed.',
+        'No previous daemon state found — restarting with defaults. Any flags the old daemon ran with (e.g. --routing-mode, --provider) are not carried over; pass them again if needed.',
       ),
     );
   }
@@ -387,7 +388,7 @@ async function cmdStatus(args: string[], paths: RouterPaths): Promise<CommandRes
     ['Dashboard', `http://localhost:${check.port}/dashboard`],
     ['Provider', health.provider],
     ['Classifier', health.classifier],
-    ['Force-route', health.forceRoute ? term.green('on') : term.dim('off')],
+    ['Routing mode', health.routingMode === 'route' ? term.green('route') : health.routingMode === 'observe' ? term.dim('observe') : term.yellow('off')],
     ['Requests', String(health.requests)],
     ['Last tier', health.lastTier ? term.tier(health.lastTier) : term.dim('none')],
     ['Autostart', isAutostartRegistered(paths) ? term.green('registered') : term.dim('not registered')],
@@ -579,11 +580,11 @@ async function cmdInstall(args: string[], paths: RouterPaths): Promise<CommandRe
   {
     const { config: existing } = loadFileConfig(paths.configFile);
     const merged = { ...configFromOptions(options), ...(existing ?? {}) };
-    if (!apiOnly) Object.assign(merged, { forceRoute: options.forceRoute, sessionModel: options.sessionModel || undefined, restoreDelegation: options.restoreDelegation });
+    if (!apiOnly) Object.assign(merged, { routingMode: options.routingMode, sessionModel: options.sessionModel || undefined, restoreDelegation: options.restoreDelegation });
     try {
       fs.mkdirSync(paths.configDir, { recursive: true, mode: 0o700 });
       fs.writeFileSync(paths.configFile, JSON.stringify(merged, null, 2) + '\n', { encoding: 'utf8', mode: 0o600 });
-      lines.push(stepLine({ ok: true, detail: `Config written (${paths.configFile}): force-route ${options.forceRoute ? 'on' : 'off'}${options.sessionModel ? `, session pinned to ${options.sessionModel}` : ''}${options.restoreDelegation ? ', delegation restored' : ''}` }));
+      lines.push(stepLine({ ok: true, detail: `Config written (${paths.configFile}): routing mode ${options.routingMode}${options.sessionModel ? `, session pinned to ${options.sessionModel}` : ''}${options.restoreDelegation ? ', delegation restored' : ''}` }));
     } catch (err) {
       lines.push(stepLine({ ok: false, detail: `Could not write ${paths.configFile}: ${String(err)}` }));
       failures++;

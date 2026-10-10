@@ -70,7 +70,7 @@ describe('parseServeArgs', () => {
       { ...opts, tiers: undefined, pricing: undefined, routing: undefined, roles: undefined, agents: undefined },
       {
         port: 4100, host: '127.0.0.1', verbose: true, classifier: 'heuristic', provider: 'bedrock',
-        region: 'eu-west-1', forceRoute: true, upstream: 'https://api.anthropic.com', sessionModel: '',
+        region: 'eu-west-1', routingMode: 'route', forceRoute: true, upstream: 'https://api.anthropic.com', sessionModel: '',
         restoreDelegation: false, roleRouting: 'on',
         tiers: undefined, pricing: undefined, routing: undefined, roles: undefined, agents: undefined,
       },
@@ -117,6 +117,37 @@ describe('parseServeArgs', () => {
 
   it('omits --upstream from spawn args when it is the default', () => {
     assert.ok(!serveArgsFrom(parseServeArgs([])).includes('--upstream'));
+  });
+});
+
+describe('routingMode', () => {
+  it('defaults to observe', () => {
+    assert.equal(parseServeArgs([]).routingMode, 'observe');
+    assert.equal(parseServeArgs([]).forceRoute, false);
+  });
+
+  it('parses --routing-mode and derives forceRoute from it', () => {
+    assert.equal(parseServeArgs(['--routing-mode', 'route']).forceRoute, true);
+    assert.equal(parseServeArgs(['--routing-mode', 'observe']).forceRoute, false);
+    assert.equal(parseServeArgs(['--routing-mode', 'off']).forceRoute, false);
+    assert.throws(() => parseServeArgs(['--routing-mode', 'bogus']), CliUsageError);
+  });
+
+  it('forceRoute (file or flag) is an alias when routingMode is not set explicitly', () => {
+    assert.equal(parseServeArgs([], { forceRoute: true }).routingMode, 'route');
+    assert.equal(parseServeArgs([], { forceRoute: false }).routingMode, 'observe');
+    assert.equal(parseServeArgs(['--force-route']).routingMode, 'route');
+  });
+
+  it('an explicit routingMode wins over the forceRoute alias', () => {
+    assert.equal(parseServeArgs([], { forceRoute: true, routingMode: 'off' }).routingMode, 'off');
+    assert.equal(parseServeArgs(['--force-route', '--routing-mode', 'off']).routingMode, 'off');
+    assert.equal(parseServeArgs(['--force-route', '--routing-mode', 'off']).forceRoute, false);
+  });
+
+  it('round-trips through spawn args', () => {
+    const args = serveArgsFrom(parseServeArgs(['--routing-mode', 'off']));
+    assert.equal(parseServeArgs(args).routingMode, 'off');
   });
 });
 

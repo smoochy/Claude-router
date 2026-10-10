@@ -7,6 +7,10 @@ This fork's own sections use the upstream version plus a `-smoo.<n>` prerelease 
 
 ## [Unreleased]
 
+### Added
+
+- `routingMode: 'route' | 'observe' | 'off'` replaces the boolean `forceRoute` as the config's routing switch, with `--routing-mode` as its CLI flag. `route` is today's `forceRoute: true`, `observe` is today's `forceRoute: false` (passthrough, still recorded), and `off` is new: no routing and no recording. `forceRoute` stays as a backwards-compatible alias (`true` -> `route`, `false` -> `observe`) for `CLAUDE_CODE_PROFILE` and config.json files written before this field existed. The mode is surfaced in the startup banner, `claude-router status` (`Routing mode` row, replacing `Force-route`), `doctor` (a new warn-only probe), and the statusline (`GET /statusline` now reads `[<mode>:<tier> #<n>]` instead of `[auto:<tier> #<n>]` - a format change visible to anything else parsing that endpoint). Route events (`history.jsonl`, the dashboard) now carry `routingMode` so the three-mode comparison is distinguishable per event, not only by measurement window.
+
 ## [0.4.0-smoo.1] — 2026-10-10
 
 ### Changed

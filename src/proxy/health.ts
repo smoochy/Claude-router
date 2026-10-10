@@ -15,6 +15,9 @@ export interface HealthInfo {
   service: string;
   classifier: string;
   provider: string;
+  /** `route` | `observe` | `off` — see FileConfig.routingMode. */
+  routingMode: 'route' | 'observe' | 'off';
+  /** @deprecated Derived from routingMode (`route` -> true) — kept for older consumers of `/health`. */
   forceRoute: boolean;
   /** The coordinator pin, if any — the plugin's SessionStart hook reports it. */
   sessionModel: string | null;
@@ -31,7 +34,7 @@ export function buildHealth(
   config: {
     classifier: string;
     provider: string;
-    forceRoute: boolean;
+    routingMode: 'route' | 'observe' | 'off';
     sessionModel?: string;
     roleRouting?: boolean;
     version?: string;
@@ -48,7 +51,8 @@ export function buildHealth(
     service: SERVICE_ID,
     classifier: config.classifier,
     provider: config.provider,
-    forceRoute: config.forceRoute,
+    routingMode: config.routingMode,
+    forceRoute: config.routingMode === 'route',
     sessionModel: config.sessionModel ?? null,
     roleRouting: config.roleRouting !== false,
     version: config.version ?? 'unknown',
@@ -65,5 +69,5 @@ export function buildHealth(
  * of parsing JSON, so the installed command is plain `curl`, no `jq`/`python`.
  */
 export function formatStatusLine(info: HealthInfo): string {
-  return `[auto:${info.lastTier ?? 'ready'} #${info.requests}]`;
+  return `[${info.routingMode}:${info.lastTier ?? 'ready'} #${info.requests}]`;
 }
