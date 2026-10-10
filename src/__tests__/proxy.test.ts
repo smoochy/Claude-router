@@ -316,7 +316,7 @@ describe('renderDashboard', () => {
     assert.ok(html.includes('By Role') && html.includes('<span class="role-name">recon</span>'), 'role rows');
     assert.ok(html.includes('<th>Role</th>') && html.includes('dispatched'), 'role column with dispatch badge');
     const plain = renderDashboard([events[1]!]);
-    assert.ok(!plain.includes('Dispatch Rate'), 'no dispatch card without a coordinator turn');
+    assert.ok(plain.includes('Dispatch Rate') && !plain.includes('1 of 1 coordinator turns'), 'dispatch card stays, empty, without a coordinator turn');
   });
 
   it('renders with data', () => {
