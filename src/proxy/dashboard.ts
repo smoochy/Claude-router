@@ -20,9 +20,40 @@ function esc(s: string): string {
     .replace(/"/g, '&quot;');
 }
 
-export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats): string {
+/**
+ * Dashboard mode filter, decided in #4246: a filter over the recorded history
+ * rather than separate measurement windows, so an unrepresentative window can
+ * be re-sliced after the fact instead of re-run.
+ *
+ * `unknown` is its own slice, not folded into `all` and not excluded. Lines
+ * written before #4239 added `routingMode` (194k+ of them on a long-running
+ * install) carry no field at all, and excluding them would make the default
+ * view of a long history mostly empty while silently discarding most of the
+ * data; a labeled slice keeps them visible without mixing them into a mode
+ * that never actually produced them.
+ */
+export const DASHBOARD_MODES = ['all', 'route', 'observe', 'off', 'unknown'] as const;
+export type DashboardMode = (typeof DASHBOARD_MODES)[number];
+
+const MODE_LABEL: Record<DashboardMode, string> = {
+  all: 'All',
+  route: 'Route',
+  observe: 'Observe',
+  off: 'Off',
+  unknown: 'Unknown (pre-#4239)',
+};
+
+/** Filters the history by `routingMode`. Exported for the filtering/recomputation tests. */
+export function filterByMode(history: RouteEvent[], mode: DashboardMode): RouteEvent[] {
+  if (mode === 'all') return history;
+  if (mode === 'unknown') return history.filter((e) => e.routingMode === undefined);
+  return history.filter((e) => e.routingMode === mode);
+}
+
+export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats, mode: DashboardMode = 'all'): string {
+  const filtered = filterByMode(history, mode);
   const totals = emptyTotals();
-  for (const e of history) foldOutcome(totals, e);
+  for (const e of filtered) foldOutcome(totals, e);
 
   const totalRequests = totals.requests;
   const totalCost = totals.costCents;
@@ -77,7 +108,11 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats)
   const sessionUnpriced = unpricedNote(totals.unpricedModels);
   const lifetimeUnpriced = lifetime ? unpricedNote(lifetime.unpricedModels) : '';
 
-  const recent = history.slice(-50).reverse();
+  const recent = filtered.slice(-50).reverse();
+
+  const modeOptions = DASHBOARD_MODES.map(
+    (m) => `<option value="${m}"${m === mode ? ' selected' : ''}>${esc(MODE_LABEL[m])}</option>`,
+  ).join('');
 
   const rows = recent
     .map(
@@ -200,6 +235,17 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats)
       animation: pulse 2.4s ease-in-out infinite;
     }
     @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+    .mode-filter { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 11px; color: var(--ink-dim); }
+    .mode-filter select {
+      background: var(--glass);
+      color: var(--ink);
+      border: 1px solid var(--edge-soft);
+      border-radius: 6px;
+      padding: 5px 8px;
+      font-family: var(--mono);
+      font-size: 11px;
+    }
 
     /* Glass panel: transparency stack + 1px edge + inner top highlight + warm glow */
     .card {
@@ -359,6 +405,10 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats)
       <h1>claude-router dashboard</h1>
       <div class="tagline">routing ledger &middot; cost engine</div>
     </div>
+    <form class="mode-filter" method="GET" action="/dashboard">
+      <label for="mode">Mode</label>
+      <select id="mode" name="mode" onchange="this.form.submit()">${modeOptions}</select>
+    </form>
     <div class="live"><span class="dot"></span>live &middot; refresh 10s</div>
   </header>
 
