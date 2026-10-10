@@ -35,6 +35,7 @@ function probes(overrides: Partial<DoctorProbes> = {}): DoctorProbes {
     isAutostartRegistered: () => true,
     isStatuslineConfigured: () => true,
     policyPluginInstalled: () => true,
+    modelListCacheAgeDays: () => undefined,
     ...overrides,
   };
 }
@@ -182,6 +183,17 @@ describe('runDiagnostics', () => {
       assert.match(d.label, /pid 4242 is gone/);
       assert.equal(failureCount(diagnostics), 0);
     });
+  });
+
+  it('reports the model-list cache age when a cache exists, and says nothing when it does not', async () => {
+    const withCache = await runDiagnostics(OPTIONS, probes({ modelListCacheAgeDays: () => 3 }));
+    const d = find(withCache, /Model-list cache/);
+    assert.equal(d.ok, true);
+    assert.equal(d.warnOnly, true);
+    assert.match(d.label, /refreshed 3 days ago/);
+
+    const withoutCache = await runDiagnostics(OPTIONS, probes({ modelListCacheAgeDays: () => undefined }));
+    assert.equal(withoutCache.some((x) => /Model-list cache/.test(x.label)), false);
   });
 
   it('probes each fact exactly once', async () => {
