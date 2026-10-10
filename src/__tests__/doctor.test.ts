@@ -37,6 +37,7 @@ function probes(overrides: Partial<DoctorProbes> = {}): DoctorProbes {
     policyPluginInstalled: () => true,
     modelListCacheAgeDays: () => undefined,
     staleTierIds: async () => [],
+    delegationPatternsStale: () => undefined,
     ...overrides,
   };
 }
@@ -215,6 +216,20 @@ describe('runDiagnostics', () => {
 
     const skipped = await runDiagnostics(OPTIONS, probes({ staleTierIds: async () => undefined }));
     assert.equal(skipped.some((x) => /[Tt]ier.*model ids|Stale tier/.test(x.label)), false);
+  });
+
+  it('warns, without failing, when the delegation-blocker patterns look stale', async () => {
+    const stale = await runDiagnostics(OPTIONS, probes({ delegationPatternsStale: () => true }));
+    const d = find(stale, /restore-delegation/);
+    assert.equal(d.ok, false);
+    assert.equal(d.warnOnly, true);
+    assert.equal(failureCount(stale), 0);
+
+    const fine = await runDiagnostics(OPTIONS, probes({ delegationPatternsStale: () => false }));
+    assert.equal(find(fine, /restore-delegation/).ok, true);
+
+    const off = await runDiagnostics(OPTIONS, probes({ delegationPatternsStale: () => undefined }));
+    assert.equal(off.some((x) => /restore-delegation/.test(x.label)), false);
   });
 
   it('probes each fact exactly once', async () => {

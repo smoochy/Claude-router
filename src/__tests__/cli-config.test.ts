@@ -71,7 +71,7 @@ describe('parseServeArgs', () => {
       {
         port: 4100, host: '127.0.0.1', verbose: true, classifier: 'heuristic', provider: 'bedrock',
         region: 'eu-west-1', routingMode: 'route', forceRoute: true, upstream: 'https://api.anthropic.com', sessionModel: '',
-        restoreDelegation: false, roleRouting: 'on',
+        restoreDelegation: false, captureSystemPrompt: false, roleRouting: 'on',
         tiers: undefined, pricing: undefined, routing: undefined, roles: undefined, agents: undefined,
       },
     );

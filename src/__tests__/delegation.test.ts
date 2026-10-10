@@ -1,15 +1,37 @@
-import { describe, it } from 'node:test';
+import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import {
   DELEGATION_BLOCKERS,
   stripDelegationBlockers,
   describeStrip,
+  STALE_PATTERN_STREAK,
+  nextDriftState,
+  readDelegationDriftState,
+  writeDelegationDriftState,
 } from '../proxy/delegation.js';
 
 const [AGENT_LINE, WORKFLOW_LINE] = DELEGATION_BLOCKERS as [string, string];
 
-// The payload as Claude Code 2.1.220 actually renders it: two lines at the end
-// of a long system prompt, not a standalone block.
+// The two shapes Claude Code actually renders as of the current binary. The
+// AgentTool line's suffix has already moved once (`…unless the user requested
+// it` -> `…unless the user`); the workflow line interpolates whichever tool
+// is live and carries a new exception clause the fork's original two lines
+// never had. Binary-derived (see #4304's resolution comment on #4300) —
+// not captured off a live request. A real capture is a follow-up (the capture
+// path this ticket adds has no fixture to run it against yet).
+const AGENT_TOOL_TASK_VARIANT = 'Do not use the Task tool, workflows, or deep-research unless the user, a CLAUDE.md file, or a skill asks for it';
+const AGENT_TOOL_BASH_VARIANT = 'Do not use the Bash tool, workflows, or deep-research unless the user, a CLAUDE.md file, or a skill asks for it';
+
+// The wording the fork originally shipped against — must never match again,
+// so the two shapes (pre- and post-rewording) cannot be silently confused.
+const OLD_AGENT_LINE = 'Do not call the AgentTool unless the user requested it';
+const OLD_WORKFLOW_LINE = 'Do not use workflows or deep-research unless the user requested it';
+
+// The payload as Claude Code actually renders it: lines at the end of a long
+// system prompt, not a standalone block.
 const REAL_SYSTEM = [
   'You are Claude Code, Anthropic official CLI for Claude.',
   '',
@@ -52,6 +74,37 @@ describe('stripDelegationBlockers — string system', () => {
   it('tolerates surrounding indentation on the injected line', () => {
     const { removed } = stripDelegationBlockers(`intro\n   ${AGENT_LINE}   \noutro`);
     assert.equal(removed, 1);
+  });
+
+  it('matches the combined line regardless of which tool name it interpolates', () => {
+    assert.equal(stripDelegationBlockers(`intro\n${AGENT_TOOL_TASK_VARIANT}\noutro`).removed, 1);
+    assert.equal(stripDelegationBlockers(`intro\n${AGENT_TOOL_BASH_VARIANT}\noutro`).removed, 1);
+  });
+
+  it('strips the combined line in full, including its new exception clause', () => {
+    const { system } = stripDelegationBlockers(`intro\n${AGENT_TOOL_TASK_VARIANT}\noutro`);
+    assert.equal(system, 'intro\noutro', 'the exception clause must not survive as a dangling fragment');
+  });
+
+  // The regression this ticket exists to prevent: the two shapes must never be
+  // confused with each other. The AgentTool line is a prefix match on purpose
+  // (see delegation.ts's module doc) — its suffix already moved once, so the
+  // fully-suffixed pre-rewording text still matches, which is expected, not a
+  // leak. The old *workflow* line is a fundamentally different sentence (no
+  // "the <tool> tool," clause at all), so the new anchored regex correctly
+  // does not match it — asserting that is what keeps the two generations from
+  // being silently confused.
+  it('still matches the old AgentTool suffix (prefix is suffix-agnostic on purpose)', () => {
+    assert.equal(stripDelegationBlockers(OLD_AGENT_LINE).removed, 1);
+  });
+
+  it('does not match the old standalone workflow line — it is a different sentence, not an older wording of the same one', () => {
+    assert.equal(stripDelegationBlockers(OLD_WORKFLOW_LINE).removed, 0);
+    assert.equal(
+      stripDelegationBlockers([OLD_AGENT_LINE, OLD_WORKFLOW_LINE].join('\n')).removed,
+      1,
+      'only the AgentTool line matches; the retired standalone workflow line does not',
+    );
   });
 });
 
@@ -131,5 +184,57 @@ describe('describeStrip', () => {
     assert.match(describeStrip(0), /not present|nothing removed/i);
     assert.match(describeStrip(2), /removed 2/);
     assert.match(describeStrip(1), /removed 1 injected anti-delegation line\b/);
+  });
+});
+
+describe('nextDriftState', () => {
+  it('resets the streak to 0 the moment a run matches something', () => {
+    const { state, stale } = nextDriftState({ consecutiveMisses: STALE_PATTERN_STREAK + 5 }, true);
+    assert.equal(state.consecutiveMisses, 0);
+    assert.equal(stale, false);
+  });
+
+  it('does not cry wolf on a single miss', () => {
+    const { state, stale } = nextDriftState({ consecutiveMisses: 0 }, false);
+    assert.equal(state.consecutiveMisses, 1);
+    assert.equal(stale, false);
+  });
+
+  it('crosses over at STALE_PATTERN_STREAK consecutive misses, not before', () => {
+    const justBelow = nextDriftState({ consecutiveMisses: STALE_PATTERN_STREAK - 2 }, false);
+    assert.equal(justBelow.state.consecutiveMisses, STALE_PATTERN_STREAK - 1);
+    assert.equal(justBelow.stale, false);
+
+    const atThreshold = nextDriftState({ consecutiveMisses: STALE_PATTERN_STREAK - 1 }, false);
+    assert.equal(atThreshold.state.consecutiveMisses, STALE_PATTERN_STREAK);
+    assert.equal(atThreshold.stale, true);
+  });
+});
+
+describe('delegation drift state — persisted across restarts', () => {
+  let dir: string;
+  let file: string;
+
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'crouter-drift-'));
+    file = path.join(dir, 'delegation-drift.json');
+  });
+
+  afterEach(() => {
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('reads a missing file as "no streak yet" rather than throwing', () => {
+    assert.deepEqual(readDelegationDriftState(file), { consecutiveMisses: 0 });
+  });
+
+  it('round-trips a written streak', () => {
+    writeDelegationDriftState(file, { consecutiveMisses: 2 });
+    assert.deepEqual(readDelegationDriftState(file), { consecutiveMisses: 2 });
+  });
+
+  it('reads a corrupt file as "no streak yet" rather than throwing', () => {
+    fs.writeFileSync(file, 'not json');
+    assert.deepEqual(readDelegationDriftState(file), { consecutiveMisses: 0 });
   });
 });
