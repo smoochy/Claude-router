@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import Anthropic from '@anthropic-ai/sdk';
 import { handleMessages, handlePassthrough, registerAgent, routeHistory, routeCounters, type HandlerConfig } from './handler.js';
 import { getVersion } from './cli-config.js';
-import { renderDashboard } from './dashboard.js';
+import { renderDashboard, DASHBOARD_MODES, type DashboardMode } from './dashboard.js';
 import { readLifetimeStats } from './history.js';
 import { buildHealth, formatStatusLine } from './health.js';
 
@@ -58,7 +58,11 @@ export function createProxyApp(
 
   app.get('/dashboard', (c) => {
     const lifetime = config.historyFile ? readLifetimeStats(config.historyFile) : undefined;
-    return c.html(renderDashboard(routeHistory, lifetime));
+    const requested = c.req.query('mode');
+    const mode: DashboardMode = (DASHBOARD_MODES as readonly string[]).includes(requested ?? '')
+      ? (requested as DashboardMode)
+      : 'all';
+    return c.html(renderDashboard(routeHistory, lifetime, mode));
   });
 
   app.post('/v1/messages', (c) => handleMessages(c, config, providerClient));
