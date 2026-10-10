@@ -219,11 +219,11 @@ describe('startBanner', () => {
 
   it('shows a pinned coordinator session, and flags when it cannot take effect', () => {
     // The pin skips the classifier for the main session, so it belongs on the
-    // banner — and silently doing nothing without --force-route is worse than
-    // saying so.
+    // banner — and silently doing nothing outside routing mode route is worse
+    // than saying so.
     const inert = banner(['--session-model', 'opus']).map((l) => l.text).join('\n');
     assert.match(inert, /Session/);
-    assert.match(inert, /needs --force-route to take effect/);
+    assert.match(inert, /needs --routing-mode route to take effect/);
 
     const live = banner(['--session-model', 'opus', '--force-route']).map((l) => l.text).join('\n');
     assert.match(live, /subagents still routed/);

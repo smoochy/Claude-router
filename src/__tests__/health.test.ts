@@ -20,7 +20,7 @@ function event(i: number): RouteEvent {
   };
 }
 
-const CONFIG = { classifier: 'hybrid', provider: 'anthropic', forceRoute: true };
+const CONFIG = { classifier: 'hybrid', provider: 'anthropic', routingMode: 'route' as const };
 
 describe('buildHealth', () => {
   it('reports the lifetime count, not the size of the bounded window', () => {
@@ -41,12 +41,12 @@ describe('buildHealth', () => {
     assert.equal(info.requests, 1200);
     assert.equal(info.service, SERVICE_ID);
     assert.equal(info.lastTier, 'sonnet', 'the window still supplies the last route');
-    assert.equal(formatStatusLine(info), '[auto:sonnet #1200]');
+    assert.equal(formatStatusLine(info), '[route:sonnet #1200]');
   });
 
   it('falls back to the window length when no counter is given', () => {
     const history = [event(1), event(2)];
     assert.equal(buildHealth(CONFIG, history).requests, 2);
-    assert.equal(formatStatusLine(buildHealth(CONFIG, [])), '[auto:ready #0]');
+    assert.equal(formatStatusLine(buildHealth(CONFIG, [])), '[route:ready #0]');
   });
 });
