@@ -5,6 +5,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versioning follo
 
 ## [Unreleased]
 
+### Changed
+
+- `smoo/main` is now this fork's work/release branch and default branch; `master` stays a pure upstream mirror. `publish.yml`'s "Tag must be on master" guard now checks `origin/smoo/main` instead. See `docs/BRANCHING.md` for the branch relationship and how upstream pulls reach `smoo/main`.
+
 ## [0.4.0] — 2026-09-04
 
 ### Changed
