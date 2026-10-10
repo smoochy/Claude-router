@@ -90,10 +90,11 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
   const tierTotal = DISPLAY_TIERS.reduce((n, t) => n + tierCounts[t], 0) || 1;
   const tierBars = DISPLAY_TIERS.map((t) => ({
     tier: t,
+    count: tierCounts[t],
     pct: ((tierCounts[t] / tierTotal) * 100).toFixed(1),
   }))
     .filter((b) => Number(b.pct) > 0)
-    .map((b) => `<div class="tier-${b.tier}" style="width:${b.pct}%">${TIER_BAR_LABEL[b.tier]} ${b.pct}%</div>`)
+    .map((b) => `<div class="tier-${b.tier}" style="width:${b.pct}%">${TIER_BAR_LABEL[b.tier]} ${b.count} (${b.pct}%)</div>`)
     .join('');
 
   // A card reading "$0.0000 saved" is indistinguishable from a quiet week, so
@@ -171,7 +172,7 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
         linear-gradient(90deg, rgba(247, 147, 26, 0.024) 1px, transparent 1px);
       background-size: auto, auto, 44px 44px, 44px 44px;
       padding: 30px clamp(16px, 4vw, 52px) 44px;
-      max-width: 1320px;
+      max-width: 1680px;
       margin: 0 auto;
       min-height: 100vh;
     }
@@ -238,13 +239,17 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
 
     .mode-filter { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 11px; color: var(--ink-dim); }
     .mode-filter select {
-      background: var(--glass);
+      background: var(--void);
       color: var(--ink);
       border: 1px solid var(--edge-soft);
       border-radius: 6px;
       padding: 5px 8px;
       font-family: var(--mono);
       font-size: 11px;
+    }
+    .mode-filter select option {
+      background: var(--void);
+      color: var(--ink);
     }
 
     /* Glass panel: transparency stack + 1px edge + inner top highlight + warm glow */
@@ -263,8 +268,8 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
       box-shadow: 0 1px 0 rgba(255, 255, 255, 0.06) inset, 0 12px 34px rgba(0, 0, 0, 0.5), 0 0 28px rgba(247, 147, 26, 0.12);
     }
 
-    .stats { display: flex; gap: 14px; margin-bottom: 26px; flex-wrap: wrap; }
-    .stat-card { min-width: 182px; flex: 0 1 auto; padding: 16px 20px 17px; }
+    .stats { display: flex; gap: 10px; margin-bottom: 26px; flex-wrap: wrap; }
+    .stat-card { min-width: 132px; flex: 1 1 auto; padding: 11px 14px 12px; }
     .stat-card:hover { transform: translateY(-2px); }
     .stat-card .label {
       font-family: var(--mono);
@@ -276,9 +281,9 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
     .stat-card .value {
       font-family: var(--mono);
       font-variant-numeric: tabular-nums;
-      font-size: 27px;
+      font-size: 21px;
       font-weight: 700;
-      margin-top: 7px;
+      margin-top: 5px;
       color: var(--ink);
     }
     .stat-card .value.blue   { color: var(--orange); text-shadow: 0 0 18px rgba(247, 147, 26, 0.4); }
@@ -488,7 +493,7 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
     </div>
   </div>
 
-  <div class="footer">Auto-refreshes every 10 seconds. Showing last 50 of ${totalRequests} requests.</div>
+  <div class="footer">Auto-refreshes every 10 seconds. Showing last ${Math.min(50, filtered.length)} of ${filtered.length} requests.</div>
 </body>
 </html>`;
 }
