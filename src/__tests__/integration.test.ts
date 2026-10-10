@@ -676,7 +676,7 @@ function subagentRequest(
     sessionId?: string;
   },
 ): Promise<Response> {
-  // A UUID shape, not just any token (#4273) — the real header the proxy
+  // A UUID shape, not just any token - the real header the proxy
   // accepts is a genuine session id, and the handler now rejects anything
   // else before it reaches a RouteEvent. Tests that need a different (or
   // traversal-shaped) value pass `sessionId` explicitly.
@@ -810,7 +810,7 @@ describe('orchestration measurement', () => {
     assert.equal(last.subagent, undefined);
   });
 
-  it('a traversal-shaped session id is rejected, not stored, but the event still records and renders (#4273)', async () => {
+  it('a traversal-shaped session id is rejected, not stored, but the event still records and renders', async () => {
     const { base } = await setup({ dispatchModels: [DEFAULT_MODELS.opus], config: { sessionModel: 'opus' } });
     const res = await subagentRequest(base, {
       subagent: false,
@@ -821,7 +821,7 @@ describe('orchestration measurement', () => {
     assert.equal(res.status, 200);
     const last = routeHistory[routeHistory.length - 1]!;
     assert.equal(last.sessionId, undefined, 'a malformed id is dropped, never stored on the event');
-    assert.equal(last.coordinator, true, 'the row itself is still recorded — rejection drops the field, not the event (#4253)');
+    assert.equal(last.coordinator, true, 'the row itself is still recorded - rejection drops the field, not the event');
   });
 
   it('a coordinator turn without the Agent tool is not dispatchable, so it cannot count as dispatched', async () => {

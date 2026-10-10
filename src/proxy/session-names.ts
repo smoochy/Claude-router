@@ -4,7 +4,7 @@ import { join } from 'node:path';
 
 /**
  * Resolves a Claude Code session's own display name from its transcript,
- * `~/.claude/projects/<project-dir>/<sessionId>.jsonl` (#4267).
+ * `~/.claude/projects/<project-dir>/<sessionId>.jsonl`.
  *
  * The ticket's premise — a transcript-wide "summary" field — does not hold:
  * checked against this machine's live transcripts, none of ~4700 files carry
@@ -29,9 +29,9 @@ function projectsRoot(): string {
  * point the header is read (handler.ts) is what keeps a crafted id — e.g.
  * `../../../../etc/passwd` — from ever reaching {@link lookupSessionTitle}'s
  * `join(root, dir, \`${sessionId}.jsonl\`)`, which performs no containment
- * check of its own (CWE-22; homelab-private#4273). A rejected id is simply
- * never stored on the event, so the dashboard's #4267 derived-label fallback
- * renders in its place — the row itself is never dropped (#4253).
+ * check of its own (CWE-22). A rejected id is simply never stored on the
+ * event, so the dashboard's derived-label fallback renders in its place - the
+ * row itself is never dropped.
  */
 const SESSION_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 

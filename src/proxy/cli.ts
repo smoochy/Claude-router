@@ -233,7 +233,7 @@ async function cmdStart(args: string[], paths: RouterPaths): Promise<CommandResu
     return failed([...warnings, failLine(`Provider init failed: ${String(e)}`)]);
   }
 
-  // Remote list → local cache → compiled-in DEFAULT_PRICING (homelab-private#4232),
+  // Remote list → local cache → compiled-in DEFAULT_PRICING,
   // in that order; a user's own `pricing` config always wins over all three. This
   // is the one network call on the startup path, so it's bounded by a short
   // per-attempt timeout (`fetchModelList`'s default) and never throws — a

@@ -68,7 +68,7 @@ describe('isValidSessionId', () => {
     assert.equal(isValidSessionId('11111111-1111-1111-1111-111111111111'), true);
   });
 
-  it('rejects a traversal-shaped id (#4273)', () => {
+  it('rejects a traversal-shaped id', () => {
     assert.equal(isValidSessionId('../../../../etc/passwd'), false);
     assert.equal(isValidSessionId('..\\..\\windows\\system32\\config\\sam'), false);
   });

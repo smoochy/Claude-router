@@ -5,8 +5,8 @@ import { lookupSessionTitle } from './session-names.js';
 import type { RouteEvent } from './route-event.js';
 import type { LifetimeStats } from './history.js';
 
-/** Sentinel option value for "events with no value on this field" — its own
- * slice rather than silently excluded, the precedent #4253 set for routingMode. */
+/** Sentinel option value for "events with no value on this field" - its own
+ * slice rather than silently excluded, the precedent set for routingMode. */
 const NONE = '__none__';
 
 const TIER_BAR_LABEL: Record<DisplayTier, string> = {
@@ -18,7 +18,7 @@ const TIER_BAR_LABEL: Record<DisplayTier, string> = {
 };
 
 /**
- * Derived per-event label, not a filter (#4263/#4264): compares the pilotfish
+ * Derived per-event label, not a filter: compares the pilotfish
  * pin against the billed model rather than reading a stored verdict. Absent
  * `requestedModel` means either no pin was sent or the line predates the
  * field — both render as "-", never as a wrong label.
@@ -39,12 +39,12 @@ function esc(s: string): string {
 }
 
 /**
- * Dashboard mode filter, decided in #4246: a filter over the recorded history
+ * Dashboard mode filter: a filter over the recorded history
  * rather than separate measurement windows, so an unrepresentative window can
  * be re-sliced after the fact instead of re-run.
  *
  * `unknown` is its own slice, not folded into `all` and not excluded. Lines
- * written before #4239 added `routingMode` (194k+ of them on a long-running
+ * written before `routingMode` was added (194k+ of them on a long-running
  * install) carry no field at all, and excluding them would make the default
  * view of a long history mostly empty while silently discarding most of the
  * data; a labeled slice keeps them visible without mixing them into a mode
@@ -58,7 +58,7 @@ const MODE_LABEL: Record<DashboardMode, string> = {
   route: 'Route',
   observe: 'Observe',
   off: 'Off',
-  unknown: 'Unknown (pre-#4239)',
+  unknown: 'Unknown (pre-routingMode)',
 };
 
 /** Filters the history by `routingMode`. Exported for the filtering/recomputation tests. */
@@ -74,12 +74,12 @@ export type TimeWindow = (typeof TIME_WINDOWS)[number];
 const WINDOW_LABEL: Record<TimeWindow, string> = { all: 'All time', today: 'Today', hour: 'Last hour' };
 
 /**
- * The five filters from #4267, on top of the #4246 mode filter. All read
- * fields already on `RouteEvent` — no new recording. A field left undefined
+ * The five filters, on top of the mode filter. All read
+ * fields already on `RouteEvent` - no new recording. A field left undefined
  * (or `'all'` for window) means "no constraint from this control"; `NONE`
- * means "only events where this field is absent" — role and session are both
+ * means "only events where this field is absent" - role and session are both
  * optional on the event, so "absent" is a real, selectable case rather than a
- * silent exclusion (#4253's precedent for pre-field history).
+ * silent exclusion, the precedent set for pre-field history.
  */
 export interface DashboardFilters {
   mode?: DashboardMode;
@@ -119,7 +119,7 @@ export function filterHistory(history: RouteEvent[], filters: DashboardFilters):
   return out;
 }
 
-/** Distinct, present-in-the-history values for one filter's options — never a hardcoded list (#4267). */
+/** Distinct, present-in-the-history values for one filter's options - never a hardcoded list. */
 function distinct(history: RouteEvent[], pick: (e: RouteEvent) => string | undefined): { values: string[]; hasNone: boolean } {
   const seen = new Set<string>();
   let hasNone = false;
@@ -132,9 +132,9 @@ function distinct(history: RouteEvent[], pick: (e: RouteEvent) => string | undef
 }
 
 /**
- * Readable label for the session filter's options (#4267): the session's own
+ * Readable label for the session filter's options: the session's own
  * name when the transcript resolves one, else a label derived purely from
- * this session's slice of the history — start time, duration, request count,
+ * this session's slice of the history - start time, duration, request count,
  * most frequent role. Never throws; `lookupSessionTitle` is already best-effort.
  */
 export function sessionLabel(sessionId: string, eventsForSession: RouteEvent[]): string {
@@ -241,7 +241,7 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
     (m) => `<option value="${m}"${m === mode ? ' selected' : ''}>${esc(MODE_LABEL[m])}</option>`,
   ).join('');
 
-  // Option lists come from the full history, not a hardcoded list (#4267) —
+  // Option lists come from the full history, not a hardcoded list -
   // a role/model/tier that never ran never appears, and one that did always does.
   const roleValues = distinct(history, roleLabel);
   const modelValues = distinct(history, (e) => e.model);
@@ -254,7 +254,7 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
     return [`<option value=""${selected ? '' : ' selected'}>All</option>`, ...opts].join('');
   };
 
-  // Session options need a readable label, not the raw id (#4267) — resolved
+  // Session options need a readable label, not the raw id - resolved
   // from the session's own transcript title, falling back to a label derived
   // from that session's own slice of the (unfiltered) history.
   const eventsBySession = new Map<string, RouteEvent[]>();
