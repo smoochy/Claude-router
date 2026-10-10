@@ -594,7 +594,7 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
 <body>
   <header>
     <div>
-      <h1>claude-router dashboard</h1>
+      <h1><a href="/dashboard" title="Reset all filters" style="color:inherit;text-decoration:none">claude-router dashboard</a></h1>
       <div class="tagline">routing ledger &middot; cost engine</div>
     </div>
     <div class="live"><span class="dot"></span>live &middot; refresh ${auto ? 'on' : 'off'}</div>

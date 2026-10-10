@@ -166,6 +166,14 @@ describe('createProxyApp', () => {
     assert.ok(html.includes('claude-router dashboard'));
   });
 
+  it('GET /dashboard: checkbox auto=0&auto=1 means on, lone auto=0 means off, title links home', async () => {
+    const on = await (await app.request('/dashboard?auto=0&auto=1')).text();
+    assert.ok(on.includes('refresh on'));
+    assert.ok(on.includes('<a href="/dashboard"'));
+    const off = await (await app.request('/dashboard?auto=0')).text();
+    assert.ok(off.includes('refresh off'));
+  });
+
   it('POST /v1/messages without api key returns 401', async () => {
     const res = await app.request('/v1/messages', {
       method: 'POST',

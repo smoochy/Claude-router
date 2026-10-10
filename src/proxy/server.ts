@@ -73,7 +73,8 @@ export function createProxyApp(
       tier: c.req.query('tier') || undefined,
       session: c.req.query('session') || undefined,
       window,
-      auto: c.req.query('auto') !== '0',
+      // The form sends a hidden auto=0 first and the checkbox auto=1 after it; the last value wins.
+      auto: c.req.queries('auto')?.at(-1) !== '0',
     };
     return c.html(renderDashboard(routeHistory, lifetime, filters));
   });
