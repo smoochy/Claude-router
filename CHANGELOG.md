@@ -7,6 +7,10 @@ This fork's own sections use the upstream version plus a `-smoo.<n>` prerelease 
 
 ## [Unreleased]
 
+### Fixed
+
+- `.github/workflows/publish.yml` extracted the whole changelog from the first matched heading to EOF instead of one version's section (homelab-private#4276). The dynamic awk regex `"^## \\[" v "\\]"` lost its backslash escaping of `[` and `]` in awk's string lexer, so the pattern actually evaluated was the bracket expression `^## [0.4.0-smoo.2]`, where `0-s` reads as an ASCII range matching almost any character - every `## [...]` heading matched the start rule, so the exit rule (which needs a non-matching heading to fire) never triggered. The extraction now matches the heading as a literal string via `index()` instead of a regex, with no backslash-escaping pitfall left to hit.
+
 ### Added
 
 - `routingMode: 'route' | 'observe' | 'off'` replaces the boolean `forceRoute` as the config's routing switch, with `--routing-mode` as its CLI flag. `route` is today's `forceRoute: true`, `observe` is today's `forceRoute: false` (passthrough, still recorded), and `off` is new: no routing and no recording. `forceRoute` stays as a backwards-compatible alias (`true` -> `route`, `false` -> `observe`) for `CLAUDE_CODE_PROFILE` and config.json files written before this field existed. The mode is surfaced in the startup banner, `claude-router status` (`Routing mode` row, replacing `Force-route`), `doctor` (a new warn-only probe), and the statusline (`GET /statusline` now reads `[<mode>:<tier> #<n>]` instead of `[auto:<tier> #<n>]` - a format change visible to anything else parsing that endpoint). Route events (`history.jsonl`, the dashboard) now carry `routingMode` so the three-mode comparison is distinguishable per event, not only by measurement window.
