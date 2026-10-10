@@ -3,13 +3,18 @@
 All notable changes to this project are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/); versioning follows [SemVer](https://semver.org/) (pre-1.0: minor = features, patch = fixes).
 
+This fork's own sections use the upstream version plus a `-smoo.<n>` prerelease suffix (`0.4.0-smoo.1`, the next fork-only change on top of `0.4.0` gets `0.4.0-smoo.2`, and so on); a bare `[x.y.z]` section is an upstream release pulled in by merge, untouched. Both kinds stay in one chronological list - the suffix alone tells you which side cut the release.
+
 ## [Unreleased]
+
+## [0.4.0-smoo.1] — 2026-10-10
 
 ### Changed
 
 - `smoo/main` is now this fork's work/release branch and default branch; `master` stays a pure upstream mirror. `publish.yml`'s "Tag must be on master" guard now checks `origin/smoo/main` instead. See `docs/BRANCHING.md` for the branch relationship and how upstream pulls reach `smoo/main`.
 - **Every inherited workflow written for upstream's outside-contributor flow is gone.** `welcome.yml` (first-time-contributor greeting), `label.yml` plus its `.github/labeler.yml` config (PR area labelling), and `pages.yml` (published to `serhii-leniv.github.io`, a site this fork does not own) are deleted. `test.yml` stays, with its `push` trigger pointed at `smoo/main` instead of `master`. `pricing-check.yml` is unchanged; it already works for this fork.
 - `package.json`'s `repository`, `homepage` and `bugs` now point at `smoochy/Claude-router` instead of `Serhii-Leniv/claude-router`, so issues filed from an installed fork build land in the right tracker.
+- **`publish.yml` no longer publishes to npm.** This fork doesn't own `@sheruq/claude-router` on the registry, so `npm publish --provenance` and the OIDC-claims diagnostic step are gone. A `v*` tag on `smoo/main` still runs `npm test`, checks the tag against `package.json`, and `npm pack`s the tarball, then attaches that tarball to the GitHub release as a downloadable asset - install with `npm install -g <release-asset-url>`. `package.json` moves to `0.4.0-smoo.1`.
 
 ## [0.4.0] — 2026-09-04
 
