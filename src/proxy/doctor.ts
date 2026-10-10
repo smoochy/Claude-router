@@ -48,6 +48,12 @@ export interface DoctorProbes {
   isAutostartRegistered(): boolean;
   isStatuslineConfigured(): boolean;
   policyPluginInstalled(): boolean;
+  /** Age in whole days of the local model-list cache (`model-list.ts`), or
+   * `undefined` when no cache file exists yet (first run, or remote has never
+   * failed). Not "how stale is the live list" — that has no date to read
+   * (see `MODEL_LIST_URL`'s doc comment) — just "how long since this proxy
+   * last reached the remote list". */
+  modelListCacheAgeDays(): number | undefined;
 }
 
 export interface DoctorOptions {
@@ -86,6 +92,18 @@ export async function runDiagnostics(
     hint: 'Verify src/models.ts against platform.claude.com pricing and bump PRICING_LAST_CHECKED',
     warnOnly: true,
   });
+
+  // Informational only: a missing cache just means every start so far either
+  // reached the remote list or ran on the compiled-in fallback — neither is a
+  // problem on its own, so there's nothing to warn about when it's absent.
+  const cacheAge = probes.modelListCacheAgeDays();
+  if (cacheAge !== undefined) {
+    diagnostics.push({
+      ok: true,
+      label: `Model-list cache last refreshed ${cacheAge} day${cacheAge === 1 ? '' : 's'} ago`,
+      warnOnly: true,
+    });
+  }
 
   const config = probes.loadConfig();
   diagnostics.push(
