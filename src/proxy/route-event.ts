@@ -21,6 +21,15 @@ import type { RoleSource } from '../roles.js';
 export interface RouteEvent {
   timestamp: string;
   tier: Tier | 'passthrough';
+  /**
+   * The mode active when this event was recorded — `route` for every routed
+   * event, `observe` for a passthrough event (the only kind `off` can produce,
+   * and `off` never records, so this value never appears in practice). Lets
+   * the dashboard distinguish the three-mode comparison by event rather than
+   * only by which measurement window it ran in. Absent on lines written
+   * before this field existed.
+   */
+  routingMode?: 'route' | 'observe' | 'off';
   model: string;
   costCents: number;
   savedCents: number;
@@ -102,6 +111,7 @@ export function buildRouteEvent(input: RouteEventInput): RouteEvent {
   return {
     timestamp: new Date().toISOString(),
     tier,
+    routingMode: 'route',
     model,
     confidence: classifyResult.confidence,
     classifier: classifyResult.method,
@@ -132,6 +142,7 @@ export function errorRouteEvent(input: {
   return {
     timestamp: new Date().toISOString(),
     tier,
+    routingMode: 'route',
     model,
     costCents: 0,
     savedCents: 0,
@@ -156,10 +167,11 @@ export function errorRouteEvent(input: {
  * proxy is not working". Only `proxyPassthrough` records these — the
  * catch-all for count_tokens and the non-/v1 paths never does.
  */
-export function passthroughRouteEvent(input: { model: string; cost: RouteCost }): RouteEvent {
+export function passthroughRouteEvent(input: { model: string; cost: RouteCost; routingMode?: 'observe' | 'off' }): RouteEvent {
   return {
     timestamp: new Date().toISOString(),
     tier: 'passthrough',
+    routingMode: input.routingMode ?? 'observe',
     model: input.model,
     confidence: 1,
     classifier: 'passthrough',

@@ -26,6 +26,13 @@ export interface HandlerConfig {
   verbose: boolean;
   provider: Provider;
   models: Record<Tier, string>;
+  /**
+   * `route` | `observe` | `off` — see FileConfig.routingMode. `forceRoute`
+   * below is derived from it (`route` -> true) and is what the routing
+   * decision at line ~410 actually reads; `off` additionally skips recording
+   * in `proxyPassthrough`.
+   */
+  routingMode?: 'route' | 'observe' | 'off';
   forceRoute: boolean;
   /**
    * Pin the Claude Code coordinator session to this tier, bypassing the
@@ -774,6 +781,9 @@ async function proxyPassthrough(
     // Record the traffic. A passthrough used to leave no trace, so a user
     // running without --force-route saw an empty ledger and a permanently
     // zero "passthrough" bar and concluded the proxy was not working.
+    // `routingMode: 'off'` is the one case that must stay silent — no routing
+    // and no recording, by definition (see FileConfig.routingMode).
+    const recordPassthrough = config.routingMode !== 'off';
     if (response.status !== 200 || !response.body) {
       return new Response(response.body, { status: response.status, headers: outHeaders });
     }
@@ -783,7 +793,7 @@ async function proxyPassthrough(
       try {
         const message = JSON.parse(text) as { model?: string; usage?: Anthropic.Usage };
         const cost = passthroughCost(message.model ?? requestedModel, message.usage, config);
-        if (cost) recordEvent(passthroughRouteEvent({ model: message.model ?? requestedModel, cost }), config);
+        if (cost && recordPassthrough) recordEvent(passthroughRouteEvent({ model: message.model ?? requestedModel, cost, routingMode: config.routingMode as 'observe' | undefined }), config);
       } catch {
         // Not a message document — forward it untouched, record nothing.
       }
@@ -804,7 +814,7 @@ async function proxyPassthrough(
         if (!parsed) return;
         const model = parsed.model ?? requestedModel;
         const cost = passthroughCost(model, parsed.usage, config);
-        if (cost) recordEvent(passthroughRouteEvent({ model, cost }), config);
+        if (cost && recordPassthrough) recordEvent(passthroughRouteEvent({ model, cost, routingMode: config.routingMode as 'observe' | undefined }), config);
       },
     });
     return new Response(response.body.pipeThrough(tap), { status: response.status, headers: outHeaders });

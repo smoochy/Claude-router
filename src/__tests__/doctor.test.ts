@@ -9,6 +9,7 @@ const HEALTHY: HealthInfo = {
   service: SERVICE_ID,
   classifier: 'hybrid',
   provider: 'anthropic',
+  routingMode: 'route',
   forceRoute: true,
   sessionModel: null,
   roleRouting: true,
@@ -51,6 +52,19 @@ describe('runDiagnostics', () => {
     const diagnostics = await runDiagnostics(OPTIONS, probes());
     assert.equal(failureCount(diagnostics), 0);
     assert.ok(diagnostics.every((d) => d.ok));
+  });
+
+  it('reports the active routing mode, warning (not failing) on off', async () => {
+    const routed = await runDiagnostics(OPTIONS, probes());
+    assert.match(find(routed, /Routing mode/).label, /Routing mode: route/);
+    assert.equal(find(routed, /Routing mode/).ok, true);
+
+    const off = await runDiagnostics(OPTIONS, probes({ checkHealth: async () => ({ ...HEALTHY, routingMode: 'off' }) }));
+    const offDiag = find(off, /Routing mode/);
+    assert.equal(offDiag.ok, false);
+    assert.equal(offDiag.warnOnly, true, 'off is a deliberate choice, not a failure');
+    assert.match(offDiag.label, /no routing, no recording/);
+    assert.equal(failureCount(off), 0, 'warnOnly keeps it out of the exit code');
   });
 
   it('accepts Claude Code\'s settings.json env as the route to the proxy', async () => {

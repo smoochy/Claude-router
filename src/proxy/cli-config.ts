@@ -40,6 +40,8 @@ export const PLIST_LABEL = 'com.claude-router.proxy';
 // ── Config file ────────────────────────────────────────────────────────────
 
 /** Shape of ~/.claude-router/config.json. Every field optional; CLI flags win. */
+export type RoutingMode = 'route' | 'observe' | 'off';
+
 export interface FileConfig {
   port?: number;
   /** Bind address (default 127.0.0.1 — use 0.0.0.0 to expose on the network) */
@@ -48,6 +50,18 @@ export interface FileConfig {
   classifier?: 'heuristic' | 'ai' | 'hybrid';
   provider?: Provider;
   region?: string;
+  /**
+   * `route` — the router picks the tier (today's `forceRoute: true`).
+   * `observe` — the client's model choice passes through untouched; every
+   * request is still recorded (today's `forceRoute: false`).
+   * `off` — no routing and no recording.
+   *
+   * `forceRoute` stays as a backwards-compatible alias so `CLAUDE_CODE_PROFILE`
+   * and config.json files written before this field existed keep working:
+   * `true` -> `route`, `false` -> `observe`. See {@link routingModeFromForceRoute}.
+   */
+  routingMode?: RoutingMode;
+  /** @deprecated Alias for `routingMode` — `true` -> `route`, `false` -> `observe`. */
   forceRoute?: boolean;
   /**
    * Where requests actually go (default `https://api.anthropic.com`). Point it at
@@ -85,6 +99,11 @@ export interface FileConfig {
   routing?: RoutingTuning;
 }
 
+/** `forceRoute` -> `routingMode`, per the alias contract on {@link FileConfig.routingMode}. */
+export function routingModeFromForceRoute(forceRoute: boolean): RoutingMode {
+  return forceRoute ? 'route' : 'observe';
+}
+
 export interface LoadedFileConfig {
   config: FileConfig;
   loaded: boolean;
@@ -109,6 +128,8 @@ export interface ServeOptions {
   classifier: 'heuristic' | 'ai' | 'hybrid';
   provider: Provider;
   region: string;
+  routingMode: RoutingMode;
+  /** @deprecated Derived from `routingMode` (`route` -> true) — kept for callers that still check the boolean. */
   forceRoute: boolean;
   upstream: string;
   /** '' = disabled (classify every request); a tier name pins the coordinator. */
@@ -144,7 +165,7 @@ type OptionKind =
  */
 interface OptionSpec {
   /** Corresponding key on ServeOptions / FileConfig. */
-  key: 'port' | 'host' | 'verbose' | 'classifier' | 'provider' | 'region' | 'forceRoute' | 'upstream' | 'sessionModel' | 'restoreDelegation' | 'roleRouting';
+  key: 'port' | 'host' | 'verbose' | 'classifier' | 'provider' | 'region' | 'forceRoute' | 'routingMode' | 'upstream' | 'sessionModel' | 'restoreDelegation' | 'roleRouting';
   flags: string[];
   kind: OptionKind;
   default: string | number | boolean;
@@ -163,8 +184,12 @@ export const OPTIONS: readonly OptionSpec[] = [
     arg: 'number', help: 'Port' },
   { key: 'host',       flags: ['--host'],          kind: { type: 'string' },                     default: DEFAULT_HOST,
     arg: 'address', help: 'Bind address — 127.0.0.1 is local only; 0.0.0.0 exposes the proxy to the network' },
+  { key: 'routingMode', flags: ['--routing-mode'], kind: { type: 'enum', values: ['route', 'observe', 'off'] }, default: 'observe', configAlways: true,
+    arg: 'mode', help: '`route` routes, `observe` passes through and still records, `off` passes through and records nothing' },
+  // Deprecated alias for routingMode (true -> route, false -> observe). Kept for
+  // scripts/configs written before routingMode existed; see parseServeArgs.
   { key: 'forceRoute', flags: ['--force-route'],   kind: { type: 'boolean' },                    default: false, configAlways: true,
-    help: 'Route even explicit model requests — required for Claude Code' },
+    help: 'Deprecated alias for --routing-mode route — required for Claude Code' },
   { key: 'verbose',    flags: ['--verbose', '-v'], kind: { type: 'boolean' },                    default: false, configAlways: true,
     help: 'Log each routing decision' },
   { key: 'classifier', flags: ['--classifier'],    kind: { type: 'enum', values: ['heuristic', 'ai', 'hybrid'] }, default: 'hybrid', configAlways: true,
@@ -230,23 +255,41 @@ function coerce(spec: OptionSpec, raw: string | undefined): string | number | bo
  */
 export function parseServeArgs(args: string[], file: FileConfig = {}): ServeOptions {
   const values: Record<string, string | number | boolean> = {};
+  // Alias: a file with `forceRoute` but no `routingMode` of its own picks the
+  // routingMode default — covers CLAUDE_CODE_PROFILE and config.json files
+  // written before routingMode existed.
+  const fileRoutingModeDefault = file.routingMode ?? (file.forceRoute !== undefined ? routingModeFromForceRoute(file.forceRoute) : undefined);
   for (const spec of OPTIONS) {
+    if (spec.key === 'routingMode') {
+      values.routingMode = fileRoutingModeDefault ?? spec.default;
+      continue;
+    }
     const fromFile = (file as Record<string, unknown>)[spec.key];
     values[spec.key] = (fromFile ?? spec.default) as string | number | boolean;
   }
 
+  const explicitlySet = new Set<string>();
   for (let i = 0; i < args.length; i++) {
     const arg = args[i]!;
     const spec = OPTIONS.find((o) => o.flags.includes(arg));
     if (!spec) {
       throw new CliUsageError(`Unknown option '${arg}'. Run 'claude-router help' for usage.`);
     }
+    explicitlySet.add(spec.key);
     if (spec.kind.type === 'boolean') {
       values[spec.key] = true;
     } else {
       values[spec.key] = coerce(spec, args[++i]);
     }
   }
+
+  // The CLI flag alias: --force-route without an explicit --routing-mode picks
+  // the mode it used to mean. routingMode is then the single source of truth —
+  // forceRoute is recomputed from it so the two can never disagree.
+  if (explicitlySet.has('forceRoute') && !explicitlySet.has('routingMode')) {
+    values.routingMode = routingModeFromForceRoute(values.forceRoute as boolean);
+  }
+  values.forceRoute = values.routingMode === 'route';
 
   // The config file is where these keys actually live for most users, so this
   // is the call site that matters. Warn after parsing, before the proxy starts.
