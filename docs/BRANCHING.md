@@ -2,8 +2,14 @@
 
 This fork keeps two long-lived branches with different jobs:
 
-- **`master`** is a pure mirror of upstream (`Serhii-Leniv/claude-router`). Nothing is committed here directly; it only ever moves forward by pulling upstream in. No pull request is ever opened back against upstream from this fork.
+- **`master`** is a pure mirror of upstream (`Serhii-Leniv/claude-router`), byte-identical to upstream's own tree. Nothing is committed here directly - not own code, not own CI, not centrally managed repository infrastructure; it only ever moves forward by pulling upstream in. No pull request is ever opened back against upstream from this fork.
 - **`smoo/main`** is where all of this fork's own work happens: patches, model/pricing table updates, release tags, and this fork's own CI config changes. It is the default branch, so PRs and the repository UI land here.
+
+## Centrally managed files
+
+`.github/dependabot.yml` is written by a central security-baseline script through GitHub's contents API with no `branch` parameter, so it always lands on the **default branch**, which is `smoo/main`. Dependabot itself only reads the config from the default branch, so that is also the only copy that does anything. A copy on `master` is read by nobody and only makes the next upstream merge conflict on a line upstream never shipped - two such own commits (`5ebce7b`, `202b40e`) were removed from `master` on 2026-10-10 for exactly that reason, and `master` was reset to upstream's tip.
+
+The same holds for anything else that script manages: it belongs on `smoo/main`, never on `master`.
 
 ## Pulling upstream in
 
