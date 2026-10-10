@@ -12,6 +12,19 @@ const TIER_BAR_LABEL: Record<DisplayTier, string> = {
   passthrough: 'Pass',
 };
 
+/**
+ * Derived per-event label, not a filter (#4263/#4264): compares the pilotfish
+ * pin against the billed model rather than reading a stored verdict. Absent
+ * `requestedModel` means either no pin was sent or the line predates the
+ * field — both render as "-", never as a wrong label.
+ */
+function pinLabel(e: RouteEvent): string {
+  if (!e.requestedModel) return '<span class="none">-</span>';
+  return e.requestedModel === e.model
+    ? '<span class="badge badge-pin-honored" title="pilotfish pin matched the billed model">pin honored</span>'
+    : `<span class="badge badge-pin-overridden" title="pilotfish asked for ${esc(e.requestedModel)}">overridden</span>`;
+}
+
 function esc(s: string): string {
   return s
     .replace(/&/g, '&amp;')
@@ -122,6 +135,7 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
         <td>${esc(e.timestamp.replace('T', ' ').slice(0, 19))}</td>
         <td><span class="badge badge-${esc(String(e.tier))}">${esc(String(e.tier))}</span></td>
         <td>${esc(e.model)}</td>
+        <td class="pin">${pinLabel(e)}</td>
         <td class="reason">${e.reason ? esc(e.reason) : '<span class="none">-</span>'}</td>
         <td class="role">${e.role ? esc(e.role) : e.coordinator ? 'coordinator' : '<span class="none">-</span>'}${e.dispatched ? ' <span class="badge badge-retry" title="called the Agent tool">dispatched</span>' : ''}</td>
         <td>${e.priced === false ? '<span class="unknown" title="no pricing for this model">—</span>' : `$${(e.costCents / 100).toFixed(4)}`}</td>
@@ -372,6 +386,9 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
     .role-row:last-child { border-bottom: 0; }
     .role-name         { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
     .badge-retry       { background: rgba(246, 70, 93, 0.1);   color: var(--red);    border-color: rgba(246, 70, 93, 0.4); }
+    .badge-pin-honored    { background: rgba(14, 203, 129, 0.1); color: var(--green); border-color: rgba(14, 203, 129, 0.35); }
+    .badge-pin-overridden { background: rgba(255, 209, 102, 0.1); color: var(--gold);  border-color: rgba(255, 209, 102, 0.4); }
+    td.pin             { font-size: 12px; }
     .none { color: var(--ink-dim); }
     .unknown { color: var(--gold); }
     .warn {
@@ -476,6 +493,7 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
             <th>Time</th>
             <th>Tier</th>
             <th>Model</th>
+            <th>Pin</th>
             <th>Reason</th>
             <th>Role</th>
             <th>Cost</th>
