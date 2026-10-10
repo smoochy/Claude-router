@@ -15,6 +15,7 @@ import { term } from './term.js';
 import { appendEvent } from './history.js';
 import { buildRouteEvent, errorRouteEvent, passthroughRouteEvent, type RouteContext, type RouteEvent } from './route-event.js';
 import { resolveRole } from '../roles.js';
+import { isValidSessionId } from './session-names.js';
 import { stripDelegationBlockers, describeStrip } from './delegation.js';
 import type { ClassifyInput, ClassifyResult, ModelPricing, RoutingTuning, Tier } from '../types.js';
 
@@ -485,7 +486,15 @@ export async function handleMessages(
   // `dispatchable` is whether this turn was even offered the Agent tool, so a
   // dispatch *rate* has an honest denominator; `nested` is a subagent that
   // itself carries a parent agent id — a leaf that delegated.
-  const sessionId = c.req.header('x-claude-code-session-id');
+  // Validated here, at the boundary where the header is read (#4273): this is
+  // later used to build a filesystem path (session-names.ts) with no
+  // containment check of its own, so a traversal-shaped id (e.g.
+  // `../../../../etc/passwd`) must never reach a RouteEvent in the first
+  // place — every downstream consumer inherits the rejection for free. A
+  // rejected id is simply dropped, same as a session id never sent; the
+  // dashboard's derived-label fallback (#4267) still renders the row (#4253).
+  const rawSessionId = c.req.header('x-claude-code-session-id');
+  const sessionId = rawSessionId && isValidSessionId(rawSessionId) ? rawSessionId : undefined;
   const coordinator = !isSubagent && hasTools;
   const context: RouteContext = {
     ...(sessionId ? { sessionId } : {}),
