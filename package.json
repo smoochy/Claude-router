@@ -46,11 +46,11 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Serhii-Leniv/claude-router.git"
+    "url": "git+https://github.com/smoochy/Claude-router.git"
   },
-  "homepage": "https://serhii-leniv.github.io/claude-router/",
+  "homepage": "https://github.com/smoochy/Claude-router",
   "bugs": {
-    "url": "https://github.com/Serhii-Leniv/claude-router/issues"
+    "url": "https://github.com/smoochy/Claude-router/issues"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
