@@ -24,11 +24,59 @@ const TIER_BAR_LABEL: Record<DisplayTier, string> = {
  * field — both render as "-", never as a wrong label.
  */
 function pinLabel(e: RouteEvent): string {
-  if (!e.requestedModel) return '<span class="none">-</span>';
+  if (!e.requestedModel) return '<span class="none" title="No pin: the client sent no model, or this line predates the field.">-</span>';
   return e.requestedModel === e.model
-    ? '<span class="badge badge-pin-honored" title="pilotfish pin matched the billed model">pin honored</span>'
-    : `<span class="badge badge-pin-overridden" title="pilotfish asked for ${esc(e.requestedModel)}">overridden</span>`;
+    ? `<span class="badge badge-pin-honored" title="Pin honored: the client asked for ${esc(e.requestedModel)} and that is the model that was billed.">pin honored</span>`
+    : `<span class="badge badge-pin-overridden" title="Overridden: the client asked for ${esc(e.requestedModel)} but the router billed ${esc(e.model)}.">overridden</span>`;
 }
+
+/** Filterable form of the pin comparison: honored / overridden, or absent when no model was requested. */
+function pinState(e: RouteEvent): string | undefined {
+  if (!e.requestedModel) return undefined;
+  return e.requestedModel === e.model ? 'honored' : 'overridden';
+}
+
+const PIN_VALUES = ['honored', 'overridden'];
+
+/** Plain-language meaning of a routing reason, matched on its prefix; unknown reasons say so rather than guess. */
+export function reasonHelp(reason: string | undefined): string {
+  if (!reason) return 'No reason recorded for this request.';
+  const table: Array<[string, string]> = [
+    ['agentic:mid-loop', 'Agentic session already running a tool loop: kept on sonnet.'],
+    ['agentic:depth+long-horizon', 'Agentic request asking for depth over a long horizon: sent to fable.'],
+    ['agentic:depth-requested', 'Agentic request that asked for deep reasoning: sent to opus.'],
+    ['agentic:trivial', 'Trivial agentic request, opt-in cheap path: sent to haiku.'],
+    ['agentic:default', 'Agentic session with no stronger signal: default sonnet.'],
+    ['single-turn:depth+long-horizon', 'Single prompt asking for depth over a long horizon: sent to fable.'],
+    ['single-turn:depth-requested', 'Single prompt that asked for deep reasoning: sent to opus.'],
+    ['single-turn:short mechanical', 'Short mechanical transform: sent to haiku.'],
+    ['single-turn:default', 'Single prompt with no stronger signal: default sonnet.'],
+    ['subagent:readonly-tools', 'Subagent with read-only tools, treated as recon: pinned to haiku.'],
+    ['subagent:write-tools', 'Subagent with write tools, treated as a builder.'],
+    ['role:', 'Role named by an explicit marker in the prompt.'],
+    ['agent:', 'Role taken from the agent type of the subagent.'],
+  ];
+  const hit = table.find(([p]) => reason.startsWith(p));
+  return hit ? hit[1] : `Routing reason ${reason} (no description for this one).`;
+}
+
+/** Plain-language meaning of the role cell. */
+function roleHelp(e: RouteEvent): string {
+  if (e.role) return `Role ${e.role}: the kind of work this subagent was doing${e.roleSource ? ` (detected from ${e.roleSource})` : ''}.`;
+  if (e.coordinator) return 'Coordinator: the main session that can dispatch subagents.';
+  return 'No role: an ordinary request outside any subagent.';
+}
+
+function confidenceHelp(e: RouteEvent): string {
+  return `Classifier confidence ${e.confidence.toFixed(2)} on a 0 to 1 scale${e.classifier ? ` (${e.classifier})` : ''}. 1.00 means a fixed rule or pin, lower means a heuristic guess.`;
+}
+
+const HEADER_HELP = {
+  pin: 'Whether the model the client asked for (pilotfish pin) is the one that was billed: honored or overridden.',
+  reason: 'The routing rule that picked the tier. Hover an entry for its meaning.',
+  role: 'What kind of request this was: coordinator, a subagent role, or none.',
+  confidence: 'How sure the classifier was, 0 to 1. 1.00 means a fixed rule or pin.',
+} as const;
 
 function esc(s: string): string {
   return s
@@ -86,6 +134,9 @@ export interface DashboardFilters {
   role?: string;
   model?: string;
   tier?: string;
+  /** `honored` | `overridden` | NONE (no model requested). */
+  pin?: string;
+  reason?: string;
   session?: string;
   window?: TimeWindow;
   auto?: boolean;
@@ -125,6 +176,8 @@ export function filterHistory(history: RouteEvent[], filters: DashboardFilters):
   if (filters.role) out = out.filter((e) => (filters.role === NONE ? roleLabel(e) === undefined : roleLabel(e) === filters.role));
   if (filters.model) out = out.filter((e) => e.model === filters.model);
   if (filters.tier) out = out.filter((e) => String(e.tier) === filters.tier);
+  if (filters.pin) out = out.filter((e) => (filters.pin === NONE ? pinState(e) === undefined : pinState(e) === filters.pin));
+  if (filters.reason) out = out.filter((e) => (filters.reason === NONE ? e.reason === undefined : e.reason === filters.reason));
   if (filters.session) out = out.filter((e) => (filters.session === NONE ? e.sessionId === undefined : e.sessionId === filters.session));
   if (filters.window) out = out.filter((e) => inWindow(e.timestamp, filters.window!));
   return out;
@@ -183,18 +236,47 @@ function deriveSessionLabel(events: RouteEvent[]): string {
 }
 
 /**
- * Explains a net saved figure that has a negative side: gross saved vs the
- * extra cost of events served on a model priced above the baseline, with the
- * pre-#4264 events (no requestedModel, baseline unknown) as their own slice.
- * Empty when nothing was extra, so a plain positive figure stays unadorned.
+ * A stat card whose explanation lives in a hover/focus popover rather than in
+ * prose under the figure, so every card keeps the same height and the row does
+ * not reflow when a scope or filter changes which notes apply.
+ */
+function statCard(label: string, value: string, valueClass: string, sub: string, tipLines: string[]): string {
+  const tip = tipLines.length > 0
+    ? `<div class="tip-body" role="tooltip">${tipLines.map((l) => `<div>${l}</div>`).join('')}</div>`
+    : '';
+  return `<div class="stat-card card${tip ? ' has-tip' : ''}"${tip ? ' tabindex="0"' : ''}>
+      <div class="label">${label}</div>
+      <div class="value${valueClass ? ` ${valueClass}` : ''}">${value}</div>
+      <div class="sub">${sub || '&nbsp;'}</div>
+      ${tip}
+    </div>`;
+}
+
+const usd2 = (c: number): string => `$${(c / 100).toFixed(2)}`;
+
+/**
+ * Short marker under a net saved figure that has a negative side; empty when
+ * nothing was extra, so a plain positive figure stays unadorned.
  */
 export function extraCostNote(t: LifetimeStats): string {
   if (t.extra.events === 0) return '';
-  const usd = (c: number): string => `$${(c / 100).toFixed(2)}`;
-  const unknown = t.extra.unknownEvents > 0
-    ? ` · ${t.extra.unknownEvents} without requestedModel (${usd(t.extra.unknownCents)}, baseline unknown)`
-    : '';
-  return `<div class="sub">net of ${usd(t.savedCents + t.extra.cents)} saved and <span class="negative">${usd(t.extra.cents)} extra cost</span> (${t.extra.events} event${t.extra.events === 1 ? '' : 's'} on a model above the baseline${unknown})</div>`;
+  return `<span class="negative">${usd2(t.extra.cents)} extra cost</span>`;
+}
+
+/**
+ * Popover lines for a net saved figure: gross saved vs the extra cost of
+ * events served on a model priced above the baseline, with the pre-#4264
+ * events (no requestedModel, baseline unknown) as their own slice.
+ */
+export function savedTipLines(t: LifetimeStats): string[] {
+  const lines = ['Net: what the requested model would have cost, minus what was paid.'];
+  if (t.extra.events === 0) return lines;
+  lines.push(`Gross saved <b>${usd2(t.savedCents + t.extra.cents)}</b>`);
+  lines.push(`Extra cost <b class="negative">${usd2(t.extra.cents)}</b> &middot; ${t.extra.events} event${t.extra.events === 1 ? '' : 's'} on a model above the baseline`);
+  if (t.extra.unknownEvents > 0) {
+    lines.push(`${t.extra.unknownEvents} without requestedModel <b>${usd2(t.extra.unknownCents)}</b> &middot; baseline unknown`);
+  }
+  return lines;
 }
 
 /** `opusModel` is the effective `config.tiers.opus`; defaults to the compiled-in one. */
@@ -206,27 +288,27 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
 
   const totalRequests = totals.requests;
   const totalCost = totals.costCents;
-  const totalSaved = totals.savedCents;
   const retried = totals.retried;
-  // Orchestration cards render only once there is a coordinator turn to count.
+  // Every card is always rendered ("-" when there is nothing to count) so the
+  // row keeps one shape across scopes and filters.
   const { turns, dispatched, nested } = totals.dispatch;
-  const dispatchCard = turns > 0
-    ? `<div class="stat-card card">
-      <div class="label">Dispatch Rate</div>
-      <div class="value">${((dispatched / turns) * 100).toFixed(0)}%</div>
-      <div class="sub">${dispatched} of ${turns} coordinator turns${nested > 0 ? ` · <span class="negative">${nested} nested</span>` : ''}</div>
-    </div>`
-    : '';
+  const dispatchCard = statCard(
+    'Dispatch Rate',
+    turns > 0 ? `${((dispatched / turns) * 100).toFixed(0)}%` : '-',
+    '',
+    turns > 0 ? `${dispatched}/${turns}${nested > 0 ? ` &middot; <span class="negative">${nested} nested</span>` : ''}` : '',
+    ['Share of coordinator turns that called the Agent tool.', `${dispatched} of ${turns} coordinator turns${nested > 0 ? `, ${nested} nested` : ''}`],
+  );
   const allOpus = totals.tokens.input + totals.tokens.output > 0
     ? counterfactualCents(totals.tokens, opusModel, DEFAULT_PRICING)
     : 0;
-  const counterfactualCard = allOpus > 0
-    ? `<div class="stat-card card">
-      <div class="label">vs All-Opus</div>
-      <div class="value orange">$${(allOpus / 100).toFixed(4)}</div>
-      <div class="sub">same tokens on ${esc(opusModel)} · upper bound</div>
-    </div>`
-    : '';
+  const counterfactualCard = statCard(
+    'vs All-Opus',
+    allOpus > 0 ? `$${(allOpus / 100).toFixed(4)}` : '-',
+    allOpus > 0 ? 'orange' : '',
+    allOpus > 0 ? 'upper bound' : '',
+    [`Same tokens priced on ${esc(opusModel)}. An upper bound, not a measurement.`],
+  );
   const roleRows = Object.entries(totals.byRole)
     .sort((a, b) => b[1].costCents - a[1].costCents)
     .map(([name, r]) => `<div class="role-row"><span class="role-name">${esc(name)}</span><span>${r.requests} req</span><span>$${(r.costCents / 100).toFixed(4)}</span></div>`)
@@ -248,15 +330,21 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
 
   // A card reading "$0.0000 saved" is indistinguishable from a quiet week, so
   // any unpriced call gets called out next to the figures it silently deflates.
-  const unpricedNote = (models: Record<string, number>): string => {
+  const unpricedNote = (models: Record<string, number>): { sub: string; tip: string[] } => {
     const entries = Object.entries(models);
-    if (entries.length === 0) return '';
+    if (entries.length === 0) return { sub: '', tip: [] };
     const calls = entries.reduce((n, [, c]) => n + c, 0);
     const names = entries.map(([m]) => m).join(', ');
-    return `<div class="warn">${calls} call${calls === 1 ? '' : 's'} unpriced: ${esc(names)}</div>`;
+    return {
+      sub: `<span class="warn">${calls} unpriced</span>`,
+      tip: [`${calls} call${calls === 1 ? '' : 's'} unpriced: ${esc(names)}`],
+    };
   };
-  const sessionUnpriced = unpricedNote(totals.unpricedModels);
-  const lifetimeUnpriced = lifetime ? unpricedNote(lifetime.unpricedModels) : '';
+  const savedCard = (label: string, t: LifetimeStats, digits: number | undefined, unpriced: { sub: string; tip: string[] }): string => {
+    const d = savedCentsDisplay(t.savedCents, false, digits);
+    const sub = [extraCostNote(t), unpriced.sub].filter(Boolean).join(' &middot; ');
+    return statCard(label, d.text, d.tone === 'neutral' ? '' : d.tone, sub, [...savedTipLines(t), ...unpriced.tip]);
+  };
 
   const recent = filtered.slice(-50).reverse();
 
@@ -301,6 +389,9 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
   const roleOptions = simpleOptions(roleValues.values, roleValues.hasNone, 'No role', filters.role);
   const modelOptions = simpleOptions(modelValues.values, false, '', filters.model);
   const tierOptions = simpleOptions(tierValues.values, false, '', filters.tier);
+  const pinOptions = simpleOptions(PIN_VALUES, true, 'No pin', filters.pin);
+  const reasonValues = distinct(history, (e) => e.reason);
+  const reasonOptions = simpleOptions(reasonValues.values, reasonValues.hasNone, 'No reason', filters.reason);
 
   const auto = filters.auto !== false;
   // Carries the active filters as query params so the refresh target keeps
@@ -310,6 +401,8 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
   if (filters.role) refreshParams.set('role', filters.role);
   if (filters.model) refreshParams.set('model', filters.model);
   if (filters.tier) refreshParams.set('tier', filters.tier);
+  if (filters.pin) refreshParams.set('pin', filters.pin);
+  if (filters.reason) refreshParams.set('reason', filters.reason);
   if (filters.session) refreshParams.set('session', filters.session);
   if (filters.window && filters.window !== 'all') refreshParams.set('window', filters.window);
   if (filters.scope === 'all') refreshParams.set('scope', 'all');
@@ -325,11 +418,11 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
         <td><span class="badge badge-${esc(String(e.tier))}">${esc(String(e.tier))}</span></td>
         <td>${esc(e.model)}</td>
         <td class="pin">${pinLabel(e)}</td>
-        <td class="reason">${e.reason ? esc(e.reason) : '<span class="none">-</span>'}</td>
-        <td class="role">${e.role ? esc(e.role) : e.coordinator ? 'coordinator' : '<span class="none">-</span>'}${e.dispatched ? ' <span class="badge badge-retry" title="called the Agent tool">dispatched</span>' : ''}</td>
+        <td class="reason" title="${esc(reasonHelp(e.reason))}">${e.reason ? esc(e.reason) : '<span class="none">-</span>'}</td>
+        <td class="role" title="${esc(roleHelp(e))}">${e.role ? esc(e.role) : e.coordinator ? 'coordinator' : '<span class="none">-</span>'}${e.dispatched ? ' <span class="badge badge-retry" title="This coordinator turn called the Agent tool.">dispatched</span>' : ''}</td>
         <td>${e.priced === false ? '<span class="unknown" title="no pricing for this model">—</span>' : `$${(e.costCents / 100).toFixed(4)}`}</td>
         <td class="${e.priced === false ? 'unknown' : e.savedCents >= 0 ? 'positive' : 'negative'}">${e.priced === false ? '—' : `$${(e.savedCents / 100).toFixed(4)}`}</td>
-        <td>${e.confidence.toFixed(2)}</td>
+        <td title="${esc(confidenceHelp(e))}">${e.confidence.toFixed(2)}</td>
         <td>${e.inputTokens}</td>
         <td>${e.outputTokens}</td>
         <td>${e.retried ? `<span class="badge badge-retry">${esc(e.retryReason ?? '')}</span>` : '<span class="none">-</span>'}</td>
@@ -446,7 +539,11 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
     }
     .auto-toggle label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
     .mode-filter { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 11px; color: var(--ink-dim); }
+    th.help { cursor: help; text-decoration: underline dotted; text-underline-offset: 4px; }
+    td[title] { cursor: help; }
     .mode-filter select {
+      max-width: 22ch;
+      text-overflow: ellipsis;
       background: var(--void);
       color: var(--ink);
       border: 1px solid var(--edge-soft);
@@ -476,8 +573,22 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
       box-shadow: 0 1px 0 rgba(255, 255, 255, 0.06) inset, 0 12px 34px rgba(0, 0, 0, 0.5), 0 0 28px rgba(247, 147, 26, 0.12);
     }
 
-    .stats { display: flex; gap: 10px; margin-bottom: 26px; flex-wrap: wrap; }
-    .stat-card { min-width: 132px; flex: 1 1 auto; padding: 11px 14px 12px; }
+    /* One grid for every scope: cards never change height or count, so the row does not jump */
+    .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 26px; }
+    .stat-card { position: relative; min-width: 0; padding: 11px 14px 12px; }
+    .stat-card .sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .stat-card.has-tip .value { text-decoration: underline dotted; text-decoration-color: var(--ink-dim); text-underline-offset: 5px; cursor: help; }
+    /* Hover or keyboard focus opens the explanation, same pattern as the cryo-dash schema tab */
+    .tip-body {
+      position: absolute; z-index: 20; top: calc(100% + 6px); left: 0; display: none;
+      width: max-content; max-width: 320px; padding: 8px 10px;
+      font-family: var(--sans); font-size: 12px; line-height: 1.5; color: var(--ink);
+      background: var(--void); border: 1px solid var(--edge); border-radius: 8px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.55);
+    }
+    .tip-body b { font-family: var(--mono); font-variant-numeric: tabular-nums; margin-left: 6px; }
+    .stat-card:hover .tip-body, .stat-card:focus-within .tip-body, .stat-card:focus .tip-body { display: block; }
+    .stat-card:hover { z-index: 21; }
     .stat-card:hover { transform: translateY(-2px); }
     .stat-card .label {
       font-family: var(--mono);
@@ -585,17 +696,7 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
     td.pin             { font-size: 12px; }
     .none { color: var(--ink-dim); }
     .unknown { color: var(--gold); }
-    .warn {
-      margin-top: 9px;
-      padding: 5px 10px;
-      font-family: var(--mono);
-      font-size: 10.5px;
-      line-height: 1.5;
-      color: var(--gold);
-      background: rgba(255, 209, 102, 0.07);
-      border: 1px solid rgba(255, 209, 102, 0.25);
-      border-radius: 8px;
-    }
+    .warn { color: var(--gold); }
     .warn::before { content: '\\26A0 '; }
     .positive { color: var(--green); }
     .negative { color: var(--red); text-shadow: 0 0 12px rgba(246, 70, 93, 0.35); }
@@ -646,6 +747,14 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
       <select id="tier" name="tier" onchange="this.form.submit()">${tierOptions}</select>
     </div>
     <div class="mode-filter">
+      <label for="pin">Pin</label>
+      <select id="pin" name="pin" onchange="this.form.submit()">${pinOptions}</select>
+    </div>
+    <div class="mode-filter">
+      <label for="reason">Reason</label>
+      <select id="reason" name="reason" onchange="this.form.submit()">${reasonOptions}</select>
+    </div>
+    <div class="mode-filter">
       <label for="session">Session</label>
       <select id="session" name="session" onchange="this.form.submit()">${sessionOptions}</select>
     </div>
@@ -654,51 +763,20 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
       <select id="window" name="window" onchange="this.form.submit()">${windowOptions}</select>
     </div>
     <div class="mode-filter auto-toggle">
-      <input type="hidden" name="auto" value="0">
-      <label for="auto"><input type="checkbox" id="auto" name="auto" value="1"${auto ? ' checked' : ''} onchange="this.form.submit()"> Auto-update</label>
+      <input type="hidden" id="auto-state" name="auto" value="${auto ? '1' : '0'}">
+      <label for="auto"><input type="checkbox" id="auto"${auto ? ' checked' : ''} onchange="document.getElementById('auto-state').value = this.checked ? '1' : '0'; this.form.submit()"> Auto-update</label>
     </div>
   </form>
 
   <div class="stats">
-    <div class="stat-card card">
-      <div class="label">Session Requests</div>
-      <div class="value blue">${totalRequests}</div>
-    </div>
-    <div class="stat-card card">
-      <div class="label">Session Cost</div>
-      <div class="value orange">$${(totalCost / 100).toFixed(4)}</div>
-    </div>
-    ${(() => {
-      const d = savedCentsDisplay(totalSaved, false, 4);
-      const toneClass = d.tone === 'neutral' ? '' : d.tone;
-      return `<div class="stat-card card">
-      <div class="label">Session Saved</div>
-      <div class="value${toneClass ? ` ${toneClass}` : ''}">${d.text}</div>
-      ${extraCostNote(totals)}
-      ${sessionUnpriced}
-    </div>`;
-    })()}
-    <div class="stat-card card">
-      <div class="label">Auto-retried</div>
-      <div class="value">${retried}</div>
-    </div>
+    ${statCard('Session Requests', String(totalRequests), 'blue', '', [])}
+    ${statCard('Session Cost', `$${(totalCost / 100).toFixed(4)}`, 'orange', '', [])}
+    ${savedCard('Session Saved', totals, 4, unpricedNote(totals.unpricedModels))}
+    ${statCard('Auto-retried', String(retried), '', '', [])}
     ${dispatchCard}
     ${counterfactualCard}
-    ${lifetime ? (() => {
-      const d = savedCentsDisplay(lifetime.savedCents);
-      const toneClass = d.tone === 'neutral' ? '' : d.tone;
-      return `
-    <div class="stat-card card">
-      <div class="label">Lifetime Saved</div>
-      <div class="value${toneClass ? ` ${toneClass}` : ''}">${d.text}</div>
-      ${extraCostNote(lifetime)}
-      ${lifetimeUnpriced}
-    </div>
-    <div class="stat-card card">
-      <div class="label">Lifetime Requests</div>
-      <div class="value blue">${lifetime.requests}</div>
-    </div>`;
-    })() : ''}
+    ${lifetime ? savedCard('Lifetime Saved', lifetime, undefined, unpricedNote(lifetime.unpricedModels)) : ''}
+    ${lifetime ? statCard('Lifetime Requests', String(lifetime.requests), 'blue', '', []) : ''}
   </div>
 
   ${roleRows ? `<div class="section-label">By Role</div>
@@ -720,12 +798,12 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
             <th>Time</th>
             <th>Tier</th>
             <th>Model</th>
-            <th>Pin</th>
-            <th>Reason</th>
-            <th>Role</th>
+            <th title="${esc(HEADER_HELP.pin)}" class="help">Pin</th>
+            <th title="${esc(HEADER_HELP.reason)}" class="help">Reason</th>
+            <th title="${esc(HEADER_HELP.role)}" class="help">Role</th>
             <th>Cost</th>
             <th>Saved</th>
-            <th>Confidence</th>
+            <th title="${esc(HEADER_HELP.confidence)}" class="help">Confidence</th>
             <th>In Tokens</th>
             <th>Out Tokens</th>
             <th>Retry</th>

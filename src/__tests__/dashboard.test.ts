@@ -142,8 +142,15 @@ describe('renderDashboard - net saved, extra cost and the All-Opus card', () => 
 
   it('explains the net headline with gross saved, extra cost and the unknown slice', () => {
     const html = renderDashboard(history, lifetime);
-    assert.match(html, /net of \$0\.04 saved and <span class="negative">\$0\.05 extra cost<\/span> \(2 events/);
-    assert.match(html, /1 without requestedModel \(\$0\.02, baseline unknown\)/);
+    assert.match(html, /<span class="negative">\$0\.05 extra cost<\/span>/);
+    assert.match(html, /Gross saved <b>\$0\.04<\/b>/);
+    assert.match(html, /2 events on a model above the baseline/);
+    assert.match(html, /1 without requestedModel <b>\$0\.02<\/b> &middot; baseline unknown/);
+  });
+
+  it('sends auto exactly once, from a single hidden input', () => {
+    const html = renderDashboard(history, lifetime);
+    assert.equal(html.match(/name="auto"/g)?.length, 1);
   });
 
   it('adds no extra-cost line when nothing was negative', () => {
@@ -151,10 +158,32 @@ describe('renderDashboard - net saved, extra cost and the All-Opus card', () => 
   });
 
   it('names the configured opus tier on the All-Opus card, not the compiled-in default', () => {
-    assert.match(renderDashboard([e()], undefined, {}, 'claude-opus-9-9'), /same tokens on claude-opus-9-9/);
+    assert.match(renderDashboard([e()], undefined, {}, 'claude-opus-9-9'), /Same tokens priced on claude-opus-9-9/);
   });
 
   it('defaults the All-Opus card to the compiled-in 5.5 tier', () => {
-    assert.match(renderDashboard([e()]), /same tokens on claude-opus-5-5/);
+    assert.match(renderDashboard([e()]), /Same tokens priced on claude-opus-5-5/);
+  });
+});
+
+describe('pin and reason filters', () => {
+  const h = [
+    e({ requestedModel: 'claude-sonnet-5', model: 'claude-sonnet-5', reason: 'agentic:default' }),
+    e({ requestedModel: 'claude-opus-5', model: 'claude-sonnet-5', reason: 'role:recon' }),
+    e({}),
+  ];
+  it('filters by pin state and by absent pin', () => {
+    assert.equal(filterHistory(h, { pin: 'honored' }).length, 1);
+    assert.equal(filterHistory(h, { pin: 'overridden' }).length, 1);
+    assert.equal(filterHistory(h, { pin: '__none__' }).length, 1);
+  });
+  it('filters by exact reason and by absent reason', () => {
+    assert.equal(filterHistory(h, { reason: 'role:recon' }).length, 1);
+    assert.equal(filterHistory(h, { reason: '__none__' }).length, 1);
+  });
+  it('explains reasons and headers on hover', () => {
+    const html = renderDashboard(h);
+    assert.match(html, /<th title="[^"]+" class="help">Confidence<\/th>/);
+    assert.match(html, /title="Role named by an explicit marker in the prompt\."/);
   });
 });
