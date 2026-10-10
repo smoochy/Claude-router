@@ -24,11 +24,59 @@ const TIER_BAR_LABEL: Record<DisplayTier, string> = {
  * field — both render as "-", never as a wrong label.
  */
 function pinLabel(e: RouteEvent): string {
-  if (!e.requestedModel) return '<span class="none">-</span>';
+  if (!e.requestedModel) return '<span class="none" title="No pin: the client sent no model, or this line predates the field.">-</span>';
   return e.requestedModel === e.model
-    ? '<span class="badge badge-pin-honored" title="pilotfish pin matched the billed model">pin honored</span>'
-    : `<span class="badge badge-pin-overridden" title="pilotfish asked for ${esc(e.requestedModel)}">overridden</span>`;
+    ? `<span class="badge badge-pin-honored" title="Pin honored: the client asked for ${esc(e.requestedModel)} and that is the model that was billed.">pin honored</span>`
+    : `<span class="badge badge-pin-overridden" title="Overridden: the client asked for ${esc(e.requestedModel)} but the router billed ${esc(e.model)}.">overridden</span>`;
 }
+
+/** Filterable form of the pin comparison: honored / overridden, or absent when no model was requested. */
+function pinState(e: RouteEvent): string | undefined {
+  if (!e.requestedModel) return undefined;
+  return e.requestedModel === e.model ? 'honored' : 'overridden';
+}
+
+const PIN_VALUES = ['honored', 'overridden'];
+
+/** Plain-language meaning of a routing reason, matched on its prefix; unknown reasons say so rather than guess. */
+export function reasonHelp(reason: string | undefined): string {
+  if (!reason) return 'No reason recorded for this request.';
+  const table: Array<[string, string]> = [
+    ['agentic:mid-loop', 'Agentic session already running a tool loop: kept on sonnet.'],
+    ['agentic:depth+long-horizon', 'Agentic request asking for depth over a long horizon: sent to fable.'],
+    ['agentic:depth-requested', 'Agentic request that asked for deep reasoning: sent to opus.'],
+    ['agentic:trivial', 'Trivial agentic request, opt-in cheap path: sent to haiku.'],
+    ['agentic:default', 'Agentic session with no stronger signal: default sonnet.'],
+    ['single-turn:depth+long-horizon', 'Single prompt asking for depth over a long horizon: sent to fable.'],
+    ['single-turn:depth-requested', 'Single prompt that asked for deep reasoning: sent to opus.'],
+    ['single-turn:short mechanical', 'Short mechanical transform: sent to haiku.'],
+    ['single-turn:default', 'Single prompt with no stronger signal: default sonnet.'],
+    ['subagent:readonly-tools', 'Subagent with read-only tools, treated as recon: pinned to haiku.'],
+    ['subagent:write-tools', 'Subagent with write tools, treated as a builder.'],
+    ['role:', 'Role named by an explicit marker in the prompt.'],
+    ['agent:', 'Role taken from the agent type of the subagent.'],
+  ];
+  const hit = table.find(([p]) => reason.startsWith(p));
+  return hit ? hit[1] : `Routing reason ${reason} (no description for this one).`;
+}
+
+/** Plain-language meaning of the role cell. */
+function roleHelp(e: RouteEvent): string {
+  if (e.role) return `Role ${e.role}: the kind of work this subagent was doing${e.roleSource ? ` (detected from ${e.roleSource})` : ''}.`;
+  if (e.coordinator) return 'Coordinator: the main session that can dispatch subagents.';
+  return 'No role: an ordinary request outside any subagent.';
+}
+
+function confidenceHelp(e: RouteEvent): string {
+  return `Classifier confidence ${e.confidence.toFixed(2)} on a 0 to 1 scale${e.classifier ? ` (${e.classifier})` : ''}. 1.00 means a fixed rule or pin, lower means a heuristic guess.`;
+}
+
+const HEADER_HELP = {
+  pin: 'Whether the model the client asked for (pilotfish pin) is the one that was billed: honored or overridden.',
+  reason: 'The routing rule that picked the tier. Hover an entry for its meaning.',
+  role: 'What kind of request this was: coordinator, a subagent role, or none.',
+  confidence: 'How sure the classifier was, 0 to 1. 1.00 means a fixed rule or pin.',
+} as const;
 
 function esc(s: string): string {
   return s
@@ -86,6 +134,9 @@ export interface DashboardFilters {
   role?: string;
   model?: string;
   tier?: string;
+  /** `honored` | `overridden` | NONE (no model requested). */
+  pin?: string;
+  reason?: string;
   session?: string;
   window?: TimeWindow;
   auto?: boolean;
@@ -125,6 +176,8 @@ export function filterHistory(history: RouteEvent[], filters: DashboardFilters):
   if (filters.role) out = out.filter((e) => (filters.role === NONE ? roleLabel(e) === undefined : roleLabel(e) === filters.role));
   if (filters.model) out = out.filter((e) => e.model === filters.model);
   if (filters.tier) out = out.filter((e) => String(e.tier) === filters.tier);
+  if (filters.pin) out = out.filter((e) => (filters.pin === NONE ? pinState(e) === undefined : pinState(e) === filters.pin));
+  if (filters.reason) out = out.filter((e) => (filters.reason === NONE ? e.reason === undefined : e.reason === filters.reason));
   if (filters.session) out = out.filter((e) => (filters.session === NONE ? e.sessionId === undefined : e.sessionId === filters.session));
   if (filters.window) out = out.filter((e) => inWindow(e.timestamp, filters.window!));
   return out;
@@ -336,6 +389,9 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
   const roleOptions = simpleOptions(roleValues.values, roleValues.hasNone, 'No role', filters.role);
   const modelOptions = simpleOptions(modelValues.values, false, '', filters.model);
   const tierOptions = simpleOptions(tierValues.values, false, '', filters.tier);
+  const pinOptions = simpleOptions(PIN_VALUES, true, 'No pin', filters.pin);
+  const reasonValues = distinct(history, (e) => e.reason);
+  const reasonOptions = simpleOptions(reasonValues.values, reasonValues.hasNone, 'No reason', filters.reason);
 
   const auto = filters.auto !== false;
   // Carries the active filters as query params so the refresh target keeps
@@ -345,6 +401,8 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
   if (filters.role) refreshParams.set('role', filters.role);
   if (filters.model) refreshParams.set('model', filters.model);
   if (filters.tier) refreshParams.set('tier', filters.tier);
+  if (filters.pin) refreshParams.set('pin', filters.pin);
+  if (filters.reason) refreshParams.set('reason', filters.reason);
   if (filters.session) refreshParams.set('session', filters.session);
   if (filters.window && filters.window !== 'all') refreshParams.set('window', filters.window);
   if (filters.scope === 'all') refreshParams.set('scope', 'all');
@@ -360,11 +418,11 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
         <td><span class="badge badge-${esc(String(e.tier))}">${esc(String(e.tier))}</span></td>
         <td>${esc(e.model)}</td>
         <td class="pin">${pinLabel(e)}</td>
-        <td class="reason">${e.reason ? esc(e.reason) : '<span class="none">-</span>'}</td>
-        <td class="role">${e.role ? esc(e.role) : e.coordinator ? 'coordinator' : '<span class="none">-</span>'}${e.dispatched ? ' <span class="badge badge-retry" title="called the Agent tool">dispatched</span>' : ''}</td>
+        <td class="reason" title="${esc(reasonHelp(e.reason))}">${e.reason ? esc(e.reason) : '<span class="none">-</span>'}</td>
+        <td class="role" title="${esc(roleHelp(e))}">${e.role ? esc(e.role) : e.coordinator ? 'coordinator' : '<span class="none">-</span>'}${e.dispatched ? ' <span class="badge badge-retry" title="This coordinator turn called the Agent tool.">dispatched</span>' : ''}</td>
         <td>${e.priced === false ? '<span class="unknown" title="no pricing for this model">—</span>' : `$${(e.costCents / 100).toFixed(4)}`}</td>
         <td class="${e.priced === false ? 'unknown' : e.savedCents >= 0 ? 'positive' : 'negative'}">${e.priced === false ? '—' : `$${(e.savedCents / 100).toFixed(4)}`}</td>
-        <td>${e.confidence.toFixed(2)}</td>
+        <td title="${esc(confidenceHelp(e))}">${e.confidence.toFixed(2)}</td>
         <td>${e.inputTokens}</td>
         <td>${e.outputTokens}</td>
         <td>${e.retried ? `<span class="badge badge-retry">${esc(e.retryReason ?? '')}</span>` : '<span class="none">-</span>'}</td>
@@ -481,6 +539,8 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
     }
     .auto-toggle label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
     .mode-filter { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 11px; color: var(--ink-dim); }
+    th.help { cursor: help; text-decoration: underline dotted; text-underline-offset: 4px; }
+    td[title] { cursor: help; }
     .mode-filter select {
       max-width: 22ch;
       text-overflow: ellipsis;
@@ -687,6 +747,14 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
       <select id="tier" name="tier" onchange="this.form.submit()">${tierOptions}</select>
     </div>
     <div class="mode-filter">
+      <label for="pin">Pin</label>
+      <select id="pin" name="pin" onchange="this.form.submit()">${pinOptions}</select>
+    </div>
+    <div class="mode-filter">
+      <label for="reason">Reason</label>
+      <select id="reason" name="reason" onchange="this.form.submit()">${reasonOptions}</select>
+    </div>
+    <div class="mode-filter">
       <label for="session">Session</label>
       <select id="session" name="session" onchange="this.form.submit()">${sessionOptions}</select>
     </div>
@@ -730,12 +798,12 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
             <th>Time</th>
             <th>Tier</th>
             <th>Model</th>
-            <th>Pin</th>
-            <th>Reason</th>
-            <th>Role</th>
+            <th title="${esc(HEADER_HELP.pin)}" class="help">Pin</th>
+            <th title="${esc(HEADER_HELP.reason)}" class="help">Reason</th>
+            <th title="${esc(HEADER_HELP.role)}" class="help">Role</th>
             <th>Cost</th>
             <th>Saved</th>
-            <th>Confidence</th>
+            <th title="${esc(HEADER_HELP.confidence)}" class="help">Confidence</th>
             <th>In Tokens</th>
             <th>Out Tokens</th>
             <th>Retry</th>

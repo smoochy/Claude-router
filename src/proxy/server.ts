@@ -71,6 +71,8 @@ export function createProxyApp(
       role: c.req.query('role') || undefined,
       model: c.req.query('model') || undefined,
       tier: c.req.query('tier') || undefined,
+      pin: c.req.query('pin') || undefined,
+      reason: c.req.query('reason') || undefined,
       session: c.req.query('session') || undefined,
       window,
       // The form sends a hidden auto=0 first and the checkbox auto=1 after it; the last value wins.

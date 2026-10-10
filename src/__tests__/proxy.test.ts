@@ -289,9 +289,9 @@ describe('renderDashboard', () => {
       },
     ];
     const html = renderDashboard(events);
-    assert.ok(html.includes('<th>Reason</th>'), 'reason column exists');
+    assert.ok(html.includes('>Reason</th>'), 'reason column exists');
     assert.ok(html.includes('agentic:mid-loop'), 'the gate name renders');
-    assert.ok(html.includes('<td class="reason"><span class="none">-</span></td>'), 'a legacy row without a reason renders a dash');
+    assert.ok(html.includes('<td class="reason" title="No reason recorded for this request."><span class="none">-</span></td>'), 'a legacy row without a reason renders a dash');
   });
 
   it('renders dispatch, counterfactual and by-role once there is a coordinator turn', () => {
@@ -314,7 +314,7 @@ describe('renderDashboard', () => {
     assert.ok(html.includes('100%') && html.includes('1 of 1 coordinator turns'), 'rate and denominator');
     assert.ok(html.includes('vs All-Opus'), 'counterfactual card');
     assert.ok(html.includes('By Role') && html.includes('<span class="role-name">recon</span>'), 'role rows');
-    assert.ok(html.includes('<th>Role</th>') && html.includes('dispatched'), 'role column with dispatch badge');
+    assert.ok(html.includes('>Role</th>') && html.includes('dispatched'), 'role column with dispatch badge');
     const plain = renderDashboard([events[1]!]);
     assert.ok(plain.includes('Dispatch Rate') && !plain.includes('1 of 1 coordinator turns'), 'dispatch card stays, empty, without a coordinator turn');
   });

@@ -165,3 +165,25 @@ describe('renderDashboard - net saved, extra cost and the All-Opus card', () => 
     assert.match(renderDashboard([e()]), /Same tokens priced on claude-opus-5-5/);
   });
 });
+
+describe('pin and reason filters', () => {
+  const h = [
+    e({ requestedModel: 'claude-sonnet-5', model: 'claude-sonnet-5', reason: 'agentic:default' }),
+    e({ requestedModel: 'claude-opus-5', model: 'claude-sonnet-5', reason: 'role:recon' }),
+    e({}),
+  ];
+  it('filters by pin state and by absent pin', () => {
+    assert.equal(filterHistory(h, { pin: 'honored' }).length, 1);
+    assert.equal(filterHistory(h, { pin: 'overridden' }).length, 1);
+    assert.equal(filterHistory(h, { pin: '__none__' }).length, 1);
+  });
+  it('filters by exact reason and by absent reason', () => {
+    assert.equal(filterHistory(h, { reason: 'role:recon' }).length, 1);
+    assert.equal(filterHistory(h, { reason: '__none__' }).length, 1);
+  });
+  it('explains reasons and headers on hover', () => {
+    const html = renderDashboard(h);
+    assert.match(html, /<th title="[^"]+" class="help">Confidence<\/th>/);
+    assert.match(html, /title="Role named by an explicit marker in the prompt\."/);
+  });
+});

@@ -10,6 +10,7 @@ This fork's own sections use the upstream version plus a `-smoo.<n>` prerelease 
 ### Changed
 
 - Dashboard stat cards keep one shape across scopes and filters: Dispatch Rate and vs All-Opus always render (`-` when empty), the cards sit in a fixed grid, session selects are width-capped, and the long explanations under Saved, Dispatch and All-Opus moved into hover/focus popovers.
+- Dashboard gains Pin (honored, overridden, none) and Reason filters, and the Pin, Reason, Role and Confidence column headers and every cell in them explain themselves on hover.
 - Dashboard Auto-update toggle sends a single `auto` parameter, so the URL no longer carries `auto=0&auto=1`.
 - Dashboard shows request times and derived session labels in the proxy host's own locale and timezone instead of raw UTC, and the `today` window is now the host-local calendar day.
 
