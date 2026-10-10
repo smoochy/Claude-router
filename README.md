@@ -7,13 +7,14 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Serhii-Leniv/claude-router/actions/workflows/test.yml"><img src="https://github.com/Serhii-Leniv/claude-router/actions/workflows/test.yml/badge.svg" alt="CI"></a>
-  <a href="https://www.npmjs.com/package/@sheruq/claude-router"><img src="https://img.shields.io/npm/v/@sheruq/claude-router?color=D97757&label=npm" alt="npm version"></a>
-  <img src="https://img.shields.io/npm/dm/@sheruq/claude-router?color=D97757" alt="npm downloads">
-  <img src="https://img.shields.io/node/v/@sheruq/claude-router?color=D97757" alt="node version">
-  <img src="https://img.shields.io/npm/l/@sheruq/claude-router?color=D97757" alt="license">
+  <a href="https://github.com/smoochy/Claude-router/actions/workflows/test.yml"><img src="https://github.com/smoochy/Claude-router/actions/workflows/test.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/smoochy/Claude-router/releases"><img src="https://img.shields.io/github/v/release/smoochy/Claude-router?include_prereleases&color=D97757&label=release" alt="release"></a>
+  <img src="https://img.shields.io/github/license/smoochy/Claude-router?color=D97757" alt="license">
   <img src="https://img.shields.io/badge/TypeScript-strict-D97757" alt="TypeScript">
-  <a href="https://send.monobank.ua/jar/3zo8nv9iuF"><img src="https://img.shields.io/badge/support-monobank_jar-D97757" alt="support: monobank jar"></a>
+</p>
+
+<p align="center">
+  Fork of <a href="https://github.com/Serhii-Leniv/claude-router">Serhii-Leniv/claude-router</a>, released independently as <code>-smoo</code> tarballs; see <a href="docs/BRANCHING.md">docs/BRANCHING.md</a>.
 </p>
 
 ---
