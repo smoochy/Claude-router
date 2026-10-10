@@ -6,6 +6,7 @@ import fs from 'node:fs';
 import { createProxyApp } from './server.js';
 import { createProviderClient, DEFAULT_UPSTREAM, type Provider } from './handler.js';
 import { DEFAULT_MODELS, BEDROCK_MODELS, VERTEX_MODELS, DISPLAY_TIERS, DEFAULT_PRICING, counterfactualCents } from '../models.js';
+import { loadModelListPricing, defaultModelListCachePath } from '../model-list.js';
 import { DEFAULT_ROLE_TIERS, ROLES } from '../roles.js';
 import { installPolicyPlugin, uninstallPolicyPlugin, policyPluginStatus, PLUGIN_ID } from './policy.js';
 import type { Tier } from '../types.js';
@@ -232,6 +233,14 @@ async function cmdStart(args: string[], paths: RouterPaths): Promise<CommandResu
     return failed([...warnings, failLine(`Provider init failed: ${String(e)}`)]);
   }
 
+  // Remote list → local cache → compiled-in DEFAULT_PRICING (homelab-private#4232),
+  // in that order; a user's own `pricing` config always wins over all three. This
+  // is the one network call on the startup path, so it's bounded by a short
+  // per-attempt timeout (`fetchModelList`'s default) and never throws — a
+  // dead network just means `source: 'built-in'` and nothing else changes.
+  const modelList = await loadModelListPricing();
+  const pricing = { ...modelList.pricing, ...options.pricing };
+
   const app = createProxyApp({
     classifier: options.classifier,
     defaultModel: models.sonnet,
@@ -245,7 +254,7 @@ async function cmdStart(args: string[], paths: RouterPaths): Promise<CommandResu
     roleRouting: options.roleRouting !== 'off',
     roles: options.roles,
     agents: options.agents,
-    pricing: options.pricing,
+    pricing,
     routing: options.routing,
     historyFile: paths.historyFile,
     upstream: options.upstream,
@@ -771,6 +780,14 @@ function liveProbes(paths: RouterPaths): DoctorProbes {
     isAutostartRegistered: () => isAutostartRegistered(paths),
     isStatuslineConfigured: () => isStatuslineConfigured(paths),
     policyPluginInstalled: () => policyPluginStatus().installed,
+    modelListCacheAgeDays: () => {
+      try {
+        const ms = Date.now() - fs.statSync(defaultModelListCachePath()).mtimeMs;
+        return Math.floor(ms / 86_400_000);
+      } catch {
+        return undefined;
+      }
+    },
   };
 }
 
