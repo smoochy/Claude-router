@@ -3,7 +3,7 @@ import { DISPLAY_TIERS, DEFAULT_MODELS, DEFAULT_PRICING, counterfactualCents, ty
 import { savedCentsDisplay } from './format.js';
 import { lookupSessionTitle } from './session-names.js';
 import type { RouteEvent } from './route-event.js';
-import type { LifetimeStats } from './history.js';
+import { HISTORY_TAIL_LINES, type LifetimeStats } from './history.js';
 
 /** Sentinel option value for "events with no value on this field" - its own
  * slice rather than silently excluded, the precedent set for routingMode. */
@@ -89,7 +89,12 @@ export interface DashboardFilters {
   session?: string;
   window?: TimeWindow;
   auto?: boolean;
+  /** `session` (default): events since this router started. `all`: tail of history.jsonl. */
+  scope?: DashboardScope;
 }
+
+export const DASHBOARD_SCOPES = ['session', 'all'] as const;
+export type DashboardScope = (typeof DASHBOARD_SCOPES)[number];
 
 function roleLabel(e: RouteEvent): string | undefined {
   return e.role ?? (e.coordinator ? 'coordinator' : undefined);
@@ -305,6 +310,7 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
   if (filters.tier) refreshParams.set('tier', filters.tier);
   if (filters.session) refreshParams.set('session', filters.session);
   if (filters.window && filters.window !== 'all') refreshParams.set('window', filters.window);
+  if (filters.scope === 'all') refreshParams.set('scope', 'all');
   refreshParams.set('auto', '1');
   const refreshUrl = `/dashboard?${refreshParams.toString()}`;
   const metaRefresh = auto ? `<meta http-equiv="refresh" content="10;url=${refreshUrl}">` : '';
@@ -617,6 +623,10 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
   </header>
 
   <form class="filter-bar card" method="GET" action="/dashboard">
+    <div class="mode-filter">
+      <label for="scope">Scope</label>
+      <select id="scope" name="scope" onchange="this.form.submit()"><option value="session"${filters.scope === 'all' ? '' : ' selected'}>Session (since start)</option><option value="all"${filters.scope === 'all' ? ' selected' : ''}>All (last ${HISTORY_TAIL_LINES} from history)</option></select>
+    </div>
     <div class="mode-filter">
       <label for="mode">Mode</label>
       <select id="mode" name="mode" onchange="this.form.submit()">${modeOptions}</select>

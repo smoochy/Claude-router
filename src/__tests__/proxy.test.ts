@@ -1,6 +1,10 @@
 import { describe, it, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import Anthropic from '@anthropic-ai/sdk';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { appendEvent } from '../proxy/history.js';
 import { createProxyApp } from '../proxy/server.js';
 import { routeHistory, boundHistory, MAX_HISTORY, getAnthropicClient, clearClientCache, routeCounters, usageFromSse } from '../proxy/handler.js';
 import { renderDashboard } from '../proxy/dashboard.js';
@@ -172,6 +176,32 @@ describe('createProxyApp', () => {
     assert.ok(on.includes('<a href="/dashboard"'));
     const off = await (await app.request('/dashboard?auto=0')).text();
     assert.ok(off.includes('refresh off'));
+  });
+
+  it('GET /dashboard?scope=all fills the table from history.jsonl; default scope does not', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'crouter-scope-'));
+    const historyFile = path.join(dir, 'history.jsonl');
+    try {
+      appendEvent(historyFile, { ...statuslineEvent('sonnet'), model: 'claude-from-ledger-9' });
+      const scoped = createProxyApp({
+        classifier: 'heuristic',
+        defaultModel: 'claude-sonnet-4-6',
+        verbose: false,
+        provider: 'anthropic',
+        models: DEFAULT_MODELS,
+        forceRoute: false,
+        historyFile,
+      });
+      const all = await (await scoped.request('/dashboard?scope=all')).text();
+      assert.ok(all.includes('claude-from-ledger-9'));
+      assert.ok(all.includes('scope=all'), 'auto-refresh keeps the scope');
+      const dflt = await (await scoped.request('/dashboard')).text();
+      assert.ok(!dflt.includes('<td>claude-from-ledger-9</td>'));
+      const bogus = await (await scoped.request('/dashboard?scope=nope')).text();
+      assert.ok(!bogus.includes('<td>claude-from-ledger-9</td>'));
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it('POST /v1/messages without api key returns 401', async () => {

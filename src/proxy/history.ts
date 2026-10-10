@@ -45,6 +45,50 @@ export function appendEvent(file: string, event: RouteEvent): void {
   }
 }
 
+export const HISTORY_TAIL_LINES = 2000;
+
+/**
+ * The last `maxLines` events of the ledger, oldest first. Reads backwards in
+ * chunks from the end, so cost is bounded by the tail, not by the (never
+ * rotated, ~200k line) file. A partial first line and corrupt lines are skipped.
+ */
+export function readHistoryTail(file: string, maxLines: number = HISTORY_TAIL_LINES): RouteEvent[] {
+  const CHUNK = 256 * 1024;
+  let fd: number | undefined;
+  try {
+    fd = fs.openSync(file, 'r');
+    let pos = fs.fstatSync(fd).size;
+    const parts: Buffer[] = [];
+    let newlines = 0;
+    while (pos > 0 && newlines <= maxLines) {
+      const len = Math.min(CHUNK, pos);
+      pos -= len;
+      const buf = Buffer.alloc(len);
+      fs.readSync(fd, buf, 0, len, pos);
+      for (const b of buf) if (b === 0x0a) newlines++;
+      parts.unshift(buf);
+    }
+    const lines = Buffer.concat(parts).toString('utf8').split('\n');
+    // Unless we reached the file start, the first line is cut mid-way.
+    if (pos > 0) lines.shift();
+    const events: RouteEvent[] = [];
+    for (const line of lines.slice(-maxLines - 1)) {
+      if (!line.trim()) continue;
+      try {
+        const e = JSON.parse(line) as RouteEvent;
+        if (typeof e?.timestamp === 'string' && typeof e.costCents === 'number') events.push(e);
+      } catch {
+        // skip corrupt lines
+      }
+    }
+    return events.slice(-maxLines);
+  } catch {
+    return [];
+  } finally {
+    if (fd !== undefined) fs.closeSync(fd);
+  }
+}
+
 /** Lifetime figures are just accumulated {@link RouteTotals}. */
 export type LifetimeStats = RouteTotals;
 
