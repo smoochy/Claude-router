@@ -15,13 +15,14 @@ import {
 
 const [AGENT_LINE, WORKFLOW_LINE] = DELEGATION_BLOCKERS as [string, string];
 
-// The two shapes Claude Code actually renders as of the current binary. The
-// AgentTool line's suffix has already moved once (`…unless the user requested
-// it` -> `…unless the user`); the workflow line interpolates whichever tool
-// is live and carries a new exception clause the fork's original two lines
-// never had. Binary-derived (see #4304's resolution comment on #4300) —
-// not captured off a live request. A real capture is a follow-up (the capture
-// path this ticket adds has no fixture to run it against yet).
+// Wire-captured (claude-router start --capture-system-prompt, Claude Code
+// 2.1.296, model claude-opus-5, one tool-bearing turn): the combined line
+// interpolates the tool name "Agent" and is the last line of its block. Only
+// the line the pattern matches is carried here, not the rest of the prompt.
+const AGENT_TOOL_WIRE_LINE = 'Do not use the Agent tool, workflows, or deep-research unless the user, a CLAUDE.md file, or a skill asks for it';
+
+// Other interpolations of the same template, kept to prove the match does not
+// depend on which tool name is live. Binary-derived, not captured.
 const AGENT_TOOL_TASK_VARIANT = 'Do not use the Task tool, workflows, or deep-research unless the user, a CLAUDE.md file, or a skill asks for it';
 const AGENT_TOOL_BASH_VARIANT = 'Do not use the Bash tool, workflows, or deep-research unless the user, a CLAUDE.md file, or a skill asks for it';
 
@@ -79,6 +80,13 @@ describe('stripDelegationBlockers — string system', () => {
   it('matches the combined line regardless of which tool name it interpolates', () => {
     assert.equal(stripDelegationBlockers(`intro\n${AGENT_TOOL_TASK_VARIANT}\noutro`).removed, 1);
     assert.equal(stripDelegationBlockers(`intro\n${AGENT_TOOL_BASH_VARIANT}\noutro`).removed, 1);
+  });
+
+  it('strips the wire-captured combined line, tool name and all', () => {
+    const { system, removed } = stripDelegationBlockers(`intro
+${AGENT_TOOL_WIRE_LINE}`);
+    assert.equal(removed, 1);
+    assert.equal(system, 'intro');
   });
 
   it('strips the combined line in full, including its new exception clause', () => {
