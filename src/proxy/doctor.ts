@@ -3,6 +3,7 @@ import { PRICING_LAST_CHECKED, pricingAgeDays } from '../models.js';
 import { out, type OutputLine } from './command.js';
 import type { HealthInfo } from './health.js';
 import type { DaemonState } from './daemon.js';
+import type { Tier } from '../types.js';
 
 /**
  * `doctor`'s diagnostics as data.
@@ -54,6 +55,10 @@ export interface DoctorProbes {
    * (see `MODEL_LIST_URL`'s doc comment) — just "how long since this proxy
    * last reached the remote list". */
   modelListCacheAgeDays(): number | undefined;
+  /** Configured tier ids the model list does not carry (see `model-list.ts`'s
+   * `staleTierIds`) — empty when every tier resolves, `undefined` when there
+   * was nothing to validate against (built-in pricing only, no remote/cache). */
+  staleTierIds(): Promise<Array<{ tier: Tier; id: string }> | undefined>;
 }
 
 export interface DoctorOptions {
@@ -101,6 +106,20 @@ export async function runDiagnostics(
     diagnostics.push({
       ok: true,
       label: `Model-list cache last refreshed ${cacheAge} day${cacheAge === 1 ? '' : 's'} ago`,
+      warnOnly: true,
+    });
+  }
+
+  // Same reasoning as the pricing-age check above, one layer down: this is the
+  // model-id side of "the hand-written config may have drifted."
+  const stale = await probes.staleTierIds();
+  if (stale !== undefined) {
+    diagnostics.push({
+      ok: stale.length === 0,
+      label: stale.length === 0
+        ? 'Tier model ids match the current model list'
+        : `Stale tier id(s): ${stale.map((s) => `${s.tier}="${s.id}"`).join(', ')} — may be a previous generation`,
+      hint: 'Check the "tiers" config against the current model ids (routing and pricing are unaffected)',
       warnOnly: true,
     });
   }

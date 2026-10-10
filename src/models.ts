@@ -2,9 +2,9 @@ import type Anthropic from '@anthropic-ai/sdk';
 import type { ModelPricing, Tier } from './types.js';
 
 export const DEFAULT_MODELS: Record<Tier, string> = {
-  haiku: 'claude-haiku-4-5',
-  sonnet: 'claude-sonnet-5',
-  opus: 'claude-opus-5',
+  haiku: 'claude-haiku-5-5',
+  sonnet: 'claude-sonnet-5-5',
+  opus: 'claude-opus-5-5',
   // Fable 5.1 (2026-09-01) supersedes Fable 5, which is now a legacy model. Same
   // $10/$50 base, cheaper cache reads — so this promotion *does* move a cost
   // figure, downward, on the cache-read line.

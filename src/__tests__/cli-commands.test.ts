@@ -110,7 +110,7 @@ describe('stats', () => {
     assert.match(shown, /Dispatch rate\s+50% \(1 of 2 coordinator turns called an agent\)/);
     assert.match(shown, /Nested dispatch\s+1/);
     assert.match(shown, /By role\s+coordinator 2 \(\$0\.06\)\s+·\s+recon 2 \(\$0\.00\)/);
-    assert.match(shown, /vs all-opus\s+\$\d+\.\d{2} \(same tokens on claude-opus-5; an upper bound\)/);
+    assert.match(shown, /vs all-opus\s+\$\d+\.\d{2} \(same tokens on claude-opus-5-5; an upper bound\)/);
 
     const json = JSON.parse(text(await main(['stats', '--json'], paths))) as { dispatch: { turns: number }; byRole: Record<string, unknown> };
     assert.equal(json.dispatch.turns, 2);

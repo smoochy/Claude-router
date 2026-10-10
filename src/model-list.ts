@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import type { ModelPricing } from './types.js';
+import type { ModelPricing, Tier } from './types.js';
 import { DEFAULT_PRICING } from './models.js';
 
 /**
@@ -111,6 +111,56 @@ function writeCache(cachePath: string, entries: ModelListEntry[]): void {
  * deliberately has none, see {@link MODEL_LIST_URL}'s doc comment), so an
  * incompatible future shape is caught by {@link isModelList} instead.
  */
+/**
+ * Configured tier ids the model list does not carry. Not a routing or pricing
+ * problem — `familyForModel` resolves an unlisted id by family substring, so
+ * both stay correct — but it is evidence the tier config (hand-written or
+ * `DEFAULT_MODELS`) names a superseded generation.
+ *
+ * `undefined` when `source` is `'built-in'`: with no remote reach and no local
+ * cache, there is nothing to validate the ids against, so the check is skipped
+ * rather than warning about every tier.
+ */
+export function staleTierIds(
+  tiers: Record<Tier, string>,
+  modelList: ModelListResult,
+): Array<{ tier: Tier; id: string }> | undefined {
+  if (modelList.source === 'built-in') return undefined;
+  return (Object.entries(tiers) as Array<[Tier, string]>)
+    .filter(([, id]) => !modelList.pricing[id])
+    .map(([tier, id]) => ({ tier, id }));
+}
+
+const warnedStaleTiers = new Set<Tier>();
+
+/** @internal Test hook */
+export function resetStaleTierWarnings(): void {
+  warnedStaleTiers.clear();
+}
+
+/**
+ * Non-fatal startup warning for a stale tier id — once per tier per process,
+ * same shape as {@link import('./routing.js').warnDeadRoutingKeys}. Must not
+ * change routing or pricing, only tell the operator.
+ */
+export function warnStaleTierIds(
+  tiers: Record<Tier, string>,
+  modelList: ModelListResult,
+  warn: (message: string) => void = console.warn,
+): void {
+  const stale = staleTierIds(tiers, modelList);
+  if (!stale) return;
+  for (const { tier, id } of stale) {
+    if (warnedStaleTiers.has(tier)) continue;
+    warnedStaleTiers.add(tier);
+    warn(
+      `[claude-router] config: tier "${tier}" is set to "${id}", which the current model ` +
+        `list does not carry — it may be a previous generation. Routing and pricing are ` +
+        `unaffected (resolved by family), but check this against the current model ids.`,
+    );
+  }
+}
+
 export async function loadModelListPricing(options: {
   url?: string;
   cachePath?: string;

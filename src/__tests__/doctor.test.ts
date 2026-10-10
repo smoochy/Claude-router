@@ -36,6 +36,7 @@ function probes(overrides: Partial<DoctorProbes> = {}): DoctorProbes {
     isStatuslineConfigured: () => true,
     policyPluginInstalled: () => true,
     modelListCacheAgeDays: () => undefined,
+    staleTierIds: async () => [],
     ...overrides,
   };
 }
@@ -194,6 +195,26 @@ describe('runDiagnostics', () => {
 
     const withoutCache = await runDiagnostics(OPTIONS, probes({ modelListCacheAgeDays: () => undefined }));
     assert.equal(withoutCache.some((x) => /Model-list cache/.test(x.label)), false);
+  });
+
+  it('warns, without failing, on a stale tier id', async () => {
+    const diagnostics = await runDiagnostics(
+      OPTIONS,
+      probes({ staleTierIds: async () => [{ tier: 'opus', id: 'claude-opus-5' }] }),
+    );
+    const d = find(diagnostics, /Stale tier/);
+    assert.equal(d.ok, false);
+    assert.equal(d.warnOnly, true);
+    assert.match(d.label, /opus="claude-opus-5"/);
+    assert.equal(failureCount(diagnostics), 0);
+  });
+
+  it('reports ok when every tier id resolves, and says nothing when there is nothing to check', async () => {
+    const ok = await runDiagnostics(OPTIONS, probes({ staleTierIds: async () => [] }));
+    assert.match(find(ok, /Tier model ids/).label, /match the current model list/);
+
+    const skipped = await runDiagnostics(OPTIONS, probes({ staleTierIds: async () => undefined }));
+    assert.equal(skipped.some((x) => /[Tt]ier.*model ids|Stale tier/.test(x.label)), false);
   });
 
   it('probes each fact exactly once', async () => {
