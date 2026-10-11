@@ -833,7 +833,7 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
 <body>
   <header>
     <div>
-      <h1><a href="/dashboard" data-tip="Reset all filters" style="color:inherit;text-decoration:none">claude-router dashboard</a></h1>
+      <h1><a href="/dashboard" style="color:inherit;text-decoration:none">claude-router dashboard</a></h1>
       <div class="tagline">routing ledger &middot; cost engine</div>
     </div>
     <div class="live${auto ? '' : ' paused'}" data-tip="LED: pulsing green while refreshing, red when off"><span class="dot"></span>live &middot; refresh <select name="auto" form="filter-form" aria-label="Refresh interval" onchange="this.form.submit()">${REFRESH_INTERVALS.map((s) => `<option value="${s}"${s === interval ? ' selected' : ''}>${s === 0 ? 'off' : `${s}s`}</option>`).join('')}</select></div>
@@ -842,7 +842,7 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
 
   <form id="filter-form" class="filter-bar card" method="GET" action="/dashboard">
     ${filterFields}
-    <a class="reset-btn" href="${esc(resetUrl)}" data-tip="Clear every filter and the scope, keep the refresh setting">Reset filters</a>
+    <a class="reset-btn" href="${esc(resetUrl)}">Reset filters</a>
   </form>
 
   <div class="stats">
