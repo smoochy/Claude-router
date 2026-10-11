@@ -1,8 +1,7 @@
 name: smoke-claude-code-action
 
 on:
-  pull_request:
-    branches: [smoo/main]
+  workflow_dispatch:
 
 permissions:
   contents: read
