@@ -187,3 +187,16 @@ describe('pin and reason filters', () => {
     assert.match(html, /title="Role named by an explicit marker in the prompt\."/);
   });
 });
+
+describe('filter row and retry help', () => {
+  const html = renderDashboard([e({ retried: true, retryReason: 'truncation' })]);
+  it('lists the selects in route-feed order, one row', () => {
+    const ids = [...html.matchAll(/<select id="(\w+)"/g)].map((m) => m[1]);
+    assert.deepEqual(ids, ['scope', 'window', 'tier', 'model', 'pin', 'reason', 'role', 'session', 'mode']);
+    assert.match(html, /flex-wrap: nowrap/);
+  });
+  it('explains retry in header and cell', () => {
+    assert.match(html, /<th title="[^"]+" class="help">Retry<\/th>/);
+    assert.match(html, /title="Retried after truncation/);
+  });
+});
