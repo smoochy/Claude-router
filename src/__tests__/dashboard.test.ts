@@ -209,17 +209,22 @@ describe('refresh pill and reset button', () => {
     for (const n of [10, 20, 30, 45, 60]) assert.equal(parseRefresh(String(n)), n);
     for (const bad of ['7', '', 'x', '-1', '3600']) assert.equal(parseRefresh(bad), 10);
   });
-  it('renders the chosen interval as selected and in the meta refresh', () => {
+  it('renders the chosen interval as selected and as a deferred-reload script', () => {
     const html = renderDashboard([e()], undefined, { tier: 'haiku', auto: 30 });
     assert.match(html, /<option value="30" selected>30s<\/option>/);
-    assert.match(html, /<meta http-equiv="refresh" content="30;url=\/dashboard\?tier=haiku&auto=30">/);
+    assert.ok(!html.includes('http-equiv="refresh"'));
+    const scripts = html.match(/<script>[\s\S]*?<\/script>/g) ?? [];
+    assert.equal(scripts.length, 1);
+    assert.ok(scripts[0].includes('.has-tip:hover'), 'defers while a tooltip is open');
+    assert.ok(scripts[0].includes('"/dashboard?tier=haiku&auto=30"'));
+    assert.ok(scripts[0].endsWith(',30000)</script>'));
     assert.match(html, /<div class="live"/);
   });
-  it('off pauses the LED and drops the meta refresh', () => {
+  it('off pauses the LED and runs no timer', () => {
     const off = renderDashboard([e()], undefined, { auto: 0 });
     assert.match(off, /<div class="live paused"/);
     assert.match(off, /<option value="0" selected>off<\/option>/);
-    assert.ok(!off.includes('http-equiv="refresh"'));
+    assert.ok(!off.includes('<script'));
   });
   it('resets filters but keeps the interval, and has no auto checkbox', () => {
     const html = renderDashboard([e()], undefined, { tier: 'haiku', auto: 45 });
