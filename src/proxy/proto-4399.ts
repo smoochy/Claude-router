@@ -17,6 +17,7 @@ const TIER_HELP: Record<DisplayTier, string> = {
 };
 
 const ROLE_HELP: Record<string, { what: string; how: string }> = {
+  'no role': { what: 'Ordinary requests outside any subagent or coordinator turn, such as plain single prompts.', how: 'No agent id and no role marker in the request.' },
   coordinator: { what: 'The main Claude Code session that can hand work to subagents.', how: 'Not a subagent: a request with tools but no agent id.' },
   recon: { what: 'Read-only reconnaissance: find things, report facts. Pinned to haiku.', how: 'Marker "claude-router:role=recon", the agent type, or read-only tools.' },
   builder: { what: 'Scoped implementation that needs local judgement. Sonnet.', how: 'Marker, agent type, or a subagent with write tools.' },
@@ -42,9 +43,15 @@ export function protoTierRole(totals: RouteTotals, events: Array<{ tier: string;
   const tcSum = Object.values(tierCost).reduce((a, b) => a + b, 0);
   const tiers = DISPLAY_TIERS.map((t) => ({ t, n: totals.tiers[t] ?? 0 }));
   const tierSum = tiers.reduce((a, x) => a + x.n, 0);
-  const roles = Object.entries(totals.byRole).sort((a, b) => b[1].costCents - a[1].costCents);
-  const reqSum = roles.reduce((a, [, r]) => a + r.requests, 0);
-  const costSum = roles.reduce((a, [, r]) => a + r.costCents, 0);
+  const named = Object.entries(totals.byRole);
+  // "no role" = everything outside any role, so the role row adds up to the same Total as the tier row
+  const noRole = {
+    requests: totals.requests - named.reduce((a, [, r]) => a + r.requests, 0),
+    costCents: totals.costCents - named.reduce((a, [, r]) => a + r.costCents, 0),
+  };
+  const roles = (noRole.requests > 0 ? [...named, ['no role', noRole] as [string, typeof noRole]] : named).sort((a, b) => b[1].costCents - a[1].costCents);
+  const reqSum = totals.requests;
+  const costSum = totals.costCents;
 
   // A: tables
   const tierA = `<table class="p-tbl"><thead><tr><th>Tier</th><th class="n">Requests</th><th class="n">Share</th></tr></thead><tbody>${tiers
@@ -88,7 +95,7 @@ export function protoTierRole(totals: RouteTotals, events: Array<{ tier: string;
     .join('')}<span class="p-e p-tot p-hov"><b>Total</b> ${tierSum} <u>${usd(tcSum)}</u>${tip(['Total: all routed requests in the current view and what they cost on the billed models at list price. Failed streams are not counted.', 'Equals the sum of the tier entries; passthrough is included when shown.'])}</span></div>`;
   const roleE = `<div class="p-one">${roles
     .map(([name, r]) => ent(esc(name), 'mono', r.requests, reqSum, r.costCents, costSum, roleTip(name)))
-    .join('')}<span class="p-e p-tot p-hov"><b>Total</b> ${reqSum} <u>${usd(costSum)}</u>${tip(['Total: requests and cost of all role-attributed calls in the current view; this is the 100% the role percentages refer to.', 'Smaller than the tier total, because requests outside any role (plain single prompts) are not counted here.'])}</span></div>`;
+    .join('')}<span class="p-e p-tot p-hov"><b>Total</b> ${reqSum} <u>${usd(costSum)}</u>${tip(['Total: all routed requests in the current view and their cost; the 100% the role percentages refer to.', 'Same figure as the Tier Distribution total: requests outside any role are the "no role" entry.'])}</span></div>`;
 
   const block = (v: string, role: string, tier: string): string =>
     `<div class="p-var" data-v="${v}"><div class="section-label">By Role</div><div class="card p-card">${role}</div><div class="section-label">Tier Distribution</div><div class="card p-card">${tier}</div></div>`;
