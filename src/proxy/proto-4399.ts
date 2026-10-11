@@ -107,7 +107,7 @@ td.p-hov,th.p-hov{text-decoration:underline dotted #8b95a7;text-underline-offset
 .p-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}.p-tile{padding:10px 12px;border:1px solid #8b95a733;border-radius:10px;border-left:3px solid #8b95a7}
 .b-haiku{border-left-color:var(--t-haiku)}.b-sonnet{border-left-color:var(--t-sonnet)}.b-opus{border-left-color:var(--t-opus)}.b-fable{border-left-color:var(--t-fable)}
 .p-lbl{font:10px ui-monospace,monospace;letter-spacing:.14em;text-transform:uppercase;color:#a9b3c6}.p-big{font-size:24px;font-weight:700;font-variant-numeric:tabular-nums}.p-big small{font-size:12px;color:#a9b3c6;font-weight:400}.p-big.m{font-size:16px;margin-top:6px}.p-sub{font-size:12px;color:#a9b3c6}
-.p-card:hover{z-index:40}.p-tip{white-space:normal}.p-e:nth-last-child(-n+3)>.p-tip{left:auto;right:0}
+[data-tip]{cursor:help}td[data-tip]:not(.none){text-decoration:underline dotted #8b95a7;text-underline-offset:4px}.p-card:hover{z-index:40}.p-tip{white-space:normal}.p-e:nth-last-child(-n+3)>.p-tip{left:auto;right:0}
 .p-one{display:flex;flex-wrap:wrap;justify-content:space-between;gap:6px 18px;font-size:12px;font-variant-numeric:tabular-nums;padding:2px 0}.p-e{white-space:nowrap}
 .p-e{position:relative}.p-e b{font-weight:600}.p-e i{font-style:normal;color:#a9b3c6}.p-e u{text-decoration:none;color:#e6ebf5;margin-left:4px}.p-e .p-dot{width:8px;height:8px;margin-right:6px}
 .p-tot{padding-left:18px;border-left:1px solid #8b95a766}
@@ -117,5 +117,11 @@ td.p-hov,th.p-hov{text-decoration:underline dotted #8b95a7;text-underline-offset
 </style>
 ${block('a', roleA, tierA)}${block('b', roleB, tierB)}${block('c', roleC, tierC)}${block('d', roleD, tierD)}${block('e', roleE, tierE)}
 <div class="p-bar"><a data-k="e" href="?variant=e">E one line</a><a data-k="a" href="?variant=a">A table</a><a data-k="b" href="?variant=b">B tiles</a><a data-k="c" href="?variant=c">C ledger</a><a data-k="d" href="?variant=d">D inline both</a></div>
-<script>(function(){var v=(new URLSearchParams(location.search).get('variant')||'e');document.querySelectorAll('[data-v],[data-k]').forEach(function(e){if((e.dataset.v||e.dataset.k)===v)e.classList.add('on')})})()</script>`;
+<script>(function(){var t=document.createElement('div');t.className='tip-body';t.setAttribute('role','tooltip');t.style.cssText='position:fixed;z-index:100;pointer-events:none';document.body.appendChild(t);
+function show(el){t.textContent=el.getAttribute('data-tip');t.style.display='block';var r=el.getBoundingClientRect(),w=t.offsetWidth,h=t.offsetHeight,x=Math.min(Math.max(8,r.left),innerWidth-w-8),y=r.bottom+6;if(y+h>innerHeight-8)y=Math.max(8,r.top-h-6);t.style.left=x+'px';t.style.top=y+'px'}
+function hide(){t.style.display='none'}
+document.addEventListener('mouseover',function(e){var el=e.target.closest&&e.target.closest('[data-tip]');el?show(el):hide()});
+document.addEventListener('focusin',function(e){var el=e.target.closest&&e.target.closest('[data-tip]');el?show(el):hide()});
+document.addEventListener('scroll',hide,true);})();
+(function(){var v=(new URLSearchParams(location.search).get('variant')||'e');document.querySelectorAll('[data-v],[data-k]').forEach(function(e){if((e.dataset.v||e.dataset.k)===v)e.classList.add('on')})})()</script>`;
 }

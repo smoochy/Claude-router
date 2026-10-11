@@ -25,10 +25,10 @@ const TIER_BAR_LABEL: Record<DisplayTier, string> = {
  * field — both render as "-", never as a wrong label.
  */
 function pinLabel(e: RouteEvent): string {
-  if (!e.requestedModel) return '<span class="none" title="No pin: the client sent no model, or this line predates the field.">-</span>';
+  if (!e.requestedModel) return '<span class="none" data-tip="No pin: the client sent no model, or this line predates the field.">-</span>';
   return e.requestedModel === e.model
-    ? `<span class="badge badge-pin-honored" title="Pin honored: the client asked for ${esc(e.requestedModel)} and that is the model that was billed.">pin honored</span>`
-    : `<span class="badge badge-pin-overridden" title="Overridden: the client asked for ${esc(e.requestedModel)} but the router billed ${esc(e.model)}.">overridden</span>`;
+    ? `<span class="badge badge-pin-honored" data-tip="Pin honored: the client asked for ${esc(e.requestedModel)} and that is the model that was billed.">pin honored</span>`
+    : `<span class="badge badge-pin-overridden" data-tip="Overridden: the client asked for ${esc(e.requestedModel)} but the router billed ${esc(e.model)}.">overridden</span>`;
 }
 
 /** Filterable form of the pin comparison: honored / overridden, or absent when no model was requested. */
@@ -495,14 +495,14 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
         <td><span class="badge badge-${esc(String(e.tier))}">${esc(String(e.tier))}</span></td>
         <td>${esc(e.model)}</td>
         <td class="pin">${pinLabel(e)}</td>
-        <td class="reason" title="${esc(reasonHelp(e.reason))}">${e.reason ? esc(e.reason) : '<span class="none">-</span>'}</td>
-        <td class="role" title="${esc(roleHelp(e))}">${e.role ? esc(e.role) : e.coordinator ? 'coordinator' : '<span class="none">-</span>'}${e.dispatched ? ' <span class="badge badge-retry" title="This coordinator turn called the Agent tool.">dispatched</span>' : ''}</td>
-        <td>${e.priced === false ? '<span class="unknown" title="no pricing for this model">—</span>' : `$${(e.costCents / 100).toFixed(4)}`}</td>
+        <td class="reason" data-tip="${esc(reasonHelp(e.reason))}">${e.reason ? esc(e.reason) : '<span class="none">-</span>'}</td>
+        <td class="role" data-tip="${esc(roleHelp(e))}">${e.role ? esc(e.role) : e.coordinator ? 'coordinator' : '<span class="none">-</span>'}${e.dispatched ? ' <span class="badge badge-retry" data-tip="This coordinator turn called the Agent tool.">dispatched</span>' : ''}</td>
+        <td>${e.priced === false ? '<span class="unknown" data-tip="no pricing for this model">—</span>' : `$${(e.costCents / 100).toFixed(4)}`}</td>
         <td class="${e.priced === false ? 'unknown' : e.savedCents >= 0 ? 'positive' : 'negative'}">${e.priced === false ? '—' : `$${(e.savedCents / 100).toFixed(4)}`}</td>
-        <td title="${esc(confidenceHelp(e))}">${e.confidence.toFixed(2)}</td>
+        <td data-tip="${esc(confidenceHelp(e))}">${e.confidence.toFixed(2)}</td>
         <td>${e.inputTokens}</td>
         <td>${e.outputTokens}</td>
-        <td title="${esc(retryHelp(e))}">${e.retried ? `<span class="badge badge-retry">${esc(e.retryReason ?? '')}</span>` : '<span class="none">-</span>'}</td>
+        <td data-tip="${esc(retryHelp(e))}">${e.retried ? `<span class="badge badge-retry">${esc(e.retryReason ?? '')}</span>` : '<span class="none">-</span>'}</td>
       </tr>`,
     )
     .join('');
@@ -868,15 +868,15 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
             <th>Time</th>
             <th>Tier</th>
             <th>Model</th>
-            <th title="${esc(HEADER_HELP.pin)}" class="help">Pin</th>
-            <th title="${esc(HEADER_HELP.reason)}" class="help">Reason</th>
-            <th title="${esc(HEADER_HELP.role)}" class="help">Role</th>
+            <th data-tip="${esc(HEADER_HELP.pin)}" class="help">Pin</th>
+            <th data-tip="${esc(HEADER_HELP.reason)}" class="help">Reason</th>
+            <th data-tip="${esc(HEADER_HELP.role)}" class="help">Role</th>
             <th>Cost</th>
             <th class="has-tip" tabindex="0">Saved<span class="tip-body" role="tooltip">${esc(HEADER_HELP.saved)} ${esc(REQUESTED_MODEL_HELP)}</span></th>
-            <th title="${esc(HEADER_HELP.confidence)}" class="help">Confidence</th>
+            <th data-tip="${esc(HEADER_HELP.confidence)}" class="help">Confidence</th>
             <th>In Tokens</th>
             <th>Out Tokens</th>
-            <th title="${esc(HEADER_HELP.retry)}" class="help">Retry</th>
+            <th data-tip="${esc(HEADER_HELP.retry)}" class="help">Retry</th>
           </tr>
         </thead>
         <tbody>
