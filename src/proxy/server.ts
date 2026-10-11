@@ -81,7 +81,7 @@ export function createProxyApp(
     };
     // 'all' swaps the in-memory rows for the tail of the ledger; lifetime cards stay as-is.
     const rows = filters.scope === 'all' && config.historyFile ? readHistoryTail(config.historyFile) : routeHistory;
-    return c.html(renderDashboard(rows, lifetime, filters, config.models.opus));
+    return c.html(renderDashboard(rows, lifetime, filters, config.models.opus, health.version));
   });
 
   app.post('/v1/messages', (c) => handleMessages(c, config, providerClient));
