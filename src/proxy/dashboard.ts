@@ -849,7 +849,7 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
     ${statCard('Session Requests', String(totalRequests), 'blue', '', [])}
     ${statCard('Session Cost', `$${(totalCost / 100).toFixed(4)}`, 'orange', '', [])}
     ${savedCard('Session Saved', totals, 4, unpricedNote(totals.unpricedModels))}
-    ${statCard('Auto-retried', String(retried), '', '', ['Requests the router re-sent to a stronger model after a truncated or refused answer.', `${retried} of ${totalRequests} requests in the current view. Each retry is a second billed call.`])}
+    ${statCard('Auto-retried', String(retried), '', '', ['Requests the router re-sent to a stronger model after a truncated or refused answer.', `${retried} of ${totalRequests} requests in the current view.`])}
     ${dispatchCard}
     ${counterfactualCard}
     ${lifetime ? savedCard('Lifetime Saved', lifetime, undefined, unpricedNote(lifetime.unpricedModels)) : ''}
