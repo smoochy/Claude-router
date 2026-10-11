@@ -5,6 +5,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versioning follo
 
 ## [Unreleased]
 
+### Fixed
+- **No `node.exe` console window on Windows when the plugin starts the proxy.** The session-start hook launched `claude-router start -d` through a detached `cmd.exe`, which has no console, so the node it ran opened a visible one. The launcher now stays attached to the hidden console `windowsHide` creates; `start -d` still detaches the daemon itself. The same window appeared on every `npm test` run, from the autostart test.
+
 ## [0.4.0] — 2026-09-04
 
 ### Changed

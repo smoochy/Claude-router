@@ -17,6 +17,10 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
  * unreferenced: the hook must not wait on the daemon's lifetime, only poll
  * for its health. CLAUDE_ROUTER_BIN overrides the binary (tests, odd PATHs);
  * CLAUDE_ROUTER_NO_AUTOSTART=1 disables this entirely.
+ *
+ * Not detached on Windows: a detached cmd.exe has no console, so the node it
+ * launches allocates a visible one (a "node.exe" window). Attached, both share
+ * the hidden console windowsHide creates; `start -d` detaches the daemon itself.
  */
 async function ensureProxy(port) {
   let health = await request(port, 'GET', '/health');
@@ -24,7 +28,7 @@ async function ensureProxy(port) {
   try {
     const win = process.platform === 'win32';
     const bin = process.env.CLAUDE_ROUTER_BIN || (win ? 'claude-router.cmd' : 'claude-router');
-    const child = spawn(bin, ['start', '-d'], { detached: true, stdio: 'ignore', shell: win, windowsHide: true });
+    const child = spawn(bin, ['start', '-d'], { detached: !win, stdio: 'ignore', shell: win, windowsHide: true });
     child.on('error', () => {});
     child.unref();
   } catch {
