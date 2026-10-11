@@ -1,26 +1,43 @@
 # Releasing
 
-This fork does not publish to npm - `@sheruq/claude-router` on the registry belongs to upstream, not to this fork. A release here is a GitHub Release with a tarball attached, built by `npm pack` and installed with `npm install -g <release-asset-url>`.
+This fork ships as `@smoochy/claude-router` on npm and, in addition, as a tarball attached to the GitHub Release (decision 4419, which supersedes the tarball-only decision 4229: npm is added, the tarball stays). Both come from one tag-triggered `publish` workflow; releases are always cut from `smoo/main`, never from `master` (the pure upstream mirror).
 
 Every release must be reproducible from a tag on `smoo/main`. 0.3.2 and 0.3.3 (upstream's own releases, before this fork existed) were published by hand from a side branch and could not be reproduced; the `publish` workflow refuses a tag that is not on `smoo/main` or does not match `package.json`.
 
-Tags use the upstream base plus a `-smoo.<n>` prerelease suffix, e.g. `0.4.0-smoo.1` for the first fork-only release on top of upstream's `0.4.0`, `0.4.0-smoo.2` for the next, and so on. A prerelease sorts below the plain `0.4.0` by semver - accepted, since installs come from a tarball URL, never from an npm range resolution.
+Tags use the upstream base plus a `-smoo.<n>` prerelease suffix, e.g. `0.4.0-smoo.1` for the first fork-only release on top of upstream's `0.4.0`, `0.4.0-smoo.2` for the next, and so on. A prerelease sorts below the plain `0.4.0` by semver, which is why every `-smoo.n` is pointed at `latest` explicitly (below).
 
 ## Checklist
 
-1. `git checkout smoo/main && git pull` — release only from an up-to-date `smoo/main`.
-2. In `CHANGELOG.md`, rename `## [Unreleased]` to `## [x.y.z-smoo.n] — YYYY-MM-DD` and open a fresh empty `## [Unreleased]` above it. Pre-1.0: minor = features, patch = fixes.
+1. `git checkout smoo/main && git pull` - release only from an up-to-date `smoo/main`.
+2. In `CHANGELOG.md`, rename `## [Unreleased]` to `## [x.y.z-smoo.n] - YYYY-MM-DD` and open a fresh empty `## [Unreleased]` above it. Pre-1.0: minor = features, patch = fixes.
 3. `npm version x.y.z-smoo.n --no-git-tag-version` (updates `package.json` and the lockfile).
 4. `npm test`, then `npm pack --dry-run` and compare the file list with the previous release.
-5. Open a PR titled `chore(release): x.y.z-smoo.n` with those two changes; squash-merge it.
+5. Open a PR titled `chore(release): x.y.z-smoo.n` with those two changes. The security gate (appsec + security-review) runs on it; fix its findings before merging. Merge with a merge commit.
 6. Tag the merge commit and push the tag:
    ```sh
    git checkout smoo/main && git pull
    git tag -a vx.y.z-smoo.n -m "x.y.z-smoo.n"
    git push origin vx.y.z-smoo.n
    ```
-7. The `publish` workflow tests, verifies tag ⇔ version ⇔ `smoo/main`, packs the tarball, and creates the GitHub release with that tarball attached.
-8. Confirm: the release page has the `.tgz` asset, and `npm install -g <that asset's URL>` installs it.
+7. The `publish` workflow then runs, in order: tag equals `package.json`, tag reachable from `smoo/main`, `pricing:refresh`, `npm test`, `npm pack`, `npm publish --access public --provenance`, `npm dist-tag add` for `latest` and `smoo`, GitHub Release with the tarball.
+8. Confirm: `npm view @smoochy/claude-router dist-tags` shows the new version on `latest` and `smoo`, and the release page has the `.tgz` asset.
+
+## Re-running a tag
+
+A failed run is healed by re-running the workflow on the same tag. `npm publish` is skipped when the version already exists on the registry, dist-tags are set idempotently, and an existing GitHub Release gets the tarball replaced with `gh release upload --clobber` instead of failing on `gh release create`.
+
+## npm publishing
+
+Publishing uses npm trusted publishing (OIDC, no token): the trusted publisher is registered for the `smoochy/Claude-router` repository and the exact workflow filename `publish.yml`, with "Allow npm publish" set (otherwise CI only stages the version). The job needs `id-token: write` and a GitHub-hosted runner. Renaming the workflow file breaks the publisher.
+
+The trusted publisher expires without one successful publish within 2 days of registration. Nothing is built for this: the sync-PR cadence keeps releases flowing, and an expired publisher is fixed by re-registering it on npmjs.com.
+
+Dist-tags: every `-smoo.n` goes to `latest`, and `smoo` is set to the same version. Both are mutable pointers like image tags. The immutable pin is the exact version (`@smoochy/claude-router@0.4.0-smoo.n`, which npm never lets anyone overwrite) plus the sha512 `dist.integrity` the lockfile pins; npm has no `@sha256:` specifier.
+
+## Install paths
+
+- npm: `npm install -g @smoochy/claude-router` (latest) or `@smoochy/claude-router@0.4.0-smoo.n` (pinned).
+- Tarball: the `.tgz` asset on the GitHub Release, see Mac and Windows below. The Windows upgrade path needs it, which is why it stays.
 
 ## Pricing snapshot
 
@@ -28,25 +45,25 @@ Prices come from `src/pricing-snapshot.json`, a trimmed copy of the published mo
 
 ## Mac install
 
-Installing the release tarball on the Mac is two manual commands, run per release: `npm install -g <url of the .tgz release asset>`, then `claude-router install` - the second command is still required because it is what writes `~/.claude-router/config.json`, applies `CLAUDE_CODE_PROFILE` (`src/proxy/cli-config.ts:366-370`) and wires the statusline.
+Installing the release is `npm install -g @smoochy/claude-router` (or the tarball asset URL), then `claude-router install` - the second command is still required because it is what writes `~/.claude-router/config.json`, applies `CLAUDE_CODE_PROFILE` (`src/proxy/cli-config.ts:366-370`) and wires the statusline.
 
-This stays a manual step per release rather than something automated: the version is a semver prerelease (`0.4.0-smoo.1`) that deliberately sorts below the plain `0.4.0`, so it is not resolvable through an npm range and no range-based auto-update is possible anyway.
+This stays a manual step per release rather than something automated.
 
 Whether the Mac also has the home-directory `file:` dependency arrangement documented below for Windows is unverified - do not assume the plain `npm install -g` path above is incomplete there until that is checked.
 
 ## Windows install
 
-`npm install -g <release-asset-url>` as documented for the Mac does not work on this machine: this npm configuration refuses remote tarball specifiers outright (`EALLOWREMOTE`, "Fetching packages of type \"remote\" have been disabled"), failing before it fetches anything. Download the asset first, then install from the local file:
+`npm install -g <release-asset-url>` does not work on this machine: this npm configuration refuses remote tarball specifiers outright (`EALLOWREMOTE`, "Fetching packages of type \"remote\" have been disabled"), failing before it fetches anything. Download the asset first, then install from the local file:
 
 ```sh
 gh release download vx.y.z-smoo.n -D <dir>
 npm install -g <dir>/claude-router-x.y.z-smoo.n.tgz
 ```
 
-On this machine the global install above is also not what runs. `~/package.json` carries a `file:` dependency on `@sheruq/claude-router` pointing at `.claude-router/dist/claude-router-<version>.tgz` (releases up to 0.4.0-smoo.2 carry the old `sheruq-claude-router-<version>.tgz` name), and `~/node_modules/.bin/claude-router` shadows the global binary on `PATH`. `npm install -g` therefore updates a copy nothing executes. To actually upgrade:
+On this machine the global install above is also not what runs. `~/package.json` carries a `file:` dependency on `@sheruq/claude-router` (renamed to `@smoochy/claude-router` from the first release after the npm switch; update the key when upgrading) pointing at `.claude-router/dist/claude-router-<version>.tgz` (releases up to 0.4.0-smoo.2 carry the old `sheruq-claude-router-<version>.tgz` name), and `~/node_modules/.bin/claude-router` shadows the global binary on `PATH`. `npm install -g` therefore updates a copy nothing executes. To actually upgrade:
 
 1. Copy the downloaded tarball into `~/.claude-router/dist/`.
-2. Point the `@sheruq/claude-router` dependency in `~/package.json` at that file.
+2. Point the `@smoochy/claude-router` dependency in `~/package.json` at that file (remove the old `@sheruq/claude-router` key).
 3. Run `npm install` from `~` (not `-g`).
 4. `claude-router --version` now reports the new version.
 
