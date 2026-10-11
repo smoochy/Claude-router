@@ -48,6 +48,7 @@ export function protoTierRole(totals: RouteTotals, events: Array<{ tier: string;
   const noRole = {
     requests: totals.requests - named.reduce((a, [, r]) => a + r.requests, 0),
     costCents: totals.costCents - named.reduce((a, [, r]) => a + r.costCents, 0),
+    savedCents: totals.savedCents - named.reduce((a, [, r]) => a + r.savedCents, 0),
   };
   // alphabetical; "no role" is the remainder and always comes last
   const roles = [...named].sort((a, b) => a[0].localeCompare(b[0]));
