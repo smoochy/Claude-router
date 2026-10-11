@@ -1,5 +1,5 @@
 {
-  "name": "@sheruq/claude-router",
+  "name": "@smoochy/claude-router",
   "version": "0.4.0-smoo.4",
   "description": "TypeScript-native Claude API cost router — routes each call to Haiku/Sonnet/Opus/Fable using evidence-based gates, not keyword guesswork, to cut your Anthropic/Bedrock/Vertex bill",
   "main": "dist/index.js",

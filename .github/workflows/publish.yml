@@ -1,14 +1,7 @@
 name: publish
 
-# Builds a release tarball when a `v*` tag is pushed on smoo/main — never
-# publishes to npm. This fork does not own @sheruq/claude-router on the
-# registry, so no `npm publish`, no OIDC trusted-publishing exchange, no
-# provenance attestation: those steps targeted a package that isn't ours and
-# are gone. What stays from the inherited workflow is the guard against the
-# 0.3.2/0.3.3 failure mode (a tag not matching package.json, or not reachable
-# from the fork's release branch) plus `npm test` and `npm pack`. What is new
-# is attaching the packed tarball to the GitHub release as a downloadable
-# asset, so `npm install -g <release-asset-url>` is how this fork is installed.
+# Tag-triggered release chain (decision #4419). A `v*` tag set on smoo/main after the gate-green release PR merged runs: tag checks, pricing refresh, tests, pack, npm publish (OIDC trusted publishing, provenance), dist-tags, GitHub Release with the tarball. Re-running the same tag is safe: npm publish is skipped when the version already exists, and the release asset is replaced with --clobber.
+# The gate (appsec + security-review) is a separate pull_request workflow on the release PR; it is not part of this file.
 
 on:
   push:
@@ -16,6 +9,7 @@ on:
 
 permissions:
   contents: write
+  id-token: write
 
 jobs:
   publish:
@@ -26,15 +20,9 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
-      - run: npm ci
-      # Fail closed: if the list is unreachable or malformed the build fails and
-      # no release ships a stale or empty price table. Runs before npm test so
-      # the tarball is tested with exactly the snapshot it carries.
-      - name: Refresh the pricing snapshot
-        run: npm run pricing:refresh
-      - run: npm test
+          registry-url: https://registry.npmjs.org
 
       - name: Tag must match package.json
         run: |
@@ -48,17 +36,40 @@ jobs:
         run: |
           git fetch origin smoo/main --depth=200
           if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/smoo/main; then
-            echo "$GITHUB_SHA is not reachable from origin/smoo/main — refusing to release from a side branch"; exit 1
+            echo "$GITHUB_SHA is not reachable from origin/smoo/main - refusing to release from a side branch"; exit 1
           fi
 
-      - name: Pack the release tarball
-        # npm names the file after the scoped package (sheruq-claude-router-...);
-        # that scope is not ours, so the asset is renamed to claude-router-<version>.tgz.
-        run: |
-          npm pack
-          mv sheruq-claude-router-*.tgz "claude-router-$(node -p "require('./package.json').version").tgz"
+      - run: npm ci
+      # Fail closed: an unreachable or malformed list fails the build, so no release ships a stale or empty price table. Runs before npm test so the tarball is tested with exactly the snapshot it carries.
+      - name: Refresh the pricing snapshot
+        run: npm run pricing:refresh
+      - run: npm test
 
-      - name: GitHub release from the CHANGELOG section, with the tarball attached
+      - name: Pack the release tarball
+        run: |
+          VERSION="$(node -p "require('./package.json').version")"
+          npm pack --ignore-scripts
+          mv smoochy-claude-router-*.tgz "claude-router-${VERSION}.tgz"
+
+      - name: Publish to npm
+        run: |
+          NAME="$(node -p "require('./package.json').name")"
+          VERSION="$(node -p "require('./package.json').version")"
+          if npm view "${NAME}@${VERSION}" version >/dev/null 2>&1; then
+            echo "${NAME}@${VERSION} already on the registry - skipping publish"
+          else
+            npm publish "./claude-router-${VERSION}.tgz" --access public --provenance
+          fi
+
+      # Mutable pointers; the immutable pin is the exact version. Needs the trusted publisher to be allowed to publish, and is idempotent.
+      - name: Dist-tags latest and smoo
+        run: |
+          NAME="$(node -p "require('./package.json').name")"
+          VERSION="$(node -p "require('./package.json').version")"
+          npm dist-tag add "${NAME}@${VERSION}" latest
+          npm dist-tag add "${NAME}@${VERSION}" smoo
+
+      - name: GitHub Release from the CHANGELOG section, with the tarball attached
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -68,4 +79,8 @@ jobs:
             on && index($0, "## [") == 1 { exit }
             on { print }
           ' CHANGELOG.md > release-notes.md
-          gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes-file release-notes.md ./*.tgz
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" ./claude-router-*.tgz --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes-file release-notes.md ./claude-router-*.tgz
+          fi
