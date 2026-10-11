@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import Anthropic from '@anthropic-ai/sdk';
 import { handleMessages, handlePassthrough, registerAgent, routeHistory, routeCounters, type HandlerConfig } from './handler.js';
 import { getVersion } from './cli-config.js';
-import { renderDashboard, DASHBOARD_MODES, TIME_WINDOWS, type DashboardMode, type DashboardFilters } from './dashboard.js';
+import { renderDashboard, parseRefresh, DASHBOARD_MODES, TIME_WINDOWS, type DashboardMode, type DashboardFilters } from './dashboard.js';
 import { readHistoryTail, readLifetimeStats } from './history.js';
 import { buildHealth, formatStatusLine } from './health.js';
 
@@ -75,8 +75,8 @@ export function createProxyApp(
       reason: c.req.query('reason') || undefined,
       session: c.req.query('session') || undefined,
       window,
-      // The form sends a hidden auto=0 first and the checkbox auto=1 after it; the last value wins.
-      auto: c.req.queries('auto')?.at(-1) !== '0',
+      // Last value wins (old checkbox links carried auto=0&auto=1).
+      auto: parseRefresh(c.req.queries('auto')?.at(-1)),
       scope: c.req.query('scope') === 'all' ? 'all' : 'session',
     };
     // 'all' swaps the in-memory rows for the tail of the ledger; lifetime cards stay as-is.
