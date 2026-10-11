@@ -7,6 +7,10 @@ This fork's own sections use the upstream version plus a `-smoo.<n>` prerelease 
 
 ## [Unreleased]
 
+### Added
+
+- Per-request long-context pricing. The model list's optional `pricing_long_context` (threshold plus upper-tier prices) is read from the remote list, the cache and the build-time snapshot, and a request whose total prompt tokens exceed the threshold is costed at the upper tier (Haiku 5.5 over 100,000 tokens: $0.50/$2.50 instead of $0.10/$0.50). The prompt-token count is input plus cache reads plus cache writes, matching how Anthropic bills the tier; the comparison is strictly above the threshold, and cache reads and writes are billed at the upper tier's rates (writes stay the global 125% multiplier). `savedCents` and the dashboard figures follow, including the baseline model's own tier. Models without the field keep one price, and a malformed tier is ignored.
+
 ### Fixed
 
 - `npm run pricing:refresh` no longer drops `pricing_long_context` (the above-threshold price tier) from `src/pricing-snapshot.json`. The script keeps the field, fails closed when a tier is malformed (threshold and all five prices must be positive numbers), and takes `PRICING_SNAPSHOT_URL` / `PRICING_SNAPSHOT_OUT` overrides so a branch file can be tested. The snapshot now carries the tier for `claude-haiku-5-5`; the cost code does not read it yet.

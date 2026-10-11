@@ -46,10 +46,19 @@ export function pricingTableFromList(entries: ModelListEntry[]): Record<string, 
   const byAge = [...entries].sort((a, b) =>
     String(a.created_at ?? '').localeCompare(String(b.created_at ?? '')),
   );
-  for (const { id, pricing: p } of byAge) {
+  for (const { id, pricing: p, pricing_long_context: lc } of byAge) {
     if (!p || !(p.input > 0) || !(p.output >= 0)) continue;
     const cacheRead = p.cache_read >= 0 ? p.cache_read / p.input : undefined;
     table[id] = { input: p.input, output: p.output, ...(cacheRead !== undefined ? { cacheRead } : {}) };
+    // A malformed tier is dropped, not trusted: the model keeps its single base price.
+    if (lc && lc.threshold_input_tokens > 0 && lc.input > 0 && lc.output >= 0) {
+      table[id].longContext = {
+        thresholdInputTokens: lc.threshold_input_tokens,
+        input: lc.input,
+        output: lc.output,
+        ...(lc.cache_read >= 0 ? { cacheRead: lc.cache_read / lc.input } : {}),
+      };
+    }
   }
   return table;
 }
@@ -187,8 +196,13 @@ export function computeCostCents(
   pricing: Record<string, ModelPricing>,
   cache?: CacheTokens,
 ): number {
-  const p = priceForModel(model, pricing);
-  if (!p) return 0;
+  const base = priceForModel(model, pricing);
+  if (!base) return 0;
+  // Anthropic bills the long-context tier on the whole prompt: uncached input
+  // plus cache reads plus cache writes, strictly above the threshold.
+  const promptTokens = inputTokens + (cache?.readTokens ?? 0) + (cache?.creationTokens ?? 0);
+  const lc = base.longContext;
+  const p = lc && promptTokens > lc.thresholdInputTokens ? { ...base, ...lc } : base;
   const cacheCost =
     (cache?.readTokens ?? 0) * p.input * cacheReadRate(p) +
     (cache?.creationTokens ?? 0) * p.input * CACHE_WRITE_RATE;

@@ -14,6 +14,18 @@ export interface ModelPricing {
    * the default — absent means standard, never means free.
    */
   cacheRead?: number;
+  /**
+   * Upper price tier for long prompts. A request whose total prompt tokens
+   * (input + cache reads + cache writes) exceed {@link thresholdInputTokens}
+   * is billed at this tier's `input`/`output`/`cacheRead` instead of the base
+   * ones. Absent means one price for every request.
+   */
+  longContext?: {
+    thresholdInputTokens: number;
+    input: number;
+    output: number;
+    cacheRead?: number;
+  };
 }
 
 export interface RoutingTuning {
