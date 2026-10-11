@@ -220,6 +220,11 @@ describe('refresh pill and reset button', () => {
     assert.ok(scripts[0].endsWith(',30000)</script>'));
     assert.match(html, /<div class="live"/);
   });
+  it('footer names the active interval or off', () => {
+    assert.match(renderDashboard([e()], undefined, { auto: 30 }), /Auto-refreshes every 30 seconds\./);
+    assert.match(renderDashboard([e()], undefined, {}), /Auto-refreshes every 10 seconds\./);
+    assert.match(renderDashboard([e()], undefined, { auto: 0 }), /Auto-refresh is off\./);
+  });
   it('off pauses the LED and runs no timer', () => {
     const off = renderDashboard([e()], undefined, { auto: 0 });
     assert.match(off, /<div class="live paused"/);
