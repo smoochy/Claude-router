@@ -44,13 +44,13 @@ export function sessionTips(
 ): { requests: string[]; cost: string[] } {
   const tierCost: Record<string, number> = {};
   for (const e of events) if (!e.error) tierCost[e.tier] = (tierCost[e.tier] ?? 0) + e.costCents;
-  const tiers = DISPLAY_TIERS.map((t) => ({ name: TIER_NAME[t], n: totals.tiers[t] ?? 0, c: tierCost[t] ?? 0 })).filter((x) => x.n > 0);
+  const tiers = DISPLAY_TIERS.map((t) => ({ name: TIER_NAME[t], cls: `tt-${t}`, n: totals.tiers[t] ?? 0, c: tierCost[t] ?? 0 })).filter((x) => x.n > 0);
   const named = Object.entries(totals.byRole).sort((a, b) => a[0].localeCompare(b[0]));
   const roles = named.map(([name, r]) => ({ name, n: r.requests, c: r.costCents }));
   const rest = { name: 'no role', n: totals.requests - roles.reduce((a, r) => a + r.n, 0), c: totals.costCents - roles.reduce((a, r) => a + r.c, 0) };
   if (rest.n > 0) roles.push(rest);
-  const list = (xs: Array<{ name: string; n: number; c: number }>, f: (x: { n: number; c: number }) => string): string =>
-    xs.map((x) => `${esc(x.name)} ${f(x)}`).join(' &middot; ');
+  const list = (xs: Array<{ name: string; cls?: string; n: number; c: number }>, f: (x: { n: number; c: number }) => string): string =>
+    xs.map((x) => `${x.cls ? `<b class="${x.cls}">${esc(x.name)}</b>` : esc(x.name)} ${f(x)}`).join(' &middot; ');
   const rq = (x: { n: number }): string => `${x.n} (${pct(x.n, totals.requests)})`;
   const co = (x: { c: number }): string => `${usd(x.c)} (${pct(x.c, totals.costCents)})`;
   return {
@@ -147,6 +147,7 @@ td.p-hov,th.p-hov{text-decoration:underline dotted #8b95a7;text-underline-offset
 .p-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}.p-tile{padding:10px 12px;border:1px solid #8b95a733;border-radius:10px;border-left:3px solid #8b95a7}
 .b-haiku{border-left-color:var(--t-haiku)}.b-sonnet{border-left-color:var(--t-sonnet)}.b-opus{border-left-color:var(--t-opus)}.b-fable{border-left-color:var(--t-fable)}
 .p-lbl{font:10px ui-monospace,monospace;letter-spacing:.14em;text-transform:uppercase;color:#a9b3c6}.p-big{font-size:24px;font-weight:700;font-variant-numeric:tabular-nums}.p-big small{font-size:12px;color:#a9b3c6;font-weight:400}.p-big.m{font-size:16px;margin-top:6px}.p-sub{font-size:12px;color:#a9b3c6}
+.tt-haiku{color:var(--t-haiku)}.tt-sonnet{color:var(--t-sonnet)}.tt-opus{color:var(--t-opus)}.tt-fable{color:var(--t-fable)}.tt-passthrough{color:#8b95a7}.tip-body b[class^=tt-]{margin-left:0}
 [data-tip]{cursor:help}td[data-tip]:not(.none){text-decoration:underline dotted #8b95a7;text-underline-offset:4px}.p-card:hover{z-index:40}.p-tip{white-space:normal}.p-e:nth-last-child(-n+3)>.p-tip{left:auto;right:0}
 .p-tot{display:flex;align-items:center}.p-one{display:flex;flex-wrap:nowrap;align-items:stretch;gap:18px;font-size:12px;}.p-ents{flex:1;min-width:0;display:flex;flex-wrap:wrap;justify-content:space-between;gap:6px 18px}.p-one{font-variant-numeric:tabular-nums;padding:2px 0}.p-e{white-space:nowrap}
 .p-e{position:relative}.p-e b{font-weight:600}.p-e i{font-style:normal;color:#a9b3c6}.p-e u{text-decoration:none;color:#e6ebf5;margin-left:4px}.p-e .p-dot{width:8px;height:8px;margin-right:6px}
