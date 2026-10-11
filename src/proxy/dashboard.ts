@@ -553,7 +553,10 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
       background: var(--glass);
       white-space: nowrap;
     }
-    .live select { font: inherit; letter-spacing: inherit; text-transform: none; color: var(--ink); background: transparent; border: 0; cursor: pointer; }
+    .live select { font-family: var(--mono); font-size: 11px; letter-spacing: normal; text-transform: none; color: var(--ink); background: var(--void); border: 1px solid var(--edge-soft); border-radius: 6px; padding: 3px 6px; cursor: pointer; }
+    header > div:first-child { margin-right: auto; }
+    header .gh { order: 1; }
+    header .live { order: 2; }
     .live.paused .dot { background: var(--red); box-shadow: 0 0 10px rgba(246, 70, 93, 0.9); animation: none; }
     .live .dot {
       width: 7px; height: 7px; border-radius: 50%;
@@ -599,7 +602,6 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
       background: var(--void);
       color: var(--ink);
     }
-    select option:checked { background: var(--orange); color: var(--void); }
 
     /* Glass panel: transparency stack + 1px edge + inner top highlight + warm glow */
     .card {
