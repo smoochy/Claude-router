@@ -44,10 +44,10 @@ Whether the Mac also has the home-directory `file:` dependency arrangement docum
 
 ```sh
 gh release download vx.y.z-smoo.n -D <dir>
-npm install -g <dir>/sheruq-claude-router-x.y.z-smoo.n.tgz
+npm install -g <dir>/claude-router-x.y.z-smoo.n.tgz
 ```
 
-On this machine the global install above is also not what runs. `~/package.json` carries a `file:` dependency on `@sheruq/claude-router` pointing at `.claude-router/dist/sheruq-claude-router-<version>.tgz`, and `~/node_modules/.bin/claude-router` shadows the global binary on `PATH`. `npm install -g` therefore updates a copy nothing executes. To actually upgrade:
+On this machine the global install above is also not what runs. `~/package.json` carries a `file:` dependency on `@sheruq/claude-router` pointing at `.claude-router/dist/claude-router-<version>.tgz` (releases up to 0.4.0-smoo.2 carry the old `sheruq-claude-router-<version>.tgz` name), and `~/node_modules/.bin/claude-router` shadows the global binary on `PATH`. `npm install -g` therefore updates a copy nothing executes. To actually upgrade:
 
 1. Copy the downloaded tarball into `~/.claude-router/dist/`.
 2. Point the `@sheruq/claude-router` dependency in `~/package.json` at that file.

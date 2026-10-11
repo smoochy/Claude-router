@@ -7,8 +7,11 @@ This fork's own sections use the upstream version plus a `-smoo.<n>` prerelease 
 
 ## [Unreleased]
 
+## [0.4.0-smoo.3] - 2026-10-11
+
 ### Changed
 
+- Release tarballs are attached as `claude-router-<version>.tgz` instead of `sheruq-claude-router-<version>.tgz`: the publish workflow renames the `npm pack` output, since the `sheruq` scope is not this fork's.
 - Dashboard auto-update is toggled by clicking the "live - refresh on/off" pill (pulsing green LED when on, steady red when off) instead of a checkbox, and a Reset filters button takes the checkbox's place in the filter row.
 - Dashboard filters sit in a single row in route-feed column order (Scope, Window, Tier, Model, Pin, Reason, Role, Session, Mode, Auto-update); a clipped select shows its full value on hover, and the Retry header and cells explain themselves on hover.
 - Dashboard stat cards keep one shape across scopes and filters: Dispatch Rate and vs All-Opus always render (`-` when empty), the cards sit in a fixed grid, session selects are width-capped, and the long explanations under Saved, Dispatch and All-Opus moved into hover/focus popovers.
