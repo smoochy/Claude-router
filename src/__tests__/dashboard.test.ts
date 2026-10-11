@@ -215,3 +215,13 @@ describe('refresh pill and reset button', () => {
     assert.ok(!html.includes('type="checkbox"'));
   });
 });
+
+describe('dashboard version footer', () => {
+  it('shows the running version in the footer and escapes it', () => {
+    assert.match(renderDashboard([e()], undefined, {}, undefined, '1.2.3-smoo.4'), /<span class="version">v1\.2\.3-smoo\.4<\/span>/);
+    assert.doesNotMatch(renderDashboard([e()], undefined, {}, undefined, '<x>'), /<x>/);
+  });
+  it('omits the version when none is given', () => {
+    assert.doesNotMatch(renderDashboard([e()]), /class="version"/);
+  });
+});

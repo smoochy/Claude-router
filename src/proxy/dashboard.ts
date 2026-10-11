@@ -289,7 +289,7 @@ export function savedTipLines(t: LifetimeStats): string[] {
 }
 
 /** `opusModel` is the effective `config.tiers.opus`; defaults to the compiled-in one. */
-export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats, filters: DashboardFilters = {}, opusModel: string = DEFAULT_MODELS.opus): string {
+export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats, filters: DashboardFilters = {}, opusModel: string = DEFAULT_MODELS.opus, version?: string): string {
   const mode = filters.mode ?? 'all';
   const filtered = filterHistory(history, filters);
   const totals = emptyTotals();
@@ -730,6 +730,7 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
     .positive { color: var(--green); }
     .negative { color: var(--red); text-shadow: 0 0 12px rgba(246, 70, 93, 0.35); }
     .empty { text-align: center; padding: 30px; color: var(--ink-dim); font-family: var(--sans); font-size: 13px; }
+    .footer .version { opacity: 0.7; margin-left: 8px; }
     .footer {
       margin-top: 18px;
       font-family: var(--mono);
@@ -843,7 +844,7 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
     </div>
   </div>
 
-  <div class="footer">Auto-refreshes every 10 seconds. Showing last ${Math.min(50, filtered.length)} of ${filtered.length} requests.</div>
+  <div class="footer">Auto-refreshes every 10 seconds. Showing last ${Math.min(50, filtered.length)} of ${filtered.length} requests.${version ? ` <span class="version">v${esc(version)}</span>` : ''}</div>
 </body>
 </html>`;
 }
