@@ -71,7 +71,16 @@ function confidenceHelp(e: RouteEvent): string {
   return `Classifier confidence ${e.confidence.toFixed(2)} on a 0 to 1 scale${e.classifier ? ` (${e.classifier})` : ''}. 1.00 means a fixed rule or pin, lower means a heuristic guess.`;
 }
 
+/** Plain-language meaning of the retry cell. */
+function retryHelp(e: RouteEvent): string {
+  if (!e.retried) return 'Not retried: the first answer was used.';
+  if (e.retryReason === 'truncation') return 'Retried after truncation: the answer hit the output limit, so the router asked again on a stronger model.';
+  if (e.retryReason === 'refusal') return 'Retried after a refusal: the cheaper model declined, so the router asked again on a stronger model.';
+  return `Auto-retried${e.retryReason ? ` (${e.retryReason})` : ''} on a stronger model.`;
+}
+
 const HEADER_HELP = {
+  retry: 'Whether the router re-sent the request to a stronger model after a truncated or refused answer.',
   pin: 'Whether the model the client asked for (pilotfish pin) is the one that was billed: honored or overridden.',
   reason: 'The routing rule that picked the tier. Hover an entry for its meaning.',
   role: 'What kind of request this was: coordinator, a subagent role, or none.',
@@ -408,6 +417,12 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
   if (filters.scope === 'all') refreshParams.set('scope', 'all');
   refreshParams.set('auto', '1');
   const refreshUrl = `/dashboard?${refreshParams.toString()}`;
+  // Same filters, opposite refresh state: the live pill links here.
+  const toggleParams = new URLSearchParams(refreshParams);
+  toggleParams.set('auto', auto ? '0' : '1');
+  const toggleUrl = `/dashboard?${toggleParams.toString()}`;
+  // Clears every filter and the scope, keeps only the refresh state.
+  const resetUrl = `/dashboard?auto=${auto ? '1' : '0'}`;
   const metaRefresh = auto ? `<meta http-equiv="refresh" content="10;url=${refreshUrl}">` : '';
 
   const rows = recent
@@ -425,7 +440,7 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
         <td title="${esc(confidenceHelp(e))}">${e.confidence.toFixed(2)}</td>
         <td>${e.inputTokens}</td>
         <td>${e.outputTokens}</td>
-        <td>${e.retried ? `<span class="badge badge-retry">${esc(e.retryReason ?? '')}</span>` : '<span class="none">-</span>'}</td>
+        <td title="${esc(retryHelp(e))}">${e.retried ? `<span class="badge badge-retry">${esc(e.retryReason ?? '')}</span>` : '<span class="none">-</span>'}</td>
       </tr>`,
     )
     .join('');
@@ -525,6 +540,9 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
       background: var(--glass);
       white-space: nowrap;
     }
+    a.live { text-decoration: none; cursor: pointer; transition: border-color 0.25s ease; }
+    a.live:hover { border-color: var(--edge); }
+    .live.paused .dot { background: var(--red); box-shadow: 0 0 10px rgba(246, 70, 93, 0.9); animation: none; }
     .live .dot {
       width: 7px; height: 7px; border-radius: 50%;
       background: var(--green);
@@ -534,15 +552,26 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
     @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
 
     .filter-bar {
-      display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+      display: flex; align-items: center; gap: 12px; flex-wrap: nowrap;
       padding: 10px 16px; margin-bottom: 18px;
     }
+    .filter-bar .mode-filter:not(.auto-toggle) { flex: 1 1 0; min-width: 0; }
+    .filter-bar .mode-filter label { flex: none; }
+    .reset-btn {
+      flex: none; white-space: nowrap;
+      font-family: var(--mono); font-size: 11px; color: var(--ink);
+      text-decoration: none; padding: 5px 12px;
+      border: 1px solid var(--edge); border-radius: 6px; background: var(--glass);
+    }
+    .reset-btn:hover { border-color: var(--orange); color: var(--gold); }
     .auto-toggle label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
     .mode-filter { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 11px; color: var(--ink-dim); }
     th.help { cursor: help; text-decoration: underline dotted; text-underline-offset: 4px; }
     td[title] { cursor: help; }
     .mode-filter select {
-      max-width: 22ch;
+      flex: 1 1 0;
+      min-width: 0;
+      width: 100%;
       text-overflow: ellipsis;
       background: var(--void);
       color: var(--ink);
@@ -722,50 +751,48 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
       <h1><a href="/dashboard" title="Reset all filters" style="color:inherit;text-decoration:none">claude-router dashboard</a></h1>
       <div class="tagline">routing ledger &middot; cost engine</div>
     </div>
-    <div class="live"><span class="dot"></span>live &middot; refresh ${auto ? 'on' : 'off'}</div>
+    <a class="live${auto ? '' : ' paused'}" href="${esc(toggleUrl)}" title="${auto ? 'Auto-update is on: click to pause' : 'Auto-update is off: click to resume'}"><span class="dot"></span>live &middot; refresh ${auto ? 'on' : 'off'}</a>
   </header>
 
   <form class="filter-bar card" method="GET" action="/dashboard">
     <div class="mode-filter">
       <label for="scope">Scope</label>
-      <select id="scope" name="scope" onchange="this.form.submit()"><option value="session"${filters.scope === 'all' ? '' : ' selected'}>Session (since start)</option><option value="all"${filters.scope === 'all' ? ' selected' : ''}>All (last ${HISTORY_TAIL_LINES} from history)</option></select>
-    </div>
-    <div class="mode-filter">
-      <label for="mode">Mode</label>
-      <select id="mode" name="mode" onchange="this.form.submit()">${modeOptions}</select>
-    </div>
-    <div class="mode-filter">
-      <label for="role">Role</label>
-      <select id="role" name="role" onchange="this.form.submit()">${roleOptions}</select>
-    </div>
-    <div class="mode-filter">
-      <label for="model">Model</label>
-      <select id="model" name="model" onchange="this.form.submit()">${modelOptions}</select>
-    </div>
-    <div class="mode-filter">
-      <label for="tier">Tier</label>
-      <select id="tier" name="tier" onchange="this.form.submit()">${tierOptions}</select>
-    </div>
-    <div class="mode-filter">
-      <label for="pin">Pin</label>
-      <select id="pin" name="pin" onchange="this.form.submit()">${pinOptions}</select>
-    </div>
-    <div class="mode-filter">
-      <label for="reason">Reason</label>
-      <select id="reason" name="reason" onchange="this.form.submit()">${reasonOptions}</select>
-    </div>
-    <div class="mode-filter">
-      <label for="session">Session</label>
-      <select id="session" name="session" onchange="this.form.submit()">${sessionOptions}</select>
+      <select id="scope" name="scope" onmouseenter="this.title = this.selectedOptions[0].text" onchange="this.form.submit()"><option value="session"${filters.scope === 'all' ? '' : ' selected'}>Session (since start)</option><option value="all"${filters.scope === 'all' ? ' selected' : ''}>All (last ${HISTORY_TAIL_LINES} from history)</option></select>
     </div>
     <div class="mode-filter">
       <label for="window">Window</label>
-      <select id="window" name="window" onchange="this.form.submit()">${windowOptions}</select>
+      <select id="window" name="window" onmouseenter="this.title = this.selectedOptions[0].text" onchange="this.form.submit()">${windowOptions}</select>
     </div>
-    <div class="mode-filter auto-toggle">
-      <input type="hidden" id="auto-state" name="auto" value="${auto ? '1' : '0'}">
-      <label for="auto"><input type="checkbox" id="auto"${auto ? ' checked' : ''} onchange="document.getElementById('auto-state').value = this.checked ? '1' : '0'; this.form.submit()"> Auto-update</label>
+    <div class="mode-filter">
+      <label for="tier">Tier</label>
+      <select id="tier" name="tier" onmouseenter="this.title = this.selectedOptions[0].text" onchange="this.form.submit()">${tierOptions}</select>
     </div>
+    <div class="mode-filter">
+      <label for="model">Model</label>
+      <select id="model" name="model" onmouseenter="this.title = this.selectedOptions[0].text" onchange="this.form.submit()">${modelOptions}</select>
+    </div>
+    <div class="mode-filter">
+      <label for="pin">Pin</label>
+      <select id="pin" name="pin" onmouseenter="this.title = this.selectedOptions[0].text" onchange="this.form.submit()">${pinOptions}</select>
+    </div>
+    <div class="mode-filter">
+      <label for="reason">Reason</label>
+      <select id="reason" name="reason" onmouseenter="this.title = this.selectedOptions[0].text" onchange="this.form.submit()">${reasonOptions}</select>
+    </div>
+    <div class="mode-filter">
+      <label for="role">Role</label>
+      <select id="role" name="role" onmouseenter="this.title = this.selectedOptions[0].text" onchange="this.form.submit()">${roleOptions}</select>
+    </div>
+    <div class="mode-filter">
+      <label for="session">Session</label>
+      <select id="session" name="session" onmouseenter="this.title = this.selectedOptions[0].text" onchange="this.form.submit()">${sessionOptions}</select>
+    </div>
+    <div class="mode-filter">
+      <label for="mode">Mode</label>
+      <select id="mode" name="mode" onmouseenter="this.title = this.selectedOptions[0].text" onchange="this.form.submit()">${modeOptions}</select>
+    </div>
+    <input type="hidden" name="auto" value="${auto ? '1' : '0'}">
+    <a class="reset-btn" href="${esc(resetUrl)}" title="Clear every filter and the scope, keep the refresh setting">Reset filters</a>
   </form>
 
   <div class="stats">
@@ -806,7 +833,7 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
             <th title="${esc(HEADER_HELP.confidence)}" class="help">Confidence</th>
             <th>In Tokens</th>
             <th>Out Tokens</th>
-            <th>Retry</th>
+            <th title="${esc(HEADER_HELP.retry)}" class="help">Retry</th>
           </tr>
         </thead>
         <tbody>
