@@ -85,10 +85,10 @@ export function protoTierRole(totals: RouteTotals, events: Array<{ tier: string;
   const tierE = `<div class="p-one">${tiers
     .filter((x) => x.n > 0 || x.t !== 'passthrough')
     .map((x) => ent(`<span class="p-dot t-${x.t}"></span>${TIER_NAME[x.t]}`, '', x.n, tierSum, tierCost[x.t] ?? 0, tcSum, tip([TIER_HELP[x.t]])))
-    .join('')}<span class="p-e p-tot"><b>Total</b> ${tierSum} <u>${usd(tcSum)}</u></span></div>`;
+    .join('')}<span class="p-e p-tot p-hov"><b>Total</b> ${tierSum} <u>${usd(tcSum)}</u>${tip(['Total: all routed requests in the current view and what they cost on the billed models at list price. Failed streams are not counted.', 'Equals the sum of the tier entries; passthrough is included when shown.'])}</span></div>`;
   const roleE = `<div class="p-one">${roles
     .map(([name, r]) => ent(esc(name), 'mono', r.requests, reqSum, r.costCents, costSum, roleTip(name)))
-    .join('')}<span class="p-e p-tot"><b>Total</b> ${reqSum} <u>${usd(costSum)}</u></span></div>`;
+    .join('')}<span class="p-e p-tot p-hov"><b>Total</b> ${reqSum} <u>${usd(costSum)}</u>${tip(['Total: requests and cost of all role-attributed calls in the current view; this is the 100% the role percentages refer to.', 'Smaller than the tier total, because requests outside any role (plain single prompts) are not counted here.'])}</span></div>`;
 
   const block = (v: string, role: string, tier: string): string =>
     `<div class="p-var" data-v="${v}"><div class="section-label">By Role</div><div class="card p-card">${role}</div><div class="section-label">Tier Distribution</div><div class="card p-card">${tier}</div></div>`;
