@@ -73,6 +73,7 @@ export function createProxyApp(
       tier: c.req.query('tier') || undefined,
       pin: c.req.query('pin') || undefined,
       reason: c.req.query('reason') || undefined,
+      retry: c.req.query('retry') || undefined,
       session: c.req.query('session') || undefined,
       window,
       // Last value wins (old checkbox links carried auto=0&auto=1).

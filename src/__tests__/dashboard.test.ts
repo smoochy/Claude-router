@@ -201,8 +201,27 @@ describe('filter row and retry help', () => {
   const html = renderDashboard([e({ retried: true, retryReason: 'truncation' })]);
   it('lists the selects in route-feed order, one row', () => {
     const ids = [...html.matchAll(/<select id="(\w+)"/g)].map((m) => m[1]);
-    assert.deepEqual(ids, ['scope', 'window', 'tier', 'model', 'pin', 'reason', 'role', 'session', 'mode']);
+    assert.deepEqual(ids, ['mode', 'scope', 'window', 'session', 'tier', 'model', 'pin', 'reason', 'retry', 'role']);
     assert.match(html, /flex-wrap: nowrap/);
+  });
+  it('gives every filter label a hover/focus popover', () => {
+    const labels = [...html.matchAll(/<label for="(\w+)" class="has-tip" tabindex="0">(\w+)<span class="tip-body" role="tooltip">[^<]+<\/span><\/label>/g)];
+    assert.equal(labels.length, 10);
+  });
+  it('filters by retry reason and by not retried, ANDed with other filters', () => {
+    const h = [
+      e({ retried: true, retryReason: 'truncation', tier: 'opus' }),
+      e({ retried: true, retryReason: 'refusal', tier: 'opus' }),
+      e({ tier: 'opus' }),
+      e({ retried: true, retryReason: 'truncation', tier: 'haiku' }),
+    ];
+    assert.equal(filterHistory(h, { retry: 'truncation' }).length, 2);
+    assert.equal(filterHistory(h, { retry: '__none__' }).length, 1);
+    assert.equal(filterHistory(h, { retry: 'truncation', tier: 'opus' }).length, 1);
+    const page = renderDashboard(h, undefined, { retry: 'refusal' });
+    assert.match(page, /<option value="refusal" selected>refusal<\/option>/);
+    assert.match(page, /<option value="__none__">No retry<\/option>/);
+    assert.ok(page.includes('retry=refusal'), 'refresh url keeps the retry filter');
   });
   it('explains retry in header and cell', () => {
     assert.match(html, /<th title="[^"]+" class="help">Retry<\/th>/);
@@ -226,6 +245,9 @@ describe('refresh pill and reset button', () => {
     assert.equal(scripts.length, 1);
     assert.ok(scripts[0].includes('.has-tip:hover'), 'defers while a tooltip is open');
     assert.ok(scripts[0].includes('"/dashboard?tier=haiku&auto=30"'));
+    // Open-dropdown pause: the DOM-event logic is not run here (no DOM); it is verified by hand in a browser.
+    assert.ok(scripts[0].includes('o&&i'), 'defers while a dropdown is open with the pointer on it');
+    assert.doesNotThrow(() => new Function(scripts[0].slice('<script>'.length, -'</script>'.length)), 'script parses');
     assert.ok(scripts[0].endsWith(',30000)</script>'));
     assert.match(html, /<div class="live"/);
   });
