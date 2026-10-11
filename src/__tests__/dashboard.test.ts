@@ -75,7 +75,9 @@ describe('renderDashboard — recomputation per mode', () => {
     const html = renderDashboard([]);
     assert.match(html, /select \{ color-scheme: dark; \}/);
     assert.match(html, /\.live select option,\s*\.mode-filter select option \{\s*background: var\(--void\);\s*color: var\(--ink\);/);
-    assert.match(html, /select option:checked \{ background: var\(--orange\); color: var\(--void\); \}/);
+    assert.doesNotMatch(html, /option:checked/);
+    assert.match(html, /\.live select \{ font-family: var\(--mono\); font-size: 11px; letter-spacing: normal;/);
+    assert.match(html, /header \.gh \{ order: 1; \}\s*header \.live \{ order: 2; \}/);
   });
 });
 
