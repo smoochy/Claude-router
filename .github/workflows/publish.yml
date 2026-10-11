@@ -47,7 +47,11 @@ jobs:
           fi
 
       - name: Pack the release tarball
-        run: npm pack
+        # npm names the file after the scoped package (sheruq-claude-router-...);
+        # that scope is not ours, so the asset is renamed to claude-router-<version>.tgz.
+        run: |
+          npm pack
+          mv sheruq-claude-router-*.tgz "claude-router-$(node -p "require('./package.json').version").tgz"
 
       - name: GitHub release from the CHANGELOG section, with the tarball attached
         env:
