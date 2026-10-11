@@ -7,27 +7,38 @@ This fork's own sections use the upstream version plus a `-smoo.<n>` prerelease 
 
 ## [Unreleased]
 
+## [0.4.0-smoo.4] - 2026-10-11
+
 ### Added
 
+- Dashboard footer shows the running claude-router version, small and dim, read from the proxy process itself (the same `health.version` that `/health` reports) rather than a build-time constant.
 - Per-request long-context pricing. The model list's optional `pricing_long_context` (threshold plus upper-tier prices) is read from the remote list, the cache and the build-time snapshot, and a request whose total prompt tokens exceed the threshold is costed at the upper tier (Haiku 5.5 over 100,000 tokens: $0.50/$2.50 instead of $0.10/$0.50). The prompt-token count is input plus cache reads plus cache writes, matching how Anthropic bills the tier; the comparison is strictly above the threshold, and cache reads and writes are billed at the upper tier's rates (writes stay the global 125% multiplier). `savedCents` and the dashboard figures follow, including the baseline model's own tier. Models without the field keep one price, and a malformed tier is ignored.
-
-### Changed
-
-- The dashboard uses the Neon glass theme (palette copied once by hand from instalanding.ai/neon-glass-app-landing-page, MIT, Ray Velez; nothing is fetched at runtime): void `#05070f`, blue accents `#2f74f9` and `#52a8ff`, steel `#9fb0c8`. The four tiers have their own cool tokens decoupled from the accents (haiku `#2ee6a8`, sonnet `#22d3ee`, opus `#4f8bff`, fable `#a78bfa`) used by the tier bar and badges. The header gains a GitHub icon linking to smoochy/Claude-router, and the footer credits the theme.
-
-### Fixed
-
-- The dashboard's refresh interval dropdown is readable when opened: select popups use a dark color scheme and `.live select` options take the dashboard's dark background and light text like the filter selects. The select itself no longer inherits the pill's wide letter-spacing ("off" was clipped) and is styled like the filter selects, all dropdowns use the native dark option highlight, and the header shows the title on the left with the GitHub icon then the refresh pill on the right.
-- `npm run pricing:refresh` no longer drops `pricing_long_context` (the above-threshold price tier) from `src/pricing-snapshot.json`. The script keeps the field, fails closed when a tier is malformed (threshold and all five prices must be positive numbers), and takes `PRICING_SNAPSHOT_URL` / `PRICING_SNAPSHOT_OUT` overrides so a branch file can be tested. The snapshot now carries the tier for `claude-haiku-5-5`; the cost code does not read it yet.
-- The dashboard footer names the active refresh interval (or says refresh is off) instead of always claiming "every 10 seconds".
-- No `node.exe` console window on Windows when the plugin starts the proxy. The session-start hook launched `claude-router start -d` through a detached `cmd.exe`, which has no console, so the node it ran opened a visible one. The launcher now stays attached to the hidden console `windowsHide` creates; `start -d` still detaches the daemon itself. The same window appeared on every `npm test` run, from the autostart test.
-
-## [0.4.0-smoo.3] - 2026-10-11
 
 ### Changed
 
 - Pricing comes from a build-time snapshot of the published model list (`src/pricing-snapshot.json`, refreshed by `npm run pricing:refresh` and by the `publish` workflow before packing, which fails the build if the list is unreachable or invalid) instead of hand-written tables in `src/models.ts`. The load order stays remote list, then `~/.claude-router/model-list-cache.json`, then the snapshot (reported as source `snapshot`, formerly `built-in`).
 - Ids the list does not carry (Bedrock, Vertex, dated snapshots) are priced from the newest model of the same family in the loaded list or snapshot, so legacy ids such as Opus 4.1 no longer keep a hand-kept legacy rate.
+- Dashboard refresh interval is chosen from a small menu in the live pill (off, 10s, 20s, 30s, 45s, 60s) instead of an on/off click; `?auto=<seconds>` carries it, legacy `auto=1` means 10s and `auto=0` off, and Reset filters keeps the interval.
+- Dashboard auto-refresh is a small inline timer script instead of a `<meta http-equiv="refresh">`: a reload tick waits while a stat-card tooltip or any `title` hint is hovered or focused, so an open tooltip is no longer wiped. `auto=0` runs no timer, and without JavaScript the page does not auto-refresh.
+- The dashboard uses the Neon glass theme (palette copied once by hand from instalanding.ai/neon-glass-app-landing-page, MIT, Ray Velez; nothing is fetched at runtime): void `#05070f`, blue accents `#2f74f9` and `#52a8ff`, steel `#9fb0c8`. The four tiers have their own cool tokens decoupled from the accents (haiku `#2ee6a8`, sonnet `#22d3ee`, opus `#4f8bff`, fable `#a78bfa`) used by the tier bar and badges. The header gains a GitHub icon linking to smoochy/Claude-router, and the footer credits the theme.
+
+### Fixed
+
+- Dashboard "Tier Distribution" label sat against the "By Role" card: `.roles` had no bottom margin, unlike `.stats` and `.tier-shell` (26px), so it now gets the same 26px and the section rhythm no longer depends on whether By Role renders.
+- The dashboard's refresh interval dropdown is readable when opened: select popups use a dark color scheme and `.live select` options take the dashboard's dark background and light text like the filter selects. The select itself no longer inherits the pill's wide letter-spacing ("off" was clipped) and is styled like the filter selects, all dropdowns use the native dark option highlight, and the header shows the title on the left with the GitHub icon then the refresh pill on the right.
+- `npm run pricing:refresh` no longer drops `pricing_long_context` (the above-threshold price tier) from `src/pricing-snapshot.json`. The script keeps the field, fails closed when a tier is malformed (threshold and all five prices must be positive numbers), and takes `PRICING_SNAPSHOT_URL` / `PRICING_SNAPSHOT_OUT` overrides so a branch file can be tested. The snapshot now carries the tier for `claude-haiku-5-5`; the cost code does not read it yet.
+- The dashboard footer names the active refresh interval (or says refresh is off) instead of always claiming "every 10 seconds".
+- No `node.exe` console window on Windows when the plugin starts the proxy. The session-start hook launched `claude-router start -d` through a detached `cmd.exe`, which has no console, so the node it ran opened a visible one. The launcher now stays attached to the hidden console `windowsHide` creates; `start -d` still detaches the daemon itself. The same window appeared on every `npm test` run, from the autostart test.
+
+### Removed
+
+- The weekly `pricing-check` workflow, `scripts/check-pricing-age.mjs`, the `doctor` 90-day pricing warning and the exports `FAMILY_PRICING`, `DIVERGENT_PRICING`, `PRICING_LAST_CHECKED` and `pricingAgeDays`: with prices taken from the list there is no hand-kept table to go stale.
+- Stray empty file `0` at the repository root, committed by accident with the dashboard filter work. A dead-code audit found nothing else removable without a behaviour change or upstream merge friction.
+
+## [0.4.0-smoo.3] - 2026-10-11
+
+### Changed
+
 - Release tarballs are attached as `claude-router-<version>.tgz` instead of `sheruq-claude-router-<version>.tgz`: the publish workflow renames the `npm pack` output, since the `sheruq` scope is not this fork's.
 - Dashboard auto-update is toggled by clicking the "live - refresh on/off" pill (pulsing green LED when on, steady red when off) instead of a checkbox, and a Reset filters button takes the checkbox's place in the filter row.
 - Dashboard filters sit in a single row in route-feed column order (Scope, Window, Tier, Model, Pin, Reason, Role, Session, Mode, Auto-update); a clipped select shows its full value on hover, and the Retry header and cells explain themselves on hover.
@@ -35,15 +46,11 @@ This fork's own sections use the upstream version plus a `-smoo.<n>` prerelease 
 - Dashboard gains Pin (honored, overridden, none) and Reason filters, and the Pin, Reason, Role and Confidence column headers and every cell in them explain themselves on hover.
 - Dashboard Auto-update toggle sends a single `auto` parameter, so the URL no longer carries `auto=0&auto=1`.
 - Dashboard shows request times and derived session labels in the proxy host's own locale and timezone instead of raw UTC, and the `today` window is now the host-local calendar day.
-- Dashboard refresh interval is chosen from a small menu in the live pill (off, 10s, 20s, 30s, 45s, 60s) instead of an on/off click; `?auto=<seconds>` carries it, legacy `auto=1` means 10s and `auto=0` off, and Reset filters keeps the interval.
-
-- Dashboard auto-refresh is a small inline timer script instead of a `<meta http-equiv="refresh">`: a reload tick waits while a stat-card tooltip or any `title` hint is hovered or focused, so an open tooltip is no longer wiped. `auto=0` runs no timer, and without JavaScript the page does not auto-refresh.
 
 ### Fixed
 
 - Dashboard Auto-update checkbox could never stay on: the form submits a hidden `auto=0` followed by the checkbox's `auto=1`, and `GET /dashboard` read the first value, so a ticked box came back unticked with "refresh off". The last value now wins.
 - Clicking the dashboard title now returns to `/dashboard` with all filters reset (relative link, so host and port follow whatever the router is configured to listen on).
-- Dashboard "Tier Distribution" label sat against the "By Role" card: `.roles` had no bottom margin, unlike `.stats` and `.tier-shell` (26px), so it now gets the same 26px and the section rhythm no longer depends on whether By Role renders.
 
 - `.github/workflows/publish.yml` extracted the whole changelog from the first matched heading to EOF instead of one version's section. The dynamic awk regex `"^## \\[" v "\\]"` lost its backslash escaping of `[` and `]` in awk's string lexer, so the pattern actually evaluated was the bracket expression `^## [0.4.0-smoo.2]`, where `0-s` reads as an ASCII range matching almost any character - every `## [...]` heading matched the start rule, so the exit rule (which needs a non-matching heading to fire) never triggered. The extraction now matches the heading as a literal string via `index()` instead of a regex, with no backslash-escaping pitfall left to hit.
 - Removed every reference to the private internal issue tracker from source comments, the changelog and `.github/dependabot.yml`, since this repository is public and those references resolved to nothing here.
@@ -52,13 +59,8 @@ This fork's own sections use the upstream version plus a `-smoo.<n>` prerelease 
 
 - The `restoreDelegation` test fixture is now wire-captured: a real Claude Code 2.1.296 request (`claude-opus-5`, one tool-bearing turn) through `claude-router start --capture-system-prompt` showed the combined line renders as `Do not use the Agent tool, workflows, or deep-research unless the user, a CLAUDE.md file, or a skill asks for it`, and `delegation.test.ts` now asserts the stripper removes exactly that line. Only the matched line is carried into the repository; the captured file was deleted. The `claude-opus-5-5` model id did not receive the line at all in the same experiment.
 
-### Removed
-
-- The weekly `pricing-check` workflow, `scripts/check-pricing-age.mjs`, the `doctor` 90-day pricing warning and the exports `FAMILY_PRICING`, `DIVERGENT_PRICING`, `PRICING_LAST_CHECKED` and `pricingAgeDays`: with prices taken from the list there is no hand-kept table to go stale.
-
 ### Added
 
-- Dashboard footer shows the running claude-router version, small and dim, read from the proxy process itself (the same `health.version` that `/health` reports) rather than a build-time constant.
 - Dashboard scope toggle: a `Scope` select in the filter bar plus `?scope=session|all` (default `session`, today's behaviour: events since the router started). `all` fills the request table from the last 2000 lines of `history.jsonl` via the new `readHistoryTail` (`src/proxy/history.ts`), which reads backwards in chunks and never parses the whole never-rotated file, so the table survives a router restart. The lifetime cards still come from `readLifetimeStats`, and the existing filters (including session, with events lacking a `sessionId` under "No session id") apply on top of either scope. Auto-refresh keeps the scope.
 - The dashboard no longer shows a negative lifetime figure as one unexplained number. Negative `savedCents` is legitimate (the served model was priced above the requested one), so `Lifetime Saved` and `Session Saved` stay net and gain a sub-line splitting it into gross saved and a separate extra cost (`extra` on `RouteTotals`, `extraCostNote` in `src/proxy/dashboard.ts`), and `claude-router stats` gains an `Extra cost` row. Events without `requestedModel` (written before #4264, baseline unknown) are counted as their own slice inside the extra cost, neither excluded nor folded in. Unpriced events never count as extra cost.
 - `DEFAULT_MODELS` (`src/models.ts`) is raised to the Claude 5.5 generation (`claude-haiku-5-5`, `claude-sonnet-5-5`, `claude-opus-5-5`; `fable` stays `claude-fable-5-1`, which is already current). `claude-router start` now validates the resolved `tiers` ids against the model list it already fetches for pricing (`staleTierIds`/`warnStaleTierIds` in `src/model-list.ts`) and warns once per tier, by name, when a configured id is not in that list - a hint the hand-written config (or an un-overridden default) points at a superseded generation. The check never fails the start and never changes routing or pricing (`familyForModel` resolves an unlisted id by family substring regardless), and it is skipped entirely when the pricing source fell back to the compiled-in table, since there is then nothing to validate the ids against. `doctor` gained the same check as a new warn-only probe (`staleTierIds` on `DoctorProbes`), reporting every stale tier id it finds or staying silent when the check was skipped.
@@ -84,10 +86,6 @@ This fork's own sections use the upstream version plus a `-smoo.<n>` prerelease 
 ### Documentation
 
 - `RELEASING.md` now documents the Mac install path (`npm install -g <release-asset-url>` then `claude-router install`) as a manual per-release step, and `docs/BRANCHING.md` now documents the upstream-sync cadence (manual, on demand, conflicts resolved by hand, the `-smoo.<n>` counter reset on a new upstream base).
-
-### Removed
-
-- Stray empty file `0` at the repository root, committed by accident with the dashboard filter work. A dead-code audit found nothing else removable without a behaviour change or upstream merge friction.
 
 ## [0.4.0-smoo.2] — 2026-10-10
 
