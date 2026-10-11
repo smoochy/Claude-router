@@ -62,6 +62,10 @@ This fork's own sections use the upstream version plus a `-smoo.<n>` prerelease 
 
 - `RELEASING.md` now documents the Mac install path (`npm install -g <release-asset-url>` then `claude-router install`) as a manual per-release step, and `docs/BRANCHING.md` now documents the upstream-sync cadence (manual, on demand, conflicts resolved by hand, the `-smoo.<n>` counter reset on a new upstream base).
 
+### Removed
+
+- Stray empty file `0` at the repository root, committed by accident with the dashboard filter work. A dead-code audit found nothing else removable without a behaviour change or upstream merge friction.
+
 ## [0.4.0-smoo.2] — 2026-10-10
 
 ### Security
