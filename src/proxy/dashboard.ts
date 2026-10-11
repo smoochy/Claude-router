@@ -1,3 +1,4 @@
+import { protoTierRole } from './proto-4399.js'; // PROTOTYPE #4399
 import { emptyTotals, foldOutcome, tierBreakdown } from '../totals.js';
 import { DISPLAY_TIERS, DEFAULT_MODELS, DEFAULT_PRICING, counterfactualCents, type DisplayTier } from '../models.js';
 import { savedCentsDisplay } from './format.js';
@@ -854,15 +855,8 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
     ${lifetime ? statCard('Lifetime Requests', String(lifetime.requests), 'blue', '', []) : ''}
   </div>
 
-  ${roleRows ? `<div class="section-label">By Role</div>
-  <div class="card roles">${roleRows}</div>` : ''}
-
-  <div class="section-label">Tier Distribution</div>
-  <div class="tier-shell card">
-    <div class="tier-bar">
-      ${tierBars}
-    </div>
-  </div>
+  ${protoTierRole(totals, filtered)}
+  <!-- PROTOTYPE #4399: ${roleRows.length}${tierBars.length} -->
 
   <div class="section-label">Route Feed</div>
   <div class="table-shell card">
