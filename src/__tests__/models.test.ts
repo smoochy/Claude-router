@@ -9,11 +9,19 @@ import {
   familyForModel,
   DEFAULT_MODELS,
   DEFAULT_PRICING,
-  DIVERGENT_PRICING,
-  FAMILY_PRICING,
-  PRICING_LAST_CHECKED,
-  pricingAgeDays,
+  pricingTableFromList,
 } from '../models.js';
+
+// Fixed table so cost-math tests do not move when the snapshot is refreshed.
+const P = {
+  'claude-sonnet-4-6': { input: 3, output: 15 },
+  'claude-sonnet-5': { input: 2, output: 10 },
+  'claude-haiku-4-5': { input: 1, output: 5 },
+  'claude-opus-4-8': { input: 5, output: 25 },
+  'claude-fable-5': { input: 10, output: 50 },
+  'claude-fable-5-1': { input: 10, output: 50, cacheRead: 0.025 },
+  'claude-mythos-5-1': { input: 10, output: 50, cacheRead: 0.025 },
+};
 
 describe('computeCostCents', () => {
   it('calculates cost for known model', () => {
@@ -22,19 +30,19 @@ describe('computeCostCents', () => {
     // = (3000 + 7500) / 1_000_000 * 100
     // = 10500 / 1_000_000 * 100
     // = 10500 / 1_000_000 * 100 = 1.05 cents
-    const cost = computeCostCents('claude-sonnet-4-6', 1000, 500, DEFAULT_PRICING);
+    const cost = computeCostCents('claude-sonnet-4-6', 1000, 500, P);
     assert.equal(Math.round(cost * 10000) / 10000, 1.05);
   });
 
   it('returns 0 for unknown model', () => {
-    const cost = computeCostCents('unknown-model', 1000, 500, DEFAULT_PRICING);
+    const cost = computeCostCents('unknown-model', 1000, 500, P);
     assert.equal(cost, 0);
   });
 
   it('bills cache reads at 10% of the input rate', () => {
     // sonnet input $2/M → 1M cache-read tokens = $0.20 = 20 cents
-    const base = computeCostCents('claude-sonnet-5', 0, 0, DEFAULT_PRICING);
-    const withReads = computeCostCents('claude-sonnet-5', 0, 0, DEFAULT_PRICING, {
+    const base = computeCostCents('claude-sonnet-5', 0, 0, P);
+    const withReads = computeCostCents('claude-sonnet-5', 0, 0, P, {
       readTokens: 1_000_000,
     });
     assert.equal(base, 0);
@@ -47,11 +55,11 @@ describe('computeCostCents', () => {
     // the read line is most of the input bill, so the standard rate overstates a
     // fable route ~4x on that component.
     for (const id of ['claude-fable-5-1', 'claude-mythos-5-1']) {
-      const cost = computeCostCents(id, 0, 0, DEFAULT_PRICING, { readTokens: 1_000_000 });
+      const cost = computeCostCents(id, 0, 0, P, { readTokens: 1_000_000 });
       assert.equal(Math.round(cost * 100) / 100, 25, id);
     }
     // Fable 5 keeps the standard rate: $10/M × 10% = $1.00 = 100 cents.
-    const fable5 = computeCostCents('claude-fable-5', 0, 0, DEFAULT_PRICING, {
+    const fable5 = computeCostCents('claude-fable-5', 0, 0, P, {
       readTokens: 1_000_000,
     });
     assert.equal(Math.round(fable5 * 100) / 100, 100);
@@ -59,7 +67,7 @@ describe('computeCostCents', () => {
 
   it('bills cache writes at 125% of the input rate', () => {
     // sonnet input $2/M → 1M cache-creation tokens = $2.50 = 250 cents
-    const cost = computeCostCents('claude-sonnet-5', 0, 0, DEFAULT_PRICING, {
+    const cost = computeCostCents('claude-sonnet-5', 0, 0, P, {
       creationTokens: 1_000_000,
     });
     assert.equal(Math.round(cost * 100) / 100, 250);
@@ -68,7 +76,7 @@ describe('computeCostCents', () => {
   it('combines regular, cache-read, and cache-write tokens', () => {
     // haiku $1/M in, $5/M out:
     // 1000 in = $0.001; 500 out = $0.0025; 10000 reads = $0.001; 2000 writes = $0.0025
-    const cost = computeCostCents('claude-haiku-4-5', 1000, 500, DEFAULT_PRICING, {
+    const cost = computeCostCents('claude-haiku-4-5', 1000, 500, P, {
       readTokens: 10_000,
       creationTokens: 2_000,
     });
@@ -76,18 +84,18 @@ describe('computeCostCents', () => {
   });
 
   it('omitting cache tokens matches the old behavior', () => {
-    const without = computeCostCents('claude-sonnet-5', 1000, 500, DEFAULT_PRICING);
-    const withEmpty = computeCostCents('claude-sonnet-5', 1000, 500, DEFAULT_PRICING, {});
+    const without = computeCostCents('claude-sonnet-5', 1000, 500, P);
+    const withEmpty = computeCostCents('claude-sonnet-5', 1000, 500, P, {});
     assert.equal(without, withEmpty);
   });
 
   it('returns 0 for zero tokens', () => {
-    const cost = computeCostCents('claude-sonnet-4-6', 0, 0, DEFAULT_PRICING);
+    const cost = computeCostCents('claude-sonnet-4-6', 0, 0, P);
     assert.equal(cost, 0);
   });
 
   it('handles large token counts', () => {
-    const cost = computeCostCents('claude-opus-4-8', 1_000_000, 1_000_000, DEFAULT_PRICING);
+    const cost = computeCostCents('claude-opus-4-8', 1_000_000, 1_000_000, P);
     // Current-generation Opus pricing: $5/M input + $25/M output.
     // (1M * 5 + 1M * 25) / 1M * 100 = 30 * 100 = 3000
     assert.equal(cost, 3000);
@@ -96,7 +104,7 @@ describe('computeCostCents', () => {
   it('haiku is cheapest', () => {
     const haiku = computeCostCents(DEFAULT_MODELS.haiku, 1000, 500, DEFAULT_PRICING);
     const sonnet = computeCostCents(DEFAULT_MODELS.sonnet, 1000, 500, DEFAULT_PRICING);
-    const opus = computeCostCents(DEFAULT_MODELS.opus, 1000, 500, DEFAULT_PRICING);
+    const opus = computeCostCents(DEFAULT_MODELS.opus, 1000, 500, P);
     assert.ok(haiku < sonnet);
     assert.ok(sonnet < opus);
   });
@@ -109,132 +117,18 @@ describe('computeCostCents', () => {
   });
 
   it('handles very small token counts', () => {
-    const cost = computeCostCents('claude-sonnet-4-6', 1, 1, DEFAULT_PRICING);
+    const cost = computeCostCents('claude-sonnet-4-6', 1, 1, P);
     assert.ok(cost > 0, `cost should be positive, got ${cost}`);
     assert.ok(Number.isFinite(cost), 'cost should be finite');
   });
 
   it('handles negative tokens without crashing', () => {
-    const cost = computeCostCents('claude-sonnet-4-6', -100, -100, DEFAULT_PRICING);
+    const cost = computeCostCents('claude-sonnet-4-6', -100, -100, P);
     assert.equal(typeof cost, 'number');
     assert.ok(Number.isFinite(cost), 'cost should be finite');
   });
 });
 
-describe('current-generation pricing (guards against drift)', () => {
-  // These exact numbers are the product's whole value prop — every `savedCents`
-  // figure depends on them. If a regression reintroduces old-generation pricing
-  // (e.g. Opus $15/$75), these fail loudly.
-  it('Opus is $5/$25 per 1M, not the old $15/$75', () => {
-    assert.deepEqual(FAMILY_PRICING.opus, { input: 5.0, output: 25.0 });
-  });
-
-  it('Sonnet 5 is $2/$10 per 1M — the standard rate, not an intro discount', () => {
-    // Sonnet 5's $2/$10 launched as introductory pricing through 2026-08-31, and
-    // this table used to hold the announced $3/$15 successor so savings figures
-    // would not jump when it expired. It never expired — the increase was
-    // cancelled and $2/$10 became standard. The sonnet tier is the savings
-    // baseline, so pricing a rate that was never charged overstated every
-    // reported win. Pin today's rate; do not pre-empt a scheduled change.
-    assert.deepEqual(FAMILY_PRICING.sonnet, { input: 2.0, output: 10.0 });
-    assert.deepEqual(priceForModel('claude-sonnet-5', DEFAULT_PRICING), {
-      input: 2.0,
-      output: 10.0,
-    });
-  });
-
-  it('Opus 5 prices like the rest of the Opus family — promotion is free', () => {
-    // The opus tier moved from 4.8 to Opus 5, then to Opus 5.5, all at the same
-    // rate. If a future Opus arrives at a different price, this fails rather
-    // than silently rebasing every historical savings figure against a new
-    // baseline.
-    assert.equal(DEFAULT_MODELS.opus, 'claude-opus-5-5');
-    assert.equal(familyForModel('claude-opus-5-5'), 'opus');
-    for (const id of ['claude-opus-5-5', 'claude-opus-5', 'claude-opus-4-8', 'claude-opus-4-7', 'claude-opus-4-6']) {
-      assert.deepEqual(priceForModel(id, DEFAULT_PRICING), FAMILY_PRICING.opus, id);
-    }
-  });
-
-  it('legacy Sonnet (4, 4.5, 4.6) keeps $3/$15 after the family rate dropped', () => {
-    // These were free-riding on the family fallback while it said $3/$15. Sonnet
-    // 5's price cut made the whole prior generation divergent in one move —
-    // same shape as legacy Opus, one generation down.
-    for (const id of [
-      'claude-sonnet-4-6',
-      'claude-sonnet-4-5',
-      'claude-sonnet-4-5-20250929',
-      'claude-sonnet-4-0',
-      'claude-sonnet-4-20250514',
-    ]) {
-      assert.deepEqual(priceForModel(id, DEFAULT_PRICING), { input: 3.0, output: 15.0 }, id);
-    }
-  });
-
-  it('Haiku is $1/$5 per 1M, not the old $0.80/$4', () => {
-    assert.deepEqual(FAMILY_PRICING.haiku, { input: 1.0, output: 5.0 });
-  });
-
-  // The exclusion set is DERIVED from DIVERGENT_PRICING, not hand-listed. A
-  // hand-maintained copy has to be updated every time a model's price diverges,
-  // and forgetting is silent — which is how Fable 5 shipped at $0.
-  it('every non-divergent DEFAULT_PRICING entry matches its family price', () => {
-    for (const [model, price] of Object.entries(DEFAULT_PRICING)) {
-      if (model in DIVERGENT_PRICING) continue;
-      const fam = familyForModel(model);
-      assert.ok(fam, `${model} should map to a family`);
-      assert.deepEqual(price, FAMILY_PRICING[fam!], `${model} priced off-family`);
-    }
-  });
-
-  it('every DIVERGENT_PRICING entry actually diverges from its family', () => {
-    // Guards the other direction: an entry that matches its family is dead
-    // weight, and a stale one silently pins a model to an outdated rate.
-    for (const [model, price] of Object.entries(DIVERGENT_PRICING)) {
-      const fam = familyForModel(model);
-      if (!fam) continue; // no family at all — divergent by definition (Fable/Mythos)
-      assert.notDeepEqual(
-        price,
-        FAMILY_PRICING[fam],
-        `${model} matches its family price — drop it from DIVERGENT_PRICING`,
-      );
-    }
-  });
-
-  it('legacy Opus keeps its own $15/$75 rate, not the current family price', () => {
-    for (const id of ['claude-opus-4-1', 'claude-opus-4-1-20250805', 'claude-opus-4-0', 'claude-opus-4-20250514']) {
-      assert.deepEqual(priceForModel(id, DEFAULT_PRICING), { input: 15.0, output: 75.0 }, id);
-    }
-  });
-
-  it('Fable 5 is a tier and prices by family; Mythos 5 still needs an exact entry', () => {
-    // Fable became a routable tier, so the family fallback now covers it — and
-    // covers future dated snapshots without a code change.
-    assert.equal(familyForModel('claude-fable-5'), 'fable');
-    // Mythos 5 is the same price but shares no substring with any family name,
-    // so it stays in DIVERGENT_PRICING. Dropping that entry prices it at zero.
-    assert.equal(familyForModel('claude-mythos-5'), undefined);
-    for (const id of ['claude-fable-5', 'claude-mythos-5']) {
-      assert.deepEqual(priceForModel(id, DEFAULT_PRICING), { input: 10.0, output: 50.0 }, id);
-    }
-  });
-
-  it('the fable tier is Fable 5.1, and Mythos 5.1 is priced rather than unknown', () => {
-    // Fable 5.1 (2026-09-01) supersedes Fable 5. The `fable` substring means 5.1
-    // family-resolved at the right base price the day it shipped — the fallback
-    // doing its job — but its cache-read rate still needed an exact entry.
-    assert.equal(DEFAULT_MODELS.fable, 'claude-fable-5-1');
-    assert.equal(familyForModel('claude-fable-5-1'), 'fable');
-    // Mythos 5.1 matches no family, exactly like Mythos 5: without its own row it
-    // prices at zero, which is the failure mode that shipped Fable 5 free.
-    assert.equal(familyForModel('claude-mythos-5-1'), undefined);
-    for (const id of ['claude-fable-5-1', 'claude-mythos-5-1']) {
-      const price = priceForModel(id, DEFAULT_PRICING);
-      assert.equal(price?.input, 10.0, id);
-      assert.equal(price?.output, 50.0, id);
-      assert.equal(price?.cacheRead, 0.025, id);
-    }
-  });
-});
 
 describe('unpriced models are loud, not free', () => {
   // The regression guard the suite was missing: asserting a specific price only
@@ -305,18 +199,6 @@ describe('unpriced models are loud, not free', () => {
     assert.match(custom[0]!, /some-future-model-5/);
     assert.deepEqual(warnings, [], 'console.warn must stay silent');
   });
-
-  it('prices Mythos 5 and Fable 5 rather than flagging them', () => {
-    // The two models the silent-$0 bug actually bit. Both must now be measured.
-    for (const id of ['claude-mythos-5', 'claude-fable-5']) {
-      const { result, warnings } = capturingWarnings(() =>
-        computeRouteCost(id, usage, DEFAULT_MODELS.sonnet, DEFAULT_PRICING),
-      );
-      assert.equal(result.priced, true, id);
-      assert.deepEqual(warnings, [], id);
-      assert.ok(result.costCents > 0, `${id} must cost something`);
-    }
-  });
 });
 
 describe('familyForModel', () => {
@@ -337,21 +219,44 @@ describe('familyForModel', () => {
   });
 });
 
-describe('priceForModel (drift resilience)', () => {
-  it('prices an unlisted dated snapshot by family', () => {
-    // A future snapshot ID not in DEFAULT_PRICING must still price correctly.
-    const p = priceForModel('claude-opus-4-9-20991231', DEFAULT_PRICING);
-    assert.deepEqual(p, FAMILY_PRICING.opus);
+describe('priceForModel (snapshot and family fallback)', () => {
+  const list = [
+    { id: 'claude-opus-5', created_at: '2026-07-24T00:00:00Z', pricing: { input: 5, output: 25, cache_read: 0.5, cache_write_5m: 6.25, cache_write_1h: 10 } },
+    { id: 'claude-opus-5-5', created_at: '2026-09-21T00:00:00Z', pricing: { input: 4, output: 20, cache_read: 0.2, cache_write_5m: 5, cache_write_1h: 8 } },
+    { id: 'claude-opus-4-6', created_at: '2026-02-04T00:00:00Z', pricing: { input: 5, output: 25, cache_read: 0.5, cache_write_5m: 6.25, cache_write_1h: 10 } },
+    { id: 'claude-sonnet-5', created_at: '2026-06-29T00:00:00Z', pricing: { input: 2, output: 10, cache_read: 0.2, cache_write_5m: 2.5, cache_write_1h: 4 } },
+  ];
+  const table = pricingTableFromList(list);
+
+  it('derives cacheRead as a fraction of input', () => {
+    assert.deepEqual(table['claude-opus-5-5'], { input: 4, output: 20, cacheRead: 0.05 });
   });
 
-  it('prices Bedrock/Vertex IDs by family with no explicit entry', () => {
-    const cost = computeCostCents('us.anthropic.claude-opus-4-8-v1:0', 1_000_000, 1_000_000, DEFAULT_PRICING);
-    assert.equal(cost, 3000); // same as first-party opus
+  it('prices an unlisted dated or Bedrock id from the NEWEST model of its family', () => {
+    // Input order is not age order; opus-5-5 is newest, so it wins over opus-5 / 4-6.
+    assert.deepEqual(priceForModel('claude-opus-4-9-20991231', table), table['claude-opus-5-5']);
+    assert.deepEqual(priceForModel('us.anthropic.claude-opus-4-8-v1:0', table), table['claude-opus-5-5']);
+    assert.deepEqual(priceForModel('claude-sonnet-4-20250514', table), table['claude-sonnet-5']);
   });
 
-  it('exact override wins over family fallback', () => {
-    const custom = { ...DEFAULT_PRICING, 'claude-opus-4-8': { input: 0.0, output: 0.0 } };
+  it('has no price for a family the table does not carry or a non-Claude id', () => {
+    assert.equal(priceForModel('claude-haiku-9', table), undefined);
+    assert.equal(priceForModel('gpt-4o', table), undefined);
+  });
+
+  it('skips list entries without a usable price', () => {
+    assert.deepEqual(pricingTableFromList([{ id: 'claude-opus-9' }]), {});
+  });
+
+  it('exact entry wins over family fallback', () => {
+    const custom = { ...table, 'claude-opus-4-8': { input: 0.0, output: 0.0 } };
     assert.deepEqual(priceForModel('claude-opus-4-8', custom), { input: 0.0, output: 0.0 });
+  });
+
+  it('the committed snapshot prices every default tier model', () => {
+    for (const id of Object.values(DEFAULT_MODELS)) {
+      assert.ok(priceForModel(id, DEFAULT_PRICING), `${id} unpriced by the snapshot`);
+    }
   });
 });
 
@@ -367,19 +272,3 @@ describe('tierForModel', () => {
   });
 });
 
-describe('PRICING_LAST_CHECKED', () => {
-  it('is a real ISO date no later than today', () => {
-    // The freshness guards (weekly workflow, doctor) compute from this string;
-    // a typo would make the table look freshly verified forever.
-    assert.match(PRICING_LAST_CHECKED, /^\d{4}-\d{2}-\d{2}$/);
-    const parsed = Date.parse(`${PRICING_LAST_CHECKED}T00:00:00Z`);
-    assert.ok(Number.isFinite(parsed), 'parses');
-    assert.ok(parsed <= Date.now(), 'not in the future');
-  });
-
-  it('pricingAgeDays counts whole days from the checked date', () => {
-    const checked = new Date(`${PRICING_LAST_CHECKED}T00:00:00Z`);
-    assert.equal(pricingAgeDays(checked), 0);
-    assert.equal(pricingAgeDays(new Date(checked.getTime() + 90 * 86_400_000 + 1)), 90);
-  });
-});

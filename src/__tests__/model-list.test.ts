@@ -66,7 +66,7 @@ describe('loadModelListPricing', () => {
       },
     });
 
-    assert.equal(result.source, 'built-in');
+    assert.equal(result.source, 'snapshot');
     assert.deepEqual(result.pricing, DEFAULT_PRICING);
   });
 
@@ -78,7 +78,7 @@ describe('loadModelListPricing', () => {
       fetchList: async () => ({ generated_at: 'x', schema_version: 2, models: [ENTRY] }),
     });
 
-    assert.equal(result.source, 'built-in');
+    assert.equal(result.source, 'snapshot');
   });
 
   it('drops an entry with no usable pricing rather than inventing a $0 price', async () => {
@@ -115,7 +115,7 @@ describe('staleTierIds', () => {
 
   it('skips the check entirely when there is nothing to validate against', () => {
     const tiers = { ...DEFAULT_MODELS, sonnet: 'claude-sonnet-5' } as Record<Tier, string>;
-    assert.equal(staleTierIds(tiers, { source: 'built-in', pricing: DEFAULT_PRICING }), undefined);
+    assert.equal(staleTierIds(tiers, { source: 'snapshot', pricing: DEFAULT_PRICING }), undefined);
   });
 });
 
@@ -169,7 +169,7 @@ describe('warnStaleTierIds', () => {
     resetStaleTierWarnings();
     const warnings: string[] = [];
     const tiers = { ...DEFAULT_MODELS, opus: 'claude-opus-5' } as Record<Tier, string>;
-    warnStaleTierIds(tiers, { source: 'built-in', pricing: DEFAULT_PRICING }, (m) => warnings.push(m));
+    warnStaleTierIds(tiers, { source: 'snapshot', pricing: DEFAULT_PRICING }, (m) => warnings.push(m));
     assert.deepEqual(warnings, []);
   });
 });

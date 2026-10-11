@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import type { ModelPricing, Tier } from './types.js';
-import { DEFAULT_PRICING } from './models.js';
+import { DEFAULT_PRICING, pricingTableFromList } from './models.js';
 
 /**
  * `smoochy/openrouter-model-list`'s published Anthropic list. It is a **bare
@@ -17,6 +17,7 @@ export const MODEL_LIST_URL =
  * many more (capabilities, lifecycle, ...) that the router has no use for. */
 export interface ModelListEntry {
   id: string;
+  created_at?: string;
   pricing?: {
     input: number;
     output: number;
@@ -30,7 +31,7 @@ export interface ModelListEntry {
 export interface ModelListResult {
   pricing: Record<string, ModelPricing>;
   /** Where this pricing came from — surfaced by `doctor` and the startup banner. */
-  source: 'remote' | 'cache' | 'built-in';
+  source: 'remote' | 'cache' | 'snapshot';
 }
 
 export function defaultModelListCachePath(): string {
@@ -45,29 +46,6 @@ function isModelListEntry(e: unknown): e is ModelListEntry {
  * (capabilities, lifecycle, ...) and a schema addition there must not break us. */
 function isModelList(data: unknown): data is ModelListEntry[] {
   return Array.isArray(data) && data.every(isModelListEntry);
-}
-
-/**
- * A list entry's `pricing` is five $/MTok columns; `ModelPricing` only ever
- * tracks `input`/`output`/`cacheRead` (a *fraction* of `input` — see
- * `types.ts`). Cache-write pricing isn't modeled per-model anywhere in this
- * codebase (`CACHE_WRITE_RATE` is a single global constant in `models.ts`), so
- * `cache_write_5m`/`cache_write_1h` are read by the list but not consumed here.
- */
-function pricingFromEntry(entry: ModelListEntry): ModelPricing | undefined {
-  const p = entry.pricing;
-  if (!p || !(p.input > 0) || !(p.output >= 0)) return undefined;
-  const cacheRead = p.cache_read >= 0 ? p.cache_read / p.input : undefined;
-  return { input: p.input, output: p.output, ...(cacheRead !== undefined ? { cacheRead } : {}) };
-}
-
-function pricingTableFromList(entries: ModelListEntry[]): Record<string, ModelPricing> {
-  const table: Record<string, ModelPricing> = {};
-  for (const entry of entries) {
-    const price = pricingFromEntry(entry);
-    if (price) table[entry.id] = price;
-  }
-  return table;
 }
 
 /** Fetch the published list. Throws on a network error, a non-2xx, invalid
@@ -104,7 +82,7 @@ function writeCache(cachePath: string, entries: ModelListEntry[]): void {
 }
 
 /**
- * Remote list, else the last-good local cache, else the compiled-in
+ * Remote list, else the last-good local cache, else the build-time snapshot
  * `DEFAULT_PRICING` table — in that order, each one only tried after the
  * previous one failed. This is the "local cache and built-in fallback" the
  * ticket asks for; there is no `schema_version` to gate on (the list
@@ -117,7 +95,7 @@ function writeCache(cachePath: string, entries: ModelListEntry[]): void {
  * both stay correct — but it is evidence the tier config (hand-written or
  * `DEFAULT_MODELS`) names a superseded generation.
  *
- * `undefined` when `source` is `'built-in'`: with no remote reach and no local
+ * `undefined` when `source` is `'snapshot'`: with no remote reach and no local
  * cache, there is nothing to validate the ids against, so the check is skipped
  * rather than warning about every tier.
  */
@@ -125,7 +103,7 @@ export function staleTierIds(
   tiers: Record<Tier, string>,
   modelList: ModelListResult,
 ): Array<{ tier: Tier; id: string }> | undefined {
-  if (modelList.source === 'built-in') return undefined;
+  if (modelList.source === 'snapshot') return undefined;
   return (Object.entries(tiers) as Array<[Tier, string]>)
     .filter(([, id]) => !modelList.pricing[id])
     .map(([tier, id]) => ({ tier, id }));
@@ -175,6 +153,6 @@ export async function loadModelListPricing(options: {
   } catch {
     const cached = readCache(cachePath);
     if (cached) return { pricing: pricingTableFromList(cached), source: 'cache' };
-    return { pricing: DEFAULT_PRICING, source: 'built-in' };
+    return { pricing: DEFAULT_PRICING, source: 'snapshot' };
   }
 }

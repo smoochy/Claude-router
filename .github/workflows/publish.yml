@@ -29,6 +29,11 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      # Fail closed: if the list is unreachable or malformed the build fails and
+      # no release ships a stale or empty price table. Runs before npm test so
+      # the tarball is tested with exactly the snapshot it carries.
+      - name: Refresh the pricing snapshot
+        run: npm run pricing:refresh
       - run: npm test
 
       - name: Tag must match package.json
