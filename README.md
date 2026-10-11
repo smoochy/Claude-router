@@ -66,10 +66,12 @@
 Two commands on **Windows, macOS, or Linux**, no flags, no environment variables:
 
 ```bash
-npm install -g @sheruq/claude-router
+npm install -g @smoochy/claude-router
 claude-router install
 # restart Claude Code — that's it
 ```
+
+> This fork is published to npm as `@smoochy/claude-router` (pin a release with `@smoochy/claude-router@<version>-smoo.<n>`). Every release also attaches a `.tgz` to its [GitHub Release](https://github.com/smoochy/Claude-router/releases): download it with `gh release download <tag> -D <dir>` and run `npm install -g <dir>/claude-router-<version>-smoo.<n>.tgz`. See [RELEASING.md](RELEASING.md).
 
 > Install **globally** (not via `npx`) when using `install`: login autostart points at the installed CLI, and the `claude-router` command must stay on your PATH for `status` / `stop` / `doctor`.
 
@@ -102,7 +104,7 @@ Watch routing live in the logs, or open the dashboard at `http://localhost:4000/
 **1. Start the proxy** in one terminal:
 
 ```bash
-npx @sheruq/claude-router start --port 4000 --force-route --verbose
+npx @smoochy/claude-router start --port 4000 --force-route --verbose
 ```
 
 **2. Point your app at it** in another:
@@ -337,7 +339,7 @@ The proxy binds to `127.0.0.1` by default — only your own machine can reach it
 npm install @anthropic-ai/bedrock-sdk
 
 AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=... AWS_REGION=us-east-1 \
-  npx @sheruq/claude-router start --provider bedrock --port 4000
+  npx @smoochy/claude-router start --provider bedrock --port 4000
 # auth comes from AWS env vars — no x-api-key needed
 export ANTHROPIC_BASE_URL=http://localhost:4000
 ```
@@ -349,7 +351,7 @@ npm install @anthropic-ai/vertex-sdk
 gcloud auth application-default login
 
 ANTHROPIC_VERTEX_PROJECT_ID=my-project \
-  npx @sheruq/claude-router start --provider vertex --port 4000
+  npx @smoochy/claude-router start --provider vertex --port 4000
 ```
 
 ---
@@ -359,11 +361,11 @@ ANTHROPIC_VERTEX_PROJECT_ID=my-project \
 Prefer to route inside your own app instead of running a proxy? Import it directly.
 
 ```bash
-npm install @sheruq/claude-router
+npm install @smoochy/claude-router
 ```
 
 ```typescript
-import { createRouter } from '@sheruq/claude-router';
+import { createRouter } from '@smoochy/claude-router';
 
 const router = createRouter({ apiKey: process.env.ANTHROPIC_API_KEY!, verbose: true });
 

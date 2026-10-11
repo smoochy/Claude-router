@@ -22,6 +22,7 @@ This fork's own sections use the upstream version plus a `-smoo.<n>` prerelease 
 ### Changed
 
 - The package is now `@smoochy/claude-router`, and `publish.yml` publishes it to npm by OIDC trusted publishing with provenance (skipped when the version exists), sets dist-tags `latest` and `smoo`, and creates or updates the GitHub Release tarball idempotently. RELEASING.md rewritten: 4229 superseded, both install paths, trusted-publisher expiry.
+- README and the docs page name the package `@smoochy/claude-router` (install, `npx`, badges, links), and the README install section points at the npm and release-tarball paths.
 
 - The Route Feed Saved header uses the shared fixed-position popover like the other feed headers, so its help is no longer clipped by the table wrapper.
 - Dashboard Tier Distribution and By Role are one wrapping line of entries each (`name n (p%) $cost (p%)`) instead of bars and rows. Tiers keep `DISPLAY_TIERS` order with a colour dot and now show their cost (passthrough only above 0); roles are alphabetical in mono with a final `no role` remainder, so both rows add up to Session Requests and Session Cost. Every entry has a hover that says what lands there or where the role comes from; unknown roles appear on their own as "Custom role". Percentages are dimmed `#a9b3c6` and the passthrough name `#8b95a7`, both above 4.5:1 (pinned in the tests).
