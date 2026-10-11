@@ -20,6 +20,8 @@ This fork's own sections use the upstream version plus a `-smoo.<n>` prerelease 
 - Dashboard shows request times and derived session labels in the proxy host's own locale and timezone instead of raw UTC, and the `today` window is now the host-local calendar day.
 - Dashboard refresh interval is chosen from a small menu in the live pill (off, 10s, 20s, 30s, 45s, 60s) instead of an on/off click; `?auto=<seconds>` carries it, legacy `auto=1` means 10s and `auto=0` off, and Reset filters keeps the interval.
 
+- Dashboard auto-refresh is a small inline timer script instead of a `<meta http-equiv="refresh">`: a reload tick waits while a stat-card tooltip or any `title` hint is hovered or focused, so an open tooltip is no longer wiped. `auto=0` runs no timer, and without JavaScript the page does not auto-refresh.
+
 ### Fixed
 
 - Dashboard Auto-update checkbox could never stay on: the form submits a hidden `auto=0` followed by the checkbox's `auto=1`, and `GET /dashboard` read the first value, so a ticked box came back unticked with "refresh off". The last value now wins.
