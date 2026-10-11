@@ -13,6 +13,7 @@ This fork's own sections use the upstream version plus a `-smoo.<n>` prerelease 
 
 ### Fixed
 
+- The dashboard's refresh interval dropdown is readable when opened: select popups use a dark color scheme, `.live select` options take the dashboard's dark background and light text like the filter selects, and the selected option is highlighted in the theme orange instead of the system colour.
 - `npm run pricing:refresh` no longer drops `pricing_long_context` (the above-threshold price tier) from `src/pricing-snapshot.json`. The script keeps the field, fails closed when a tier is malformed (threshold and all five prices must be positive numbers), and takes `PRICING_SNAPSHOT_URL` / `PRICING_SNAPSHOT_OUT` overrides so a branch file can be tested. The snapshot now carries the tier for `claude-haiku-5-5`; the cost code does not read it yet.
 - The dashboard footer names the active refresh interval (or says refresh is off) instead of always claiming "every 10 seconds".
 - No `node.exe` console window on Windows when the plugin starts the proxy. The session-start hook launched `claude-router start -d` through a detached `cmd.exe`, which has no console, so the node it ran opened a visible one. The launcher now stays attached to the hidden console `windowsHide` creates; `start -d` still detaches the daemon itself. The same window appeared on every `npm test` run, from the autostart test.
