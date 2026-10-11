@@ -25,6 +25,15 @@ export interface ModelListEntry {
     cache_write_5m: number;
     cache_write_1h: number;
   };
+  /** Optional upper tier above `threshold_input_tokens` prompt tokens. */
+  pricing_long_context?: {
+    threshold_input_tokens: number;
+    input: number;
+    output: number;
+    cache_read: number;
+    cache_write_5m?: number;
+    cache_write_1h?: number;
+  };
   [key: string]: unknown;
 }
 
