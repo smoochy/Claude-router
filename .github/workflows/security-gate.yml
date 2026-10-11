@@ -16,7 +16,7 @@ on:
   workflow_dispatch:
     inputs:
       ref:
-        description: Branch to review (default: the selected branch)
+        description: "Branch to review (default: the selected branch)"
         required: false
 
 permissions:

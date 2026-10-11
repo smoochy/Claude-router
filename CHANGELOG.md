@@ -11,6 +11,10 @@ This fork's own sections use the upstream version plus a `-smoo.<n>` prerelease 
 
 - The proxy refuses browser-origin abuse. Absent CORS only stopped a web page from reading a response; a cross-site `text/plain` POST to `/v1/messages` was still sent and, with the Bedrock or Vertex provider, spent the operator's cloud credentials without any authentication, and DNS rebinding made the dashboard, `/health` and `/api/last-route` readable by a web page. New `localGuard` middleware: the `Host` header must be a loopback name (skipped when the operator deliberately binds a network address), a request carrying an `Origin` that differs from its `Host` is refused (including `null`), and so is `Sec-Fetch-Site: cross-site` or `same-site`. Claude Code, Node fetch, curl and the plugin hooks send none of these. `POST /v1/messages` and `POST /api/agents` now also require `Content-Type: application/json` (415 otherwise).
 
+### Fixed
+
+- `security-gate.yml` was invalid YAML (an unquoted `default:` inside the `ref` input description), so GitHub ran it on every push with no jobs and refused `workflow_dispatch`. The description is quoted.
+
 ### Added
 
 - `sync-upstream` workflow (daily and manual): fast-forwards `master` to upstream, and when upstream tags a newer release opens a `sync/<tag>` PR that merges it into `smoo/main`, with conflicts resolved by claude-code-action and per-hunk reasoning in the PR body. The version bump changes only the upstream base and keeps the `-smoo.<n>` counter. A non-fast-forward, an unresolvable conflict or red tests open a `sync-failure` issue and send a push notification. Helper: `scripts/sync-upstream.mjs`.
