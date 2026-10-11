@@ -45,6 +45,14 @@
       "cache_write_1h": 0.2,
       "cache_read": 0.01,
       "output": 0.5
+    },
+    "pricing_long_context": {
+      "threshold_input_tokens": 100000,
+      "input": 0.5,
+      "cache_write_5m": 0.625,
+      "cache_write_1h": 1,
+      "cache_read": 0.05,
+      "output": 2.5
     }
   },
   {
