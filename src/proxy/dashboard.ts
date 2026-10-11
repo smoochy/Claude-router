@@ -148,9 +148,19 @@ export interface DashboardFilters {
   reason?: string;
   session?: string;
   window?: TimeWindow;
-  auto?: boolean;
+  /** Refresh interval in seconds; 0 = off. Default 10. */
+  auto?: number;
   /** `session` (default): events since this router started. `all`: tail of history.jsonl. */
   scope?: DashboardScope;
+}
+
+export const REFRESH_INTERVALS = [0, 10, 20, 30, 45, 60] as const;
+
+/** `auto` query values: seconds from the menu, legacy `1` = 10s, legacy `0` = off; anything else falls back to 10s. */
+export function parseRefresh(raw: string | undefined): number {
+  if (raw === undefined || raw === '1') return 10;
+  const n = Number(raw);
+  return raw !== '' && (REFRESH_INTERVALS as readonly number[]).includes(n) ? n : 10;
 }
 
 export const DASHBOARD_SCOPES = ['session', 'all'] as const;
@@ -402,7 +412,8 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
   const reasonValues = distinct(history, (e) => e.reason);
   const reasonOptions = simpleOptions(reasonValues.values, reasonValues.hasNone, 'No reason', filters.reason);
 
-  const auto = filters.auto !== false;
+  const interval = filters.auto ?? 10;
+  const auto = interval > 0;
   // Carries the active filters as query params so the refresh target keeps
   // them — otherwise auto-refresh resets every control to "All" every 10s.
   const refreshParams = new URLSearchParams();
@@ -415,15 +426,11 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
   if (filters.session) refreshParams.set('session', filters.session);
   if (filters.window && filters.window !== 'all') refreshParams.set('window', filters.window);
   if (filters.scope === 'all') refreshParams.set('scope', 'all');
-  refreshParams.set('auto', '1');
+  refreshParams.set('auto', String(interval));
   const refreshUrl = `/dashboard?${refreshParams.toString()}`;
-  // Same filters, opposite refresh state: the live pill links here.
-  const toggleParams = new URLSearchParams(refreshParams);
-  toggleParams.set('auto', auto ? '0' : '1');
-  const toggleUrl = `/dashboard?${toggleParams.toString()}`;
-  // Clears every filter and the scope, keeps only the refresh state.
-  const resetUrl = `/dashboard?auto=${auto ? '1' : '0'}`;
-  const metaRefresh = auto ? `<meta http-equiv="refresh" content="10;url=${refreshUrl}">` : '';
+  // Clears every filter and the scope, keeps only the refresh interval.
+  const resetUrl = `/dashboard?auto=${interval}`;
+  const metaRefresh = auto ? `<meta http-equiv="refresh" content="${interval};url=${refreshUrl}">` : '';
 
   const rows = recent
     .map(
@@ -540,8 +547,7 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
       background: var(--glass);
       white-space: nowrap;
     }
-    a.live { text-decoration: none; cursor: pointer; transition: border-color 0.25s ease; }
-    a.live:hover { border-color: var(--edge); }
+    .live select { font: inherit; letter-spacing: inherit; text-transform: none; color: var(--ink); background: transparent; border: 0; cursor: pointer; }
     .live.paused .dot { background: var(--red); box-shadow: 0 0 10px rgba(246, 70, 93, 0.9); animation: none; }
     .live .dot {
       width: 7px; height: 7px; border-radius: 50%;
@@ -752,10 +758,10 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
       <h1><a href="/dashboard" title="Reset all filters" style="color:inherit;text-decoration:none">claude-router dashboard</a></h1>
       <div class="tagline">routing ledger &middot; cost engine</div>
     </div>
-    <a class="live${auto ? '' : ' paused'}" href="${esc(toggleUrl)}" title="${auto ? 'Auto-update is on: click to pause' : 'Auto-update is off: click to resume'}"><span class="dot"></span>live &middot; refresh ${auto ? 'on' : 'off'}</a>
+    <div class="live${auto ? '' : ' paused'}" title="LED: pulsing green while refreshing, red when off"><span class="dot"></span>live &middot; refresh <select name="auto" form="filter-form" aria-label="Refresh interval" onchange="this.form.submit()">${REFRESH_INTERVALS.map((s) => `<option value="${s}"${s === interval ? ' selected' : ''}>${s === 0 ? 'off' : `${s}s`}</option>`).join('')}</select></div>
   </header>
 
-  <form class="filter-bar card" method="GET" action="/dashboard">
+  <form id="filter-form" class="filter-bar card" method="GET" action="/dashboard">
     <div class="mode-filter">
       <label for="scope">Scope</label>
       <select id="scope" name="scope" onmouseenter="this.title = this.selectedOptions[0].text" onchange="this.form.submit()"><option value="session"${filters.scope === 'all' ? '' : ' selected'}>Session (since start)</option><option value="all"${filters.scope === 'all' ? ' selected' : ''}>All (last ${HISTORY_TAIL_LINES} from history)</option></select>
@@ -792,7 +798,6 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
       <label for="mode">Mode</label>
       <select id="mode" name="mode" onmouseenter="this.title = this.selectedOptions[0].text" onchange="this.form.submit()">${modeOptions}</select>
     </div>
-    <input type="hidden" name="auto" value="${auto ? '1' : '0'}">
     <a class="reset-btn" href="${esc(resetUrl)}" title="Clear every filter and the scope, keep the refresh setting">Reset filters</a>
   </form>
 

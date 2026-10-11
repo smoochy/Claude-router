@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { extraCostNote, filterByMode, filterHistory, renderDashboard, sessionLabel } from '../proxy/dashboard.js';
+import { extraCostNote, filterByMode, filterHistory, parseRefresh, renderDashboard, sessionLabel } from '../proxy/dashboard.js';
 import { emptyTotals, foldOutcome } from '../totals.js';
 import type { RouteEvent } from '../proxy/route-event.js';
 
@@ -202,16 +202,29 @@ describe('filter row and retry help', () => {
 });
 
 describe('refresh pill and reset button', () => {
-  it('links the live pill to the opposite refresh state, keeping filters', () => {
-    const on = renderDashboard([e()], undefined, { tier: 'haiku' });
-    assert.match(on, /<a class="live" href="\/dashboard\?tier=haiku&amp;auto=0"/);
-    const off = renderDashboard([e()], undefined, { tier: 'haiku', auto: false });
-    assert.match(off, /<a class="live paused" href="\/dashboard\?tier=haiku&amp;auto=1"/);
+  it('parses intervals, maps legacy auto=0/1, and falls back to 10s', () => {
+    assert.equal(parseRefresh(undefined), 10);
+    assert.equal(parseRefresh('0'), 0);
+    assert.equal(parseRefresh('1'), 10);
+    for (const n of [10, 20, 30, 45, 60]) assert.equal(parseRefresh(String(n)), n);
+    for (const bad of ['7', '', 'x', '-1', '3600']) assert.equal(parseRefresh(bad), 10);
+  });
+  it('renders the chosen interval as selected and in the meta refresh', () => {
+    const html = renderDashboard([e()], undefined, { tier: 'haiku', auto: 30 });
+    assert.match(html, /<option value="30" selected>30s<\/option>/);
+    assert.match(html, /<meta http-equiv="refresh" content="30;url=\/dashboard\?tier=haiku&auto=30">/);
+    assert.match(html, /<div class="live"/);
+  });
+  it('off pauses the LED and drops the meta refresh', () => {
+    const off = renderDashboard([e()], undefined, { auto: 0 });
+    assert.match(off, /<div class="live paused"/);
+    assert.match(off, /<option value="0" selected>off<\/option>/);
     assert.ok(!off.includes('http-equiv="refresh"'));
   });
-  it('resets filters but keeps the refresh state, and has no auto checkbox', () => {
-    const html = renderDashboard([e()], undefined, { tier: 'haiku', auto: false });
-    assert.match(html, /class="reset-btn" href="\/dashboard\?auto=0"/);
+  it('resets filters but keeps the interval, and has no auto checkbox', () => {
+    const html = renderDashboard([e()], undefined, { tier: 'haiku', auto: 45 });
+    assert.match(html, /class="reset-btn" href="\/dashboard\?auto=45"/);
+    assert.match(renderDashboard([e()], undefined, { auto: 0 }), /class="reset-btn" href="\/dashboard\?auto=0"/);
     assert.ok(!html.includes('type="checkbox"'));
   });
 });

@@ -18,6 +18,7 @@ This fork's own sections use the upstream version plus a `-smoo.<n>` prerelease 
 - Dashboard gains Pin (honored, overridden, none) and Reason filters, and the Pin, Reason, Role and Confidence column headers and every cell in them explain themselves on hover.
 - Dashboard Auto-update toggle sends a single `auto` parameter, so the URL no longer carries `auto=0&auto=1`.
 - Dashboard shows request times and derived session labels in the proxy host's own locale and timezone instead of raw UTC, and the `today` window is now the host-local calendar day.
+- Dashboard refresh interval is chosen from a small menu in the live pill (off, 10s, 20s, 30s, 45s, 60s) instead of an on/off click; `?auto=<seconds>` carries it, legacy `auto=1` means 10s and `auto=0` off, and Reset filters keeps the interval.
 
 ### Fixed
 
