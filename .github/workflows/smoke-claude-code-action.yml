@@ -1,0 +1,32 @@
+name: smoke-claude-code-action
+
+on:
+  push:
+    branches: [claude/smoke-claude-code-action]
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: claude
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          plugin_marketplaces: https://github.com/smooCorp/claude-marketplace.git
+          plugins: appsec@smoochy-marketplace
+          prompt: /appsec:appsec Review src/proxy/handler.ts in one short paragraph, no edits.
+          claude_args: --max-turns 5
+      - name: Report cost
+        if: always()
+        run: |
+          f='${{ steps.claude.outputs.execution_file }}'
+          echo "execution_file=$f"
+          [ -n "$f" ] && jq -r '[.[]|select(.type=="result")|{total_cost_usd,num_turns,is_error,subtype}]' "$f"
