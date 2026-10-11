@@ -373,7 +373,9 @@ describe('renderDashboard', () => {
       },
     ];
     const html = renderDashboard(events);
-    assert.ok(!html.includes('<script>'));
+    // Allowlist: only the refresh-timer script may exist; escaped input must never add another.
+    assert.equal((html.match(/<script/g) ?? []).length, 1);
+    assert.ok(!html.includes('<script>alert'));
     assert.ok(html.includes('&lt;script&gt;'));
   });
 

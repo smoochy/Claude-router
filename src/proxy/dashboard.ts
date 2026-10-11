@@ -430,7 +430,10 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
   const refreshUrl = `/dashboard?${refreshParams.toString()}`;
   // Clears every filter and the scope, keeps only the refresh interval.
   const resetUrl = `/dashboard?auto=${interval}`;
-  const metaRefresh = auto ? `<meta http-equiv="refresh" content="${interval};url=${refreshUrl}">` : '';
+  // The one inline script (allowlisted in the tests): reload after the interval, but wait while a tooltip is hovered or focused.
+  const refreshScript = auto
+    ? `<script>setTimeout(function t(){if(document.querySelector('.has-tip:hover,.has-tip:focus-within,[title]:hover'))setTimeout(t,500);else location.href=${JSON.stringify(refreshUrl)}},${interval * 1000})</script>`
+    : '';
 
   const rows = recent
     .map(
@@ -457,7 +460,6 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  ${metaRefresh}
   <title>claude-router dashboard</title>
   <style>
     :root {
@@ -850,6 +852,7 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
   </div>
 
   <div class="footer">Auto-refreshes every 10 seconds. Showing last ${Math.min(50, filtered.length)} of ${filtered.length} requests.${version ? ` <span class="version">v${esc(version)}</span>` : ''}</div>
+  ${refreshScript}
 </body>
 </html>`;
 }
