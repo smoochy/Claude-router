@@ -7,6 +7,10 @@ This fork's own sections use the upstream version plus a `-smoo.<n>` prerelease 
 
 ## [Unreleased]
 
+### Security
+
+- The proxy refuses browser-origin abuse. Absent CORS only stopped a web page from reading a response; a cross-site `text/plain` POST to `/v1/messages` was still sent and, with the Bedrock or Vertex provider, spent the operator's cloud credentials without any authentication, and DNS rebinding made the dashboard, `/health` and `/api/last-route` readable by a web page. New `localGuard` middleware: the `Host` header must be a loopback name (skipped when the operator deliberately binds a network address), a request carrying an `Origin` that differs from its `Host` is refused (including `null`), and so is `Sec-Fetch-Site: cross-site` or `same-site`. Claude Code, Node fetch, curl and the plugin hooks send none of these. `POST /v1/messages` and `POST /api/agents` now also require `Content-Type: application/json` (415 otherwise).
+
 ### Added
 
 - Route feed `Saved` header has a hover/focus explanation (net saving, negative when the served model cost more), and the Session/Lifetime Saved popovers and the Pin header now say what the requested model is (the `model` field the client sent before routing).
