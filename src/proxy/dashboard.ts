@@ -1,4 +1,4 @@
-import { protoTierRole } from './proto-4399.js'; // PROTOTYPE #4399
+import { protoTierRole, sessionTips } from './proto-4399.js'; // PROTOTYPE #4399
 import { emptyTotals, foldOutcome, tierBreakdown } from '../totals.js';
 import { DISPLAY_TIERS, DEFAULT_MODELS, DEFAULT_PRICING, counterfactualCents, type DisplayTier } from '../models.js';
 import { savedCentsDisplay } from './format.js';
@@ -331,6 +331,7 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
   const totals = emptyTotals();
   for (const e of filtered) foldOutcome(totals, e);
 
+  const sessionTipLines = sessionTips(totals, filtered);
   const totalRequests = totals.requests;
   const totalCost = totals.costCents;
   const retried = totals.retried;
@@ -846,8 +847,8 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
   </form>
 
   <div class="stats">
-    ${statCard('Session Requests', String(totalRequests), 'blue', '', [])}
-    ${statCard('Session Cost', `$${(totalCost / 100).toFixed(4)}`, 'orange', '', [])}
+    ${statCard('Session Requests', String(totalRequests), 'blue', '', sessionTipLines.requests)}
+    ${statCard('Session Cost', `$${(totalCost / 100).toFixed(4)}`, 'orange', '', sessionTipLines.cost)}
     ${savedCard('Session Saved', totals, 4, unpricedNote(totals.unpricedModels))}
     ${statCard('Auto-retried', String(retried), '', '', ['Requests the router re-sent to a stronger model after a truncated or refused answer.', `${retried} of ${totalRequests} requests in the current view.`])}
     ${dispatchCard}
