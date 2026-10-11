@@ -200,3 +200,18 @@ describe('filter row and retry help', () => {
     assert.match(html, /title="Retried after truncation/);
   });
 });
+
+describe('refresh pill and reset button', () => {
+  it('links the live pill to the opposite refresh state, keeping filters', () => {
+    const on = renderDashboard([e()], undefined, { tier: 'haiku' });
+    assert.match(on, /<a class="live" href="\/dashboard\?tier=haiku&amp;auto=0"/);
+    const off = renderDashboard([e()], undefined, { tier: 'haiku', auto: false });
+    assert.match(off, /<a class="live paused" href="\/dashboard\?tier=haiku&amp;auto=1"/);
+    assert.ok(!off.includes('http-equiv="refresh"'));
+  });
+  it('resets filters but keeps the refresh state, and has no auto checkbox', () => {
+    const html = renderDashboard([e()], undefined, { tier: 'haiku', auto: false });
+    assert.match(html, /class="reset-btn" href="\/dashboard\?auto=0"/);
+    assert.ok(!html.includes('type="checkbox"'));
+  });
+});

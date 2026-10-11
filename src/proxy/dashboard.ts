@@ -417,6 +417,12 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
   if (filters.scope === 'all') refreshParams.set('scope', 'all');
   refreshParams.set('auto', '1');
   const refreshUrl = `/dashboard?${refreshParams.toString()}`;
+  // Same filters, opposite refresh state: the live pill links here.
+  const toggleParams = new URLSearchParams(refreshParams);
+  toggleParams.set('auto', auto ? '0' : '1');
+  const toggleUrl = `/dashboard?${toggleParams.toString()}`;
+  // Clears every filter and the scope, keeps only the refresh state.
+  const resetUrl = `/dashboard?auto=${auto ? '1' : '0'}`;
   const metaRefresh = auto ? `<meta http-equiv="refresh" content="10;url=${refreshUrl}">` : '';
 
   const rows = recent
@@ -534,6 +540,9 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
       background: var(--glass);
       white-space: nowrap;
     }
+    a.live { text-decoration: none; cursor: pointer; transition: border-color 0.25s ease; }
+    a.live:hover { border-color: var(--edge); }
+    .live.paused .dot { background: var(--gold); box-shadow: 0 0 10px rgba(255, 209, 102, 0.9); animation: none; }
     .live .dot {
       width: 7px; height: 7px; border-radius: 50%;
       background: var(--green);
@@ -548,7 +557,13 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
     }
     .filter-bar .mode-filter:not(.auto-toggle) { flex: 1 1 0; min-width: 0; }
     .filter-bar .mode-filter label { flex: none; }
-    .auto-toggle { flex: none; white-space: nowrap; }
+    .reset-btn {
+      flex: none; white-space: nowrap;
+      font-family: var(--mono); font-size: 11px; color: var(--ink);
+      text-decoration: none; padding: 5px 12px;
+      border: 1px solid var(--edge); border-radius: 6px; background: var(--glass);
+    }
+    .reset-btn:hover { border-color: var(--orange); color: var(--gold); }
     .auto-toggle label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
     .mode-filter { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 11px; color: var(--ink-dim); }
     th.help { cursor: help; text-decoration: underline dotted; text-underline-offset: 4px; }
@@ -736,7 +751,7 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
       <h1><a href="/dashboard" title="Reset all filters" style="color:inherit;text-decoration:none">claude-router dashboard</a></h1>
       <div class="tagline">routing ledger &middot; cost engine</div>
     </div>
-    <div class="live"><span class="dot"></span>live &middot; refresh ${auto ? 'on' : 'off'}</div>
+    <a class="live${auto ? '' : ' paused'}" href="${esc(toggleUrl)}" title="${auto ? 'Auto-update is on: click to pause' : 'Auto-update is off: click to resume'}"><span class="dot"></span>live &middot; refresh ${auto ? 'on' : 'off'}</a>
   </header>
 
   <form class="filter-bar card" method="GET" action="/dashboard">
@@ -776,10 +791,8 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
       <label for="mode">Mode</label>
       <select id="mode" name="mode" onmouseenter="this.title = this.selectedOptions[0].text" onchange="this.form.submit()">${modeOptions}</select>
     </div>
-    <div class="mode-filter auto-toggle">
-      <input type="hidden" id="auto-state" name="auto" value="${auto ? '1' : '0'}">
-      <label for="auto"><input type="checkbox" id="auto"${auto ? ' checked' : ''} onchange="document.getElementById('auto-state').value = this.checked ? '1' : '0'; this.form.submit()"> Auto-update</label>
-    </div>
+    <input type="hidden" name="auto" value="${auto ? '1' : '0'}">
+    <a class="reset-btn" href="${esc(resetUrl)}" title="Clear every filter and the scope, keep the refresh setting">Reset filters</a>
   </form>
 
   <div class="stats">
