@@ -1,6 +1,6 @@
 name: security-gate
 
-# Release security gate (homelab-private #4417). Runs on release PRs (head branch release/*) and on demand.
+# Release security gate (smooCorp/homelab-private#4417). Runs on release PRs (head branch release/*) and on demand.
 # claude-code-action only runs a workflow file identical to the one on the default branch and rejects `push`,
 # so this file takes effect only after it is merged to smoo/main.
 # Review commands are vendored under .claude/commands (the public fork cannot reference the private marketplace).
