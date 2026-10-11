@@ -1,0 +1,184 @@
+name: sync-upstream
+
+# Upstream sync decided in #4418. Daily: fast-forward `master` to upstream's tip
+# (pure mirror, never a PR, a non-ff is a failure). When upstream has tagged a
+# release newer than the base of smoo/main, open a sync PR `sync/<tag>` that
+# MERGES the tag into smoo/main (merge, never rebase, #4228). Conflicts are
+# resolved by claude-code-action inside the merge commit, with per-hunk reasoning
+# in the PR body. The version bump touches the upstream base only and keeps the
+# -smoo.<n> counter. The sync PR is the release PR: the security gate runs on it
+# and merge starts the tag/Release/npm chain. One human merge gate.
+#
+# Operator setup (repo secrets): CLAUDE_CODE_OAUTH_TOKEN (present),
+# SYNC_PUSH_TOKEN (PAT or app token that may push master and branches and open
+# PRs; a GITHUB_TOKEN push would not trigger the gate or test workflows),
+# NTFY_URL (optional, full push-notification URL).
+# claude-code-action skips workflows whose file differs from the default branch,
+# so the conflict path only works once this file is on smoo/main.
+
+on:
+  schedule:
+    - cron: '17 5 * * *'
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Dry run: upstream ref to merge instead of the latest release tag (tag or branch name)'
+        required: false
+      base_version:
+        description: 'Dry run: X.Y.Z to use as the new upstream base when ref is not a vX.Y.Z tag'
+        required: false
+      force_failure:
+        description: 'Dry run: fail on purpose to exercise the failure issue and notification'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  id-token: write
+
+concurrency:
+  group: sync-upstream
+  cancel-in-progress: false
+
+env:
+  UPSTREAM: https://github.com/Serhii-Leniv/Claude-router.git
+  GH_TOKEN: ${{ secrets.SYNC_PUSH_TOKEN || github.token }}
+  IN_REF: ${{ inputs.ref }}
+  IN_BASE: ${{ inputs.base_version }}
+
+jobs:
+  sync:
+    if: github.repository == 'smoochy/Claude-router'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: smoo/main
+          fetch-depth: 0
+          token: ${{ secrets.SYNC_PUSH_TOKEN || github.token }}
+
+      - name: Configure git
+        run: |
+          git config user.name "smoochy"
+          git config user.email "smoochy@users.noreply.github.com"
+          git remote add upstream "$UPSTREAM"
+
+      - name: Forced failure (dry run)
+        if: ${{ inputs.force_failure }}
+        run: echo "forced failure requested" && exit 1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Fast-forward master to upstream
+        run: |
+          git fetch upstream master '+refs/tags/*:refs/upstream-tags/*'
+          git fetch origin master
+          git checkout -B master origin/master
+          if ! git merge --ff-only upstream/master; then
+            echo "::error::master cannot fast-forward to upstream/master (non-ff)"; exit 1
+          fi
+          git push origin master
+          git checkout smoo/main
+
+      - name: Decide whether a sync PR is due
+        id: due
+        run: |
+          REF="$IN_REF"
+          if [ -z "$REF" ]; then
+            REF=$(git for-each-ref --format='%(refname:strip=2)' refs/upstream-tags | node scripts/sync-upstream.mjs latest)
+          fi
+          if [ -z "$REF" ]; then echo "no upstream release tag"; echo "due=false" >> "$GITHUB_OUTPUT"; exit 0; fi
+          if git rev-parse -q --verify "refs/upstream-tags/$REF" >/dev/null; then TARGET="refs/upstream-tags/$REF"; else TARGET="upstream/$REF"; git fetch upstream "$REF"; fi
+          NEWBASE="$IN_BASE"
+          [ -n "$NEWBASE" ] || NEWBASE="${REF#v}"
+          CURBASE=$(node scripts/sync-upstream.mjs base "$(node -p "require('./package.json').version")")
+          BRANCH="sync/$REF"
+          if ! node scripts/sync-upstream.mjs newer "$NEWBASE" "$CURBASE" && [ -z "$IN_REF" ]; then
+            echo "upstream $REF is not newer than base $CURBASE"; echo "due=false" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          if git merge-base --is-ancestor "$TARGET" smoo/main; then
+            echo "$REF already merged"; echo "due=false" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          if [ -n "$(gh pr list -R "$GITHUB_REPOSITORY" --head "$BRANCH" --state open --json number -q '.[].number')" ]; then
+            echo "sync PR for $REF already open"; echo "due=false" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          { echo "due=true"; echo "ref=$REF"; echo "target=$TARGET"; echo "newbase=$NEWBASE"; echo "branch=$BRANCH"; } >> "$GITHUB_OUTPUT"
+
+      - name: Merge upstream into the sync branch
+        id: merge
+        if: steps.due.outputs.due == 'true'
+        run: |
+          git checkout -B "${{ steps.due.outputs.branch }}" smoo/main
+          if git merge --no-ff --no-commit "${{ steps.due.outputs.target }}"; then
+            git commit -m "Merge upstream ${{ steps.due.outputs.ref }} into smoo/main"
+            echo "conflicts=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "conflicts=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Resolve conflicts with Claude
+        if: steps.merge.outputs.conflicts == 'true'
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ secrets.SYNC_PUSH_TOKEN || github.token }}
+          prompt: |
+            A `git merge --no-ff --no-commit` of upstream ${{ steps.due.outputs.ref }} into this branch (smoo/main) stopped on conflicts and is still in progress in the working tree. Resolve every conflicted file: trace each side of every hunk back to why that change was made, keep both intents, and pick one side only where they are incompatible (this fork's own work lives on smoo/main; upstream's work is the incoming side). Do not abort the merge and do not touch the version in package.json or package-lock.json (a later step bumps it). Run `npm ci && npm test` and fix what the merge broke. Then `git add -A` and commit with `git commit -m "Merge upstream ${{ steps.due.outputs.ref }} into smoo/main"`. Finally write `${{ runner.temp }}/resolution.md`: one bullet per conflicted hunk as `file:lines - kept <ours|theirs|both> because <reason>`. Plain ASCII hyphens, one line per bullet.
+          claude_args: '--allowedTools "Bash,Read,Edit,Write,Glob,Grep"'
+
+      - name: Bump the upstream base and verify
+        if: steps.due.outputs.due == 'true'
+        run: |
+          set -e
+          [ -z "$(git ls-files -u)" ] || { echo "::error::unresolved conflicts remain"; exit 1; }
+          git merge-base --is-ancestor "${{ steps.due.outputs.target }}" HEAD || { echo "::error::merge commit missing"; exit 1; }
+          NEW=$(node scripts/sync-upstream.mjs bump "$(node -p "require('./package.json').version")" "${{ steps.due.outputs.newbase }}")
+          npm version "$NEW" --no-git-tag-version --allow-same-version
+          npm ci
+          npm test
+          git add package.json package-lock.json
+          git commit -m "Bump version to $NEW (upstream base only, counter kept)"
+          echo "version=$NEW" >> "$GITHUB_ENV"
+
+      - name: Push and open the sync PR
+        if: steps.due.outputs.due == 'true'
+        run: |
+          B="${{ steps.due.outputs.branch }}"
+          git push -u origin "$B"
+          {
+            echo "Merges upstream ${{ steps.due.outputs.ref }} into smoo/main and bumps the version to \`$version\` (upstream base only, the -smoo counter is kept, #4418). This is the release PR: the security gate runs here, and merge starts tag, GitHub Release and npm publish."
+            echo
+            echo "Review the resolution with \`git show --remerge-diff <merge commit>\`."
+            echo
+            echo "## Conflict resolution"
+            echo
+            if [ -s "$RUNNER_TEMP/resolution.md" ]; then cat "$RUNNER_TEMP/resolution.md"; else echo "No conflicts."; fi
+            echo
+            echo "🤖 Generated with [Claude Code](https://claude.com/claude-code)"
+          } > "$RUNNER_TEMP/body.md"
+          gh label create upstream-sync -R "$GITHUB_REPOSITORY" --color ededed --description "Automated upstream sync" 2>/dev/null || true
+          gh pr create -R "$GITHUB_REPOSITORY" --base smoo/main --head "$B" \
+            --title "Sync upstream ${{ steps.due.outputs.ref }} ($version)" \
+            --body-file "$RUNNER_TEMP/body.md" --label upstream-sync
+
+  notify-failure:
+    needs: sync
+    if: ${{ always() && needs.sync.result == 'failure' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Open a labelled issue and push a notification
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NTFY_URL: ${{ secrets.NTFY_URL }}
+        run: |
+          RUN="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          gh label create sync-failure -R "$GITHUB_REPOSITORY" --color d73a4a --description "Upstream sync failed" 2>/dev/null || true
+          gh issue create -R "$GITHUB_REPOSITORY" --label sync-failure \
+            --title "Upstream sync failed ($(date -u +%F))" \
+            --body "The sync-upstream run failed (non-ff on master, unresolvable conflict, or red tests): $RUN"
+          if [ -n "$NTFY_URL" ]; then curl -fsS -H "Title: Claude-router upstream sync failed" -d "$RUN" "$NTFY_URL" || true; fi
