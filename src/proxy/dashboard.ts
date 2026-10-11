@@ -851,7 +851,7 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
     </div>
   </div>
 
-  <div class="footer">Auto-refreshes every 10 seconds. Showing last ${Math.min(50, filtered.length)} of ${filtered.length} requests.${version ? ` <span class="version">v${esc(version)}</span>` : ''}</div>
+  <div class="footer">${auto ? `Auto-refreshes every ${interval} seconds` : 'Auto-refresh is off'}. Showing last ${Math.min(50, filtered.length)} of ${filtered.length} requests.${version ? ` <span class="version">v${esc(version)}</span>` : ''}</div>
   ${refreshScript}
 </body>
 </html>`;
