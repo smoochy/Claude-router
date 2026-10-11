@@ -9,7 +9,7 @@ This fork's own sections use the upstream version plus a `-smoo.<n>` prerelease 
 
 ### Changed
 
-- Dashboard auto-update is toggled by clicking the "live - refresh on/off" pill (pulsing green LED when on, steady yellow when off) instead of a checkbox, and a Reset filters button takes the checkbox's place in the filter row.
+- Dashboard auto-update is toggled by clicking the "live - refresh on/off" pill (pulsing green LED when on, steady red when off) instead of a checkbox, and a Reset filters button takes the checkbox's place in the filter row.
 - Dashboard filters sit in a single row in route-feed column order (Scope, Window, Tier, Model, Pin, Reason, Role, Session, Mode, Auto-update); a clipped select shows its full value on hover, and the Retry header and cells explain themselves on hover.
 - Dashboard stat cards keep one shape across scopes and filters: Dispatch Rate and vs All-Opus always render (`-` when empty), the cards sit in a fixed grid, session selects are width-capped, and the long explanations under Saved, Dispatch and All-Opus moved into hover/focus popovers.
 - Dashboard gains Pin (honored, overridden, none) and Reason filters, and the Pin, Reason, Role and Confidence column headers and every cell in them explain themselves on hover.

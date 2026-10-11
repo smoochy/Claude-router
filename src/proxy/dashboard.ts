@@ -542,7 +542,7 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
     }
     a.live { text-decoration: none; cursor: pointer; transition: border-color 0.25s ease; }
     a.live:hover { border-color: var(--edge); }
-    .live.paused .dot { background: var(--gold); box-shadow: 0 0 10px rgba(255, 209, 102, 0.9); animation: none; }
+    .live.paused .dot { background: var(--red); box-shadow: 0 0 10px rgba(246, 70, 93, 0.9); animation: none; }
     .live .dot {
       width: 7px; height: 7px; border-radius: 50%;
       background: var(--green);
