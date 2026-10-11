@@ -11,6 +11,10 @@ This fork's own sections use the upstream version plus a `-smoo.<n>` prerelease 
 
 - Per-request long-context pricing. The model list's optional `pricing_long_context` (threshold plus upper-tier prices) is read from the remote list, the cache and the build-time snapshot, and a request whose total prompt tokens exceed the threshold is costed at the upper tier (Haiku 5.5 over 100,000 tokens: $0.50/$2.50 instead of $0.10/$0.50). The prompt-token count is input plus cache reads plus cache writes, matching how Anthropic bills the tier; the comparison is strictly above the threshold, and cache reads and writes are billed at the upper tier's rates (writes stay the global 125% multiplier). `savedCents` and the dashboard figures follow, including the baseline model's own tier. Models without the field keep one price, and a malformed tier is ignored.
 
+### Changed
+
+- The dashboard uses the Neon glass theme (palette copied once by hand from instalanding.ai/neon-glass-app-landing-page, MIT, Ray Velez; nothing is fetched at runtime): void `#05070f`, blue accents `#2f74f9` and `#52a8ff`, steel `#9fb0c8`. The four tiers have their own cool tokens decoupled from the accents (haiku `#2ee6a8`, sonnet `#22d3ee`, opus `#4f8bff`, fable `#a78bfa`) used by the tier bar and badges. The header gains a GitHub icon linking to smoochy/Claude-router, and the footer credits the theme.
+
 ### Fixed
 
 - The dashboard's refresh interval dropdown is readable when opened: select popups use a dark color scheme, `.live select` options take the dashboard's dark background and light text like the filter selects, and the selected option is highlighted in the theme orange instead of the system colour.

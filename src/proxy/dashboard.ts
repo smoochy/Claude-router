@@ -463,18 +463,22 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
   <title>claude-router dashboard</title>
   <style>
     :root {
-      --void: #030304;
-      --orange: #f7931a;
-      --gold: #ffd166;
+      --void: #05070f;
+      --orange: #2f74f9;
+      --gold: #52a8ff;
       --green: #0ecb81;
       --red: #f6465d;
       --violet: #b47cff;
-      --steel: #8b95a7;
-      --ink: #ece9e2;
-      --ink-dim: #8f8a7e;
+      --t-haiku: #2ee6a8;
+      --t-sonnet: #22d3ee;
+      --t-opus: #4f8bff;
+      --t-fable: #a78bfa;
+      --steel: #9fb0c8;
+      --ink: #f4f7fb;
+      --ink-dim: #7e8fac;
       --glass: rgba(255, 255, 255, 0.03);
       --glass-2: rgba(255, 255, 255, 0.015);
-      --edge: rgba(247, 147, 26, 0.16);
+      --edge: rgba(47, 116, 249, 0.16);
       --edge-soft: rgba(255, 255, 255, 0.07);
       --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, sans-serif;
       --mono: 'SF Mono', 'Cascadia Code', 'JetBrains Mono', Consolas, 'Roboto Mono', monospace;
@@ -486,17 +490,17 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
       color: var(--ink);
       background-color: var(--void);
       background-image:
-        radial-gradient(ellipse 70% 45% at 22% -8%, rgba(247, 147, 26, 0.09), transparent 65%),
-        radial-gradient(ellipse 55% 40% at 85% 4%, rgba(255, 209, 102, 0.05), transparent 60%),
-        linear-gradient(rgba(247, 147, 26, 0.024) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(247, 147, 26, 0.024) 1px, transparent 1px);
+        radial-gradient(ellipse 70% 45% at 22% -8%, rgba(47, 116, 249, 0.09), transparent 65%),
+        radial-gradient(ellipse 55% 40% at 85% 4%, rgba(82, 168, 255, 0.05), transparent 60%),
+        linear-gradient(rgba(47, 116, 249, 0.024) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(47, 116, 249, 0.024) 1px, transparent 1px);
       background-size: auto, auto, 44px 44px, 44px 44px;
       padding: 30px clamp(16px, 4vw, 52px) 44px;
       max-width: 1680px;
       margin: 0 auto;
       min-height: 100vh;
     }
-    ::selection { background: rgba(247, 147, 26, 0.85); color: var(--void); }
+    ::selection { background: rgba(47, 116, 249, 0.85); color: var(--void); }
 
     header {
       display: flex;
@@ -516,7 +520,7 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
       left: 0; bottom: -1px;
       height: 1px; width: 220px;
       background: linear-gradient(90deg, var(--orange), var(--gold) 60%, transparent);
-      box-shadow: 0 0 12px rgba(247, 147, 26, 0.55);
+      box-shadow: 0 0 12px rgba(47, 116, 249, 0.55);
     }
     h1 {
       font-size: 19px;
@@ -610,7 +614,7 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
     }
     .card:hover {
       border-color: var(--edge);
-      box-shadow: 0 1px 0 rgba(255, 255, 255, 0.06) inset, 0 12px 34px rgba(0, 0, 0, 0.5), 0 0 28px rgba(247, 147, 26, 0.12);
+      box-shadow: 0 1px 0 rgba(255, 255, 255, 0.06) inset, 0 12px 34px rgba(0, 0, 0, 0.5), 0 0 28px rgba(47, 116, 249, 0.12);
     }
 
     /* One grid for every scope: cards never change height or count, so the row does not jump */
@@ -645,8 +649,8 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
       margin-top: 5px;
       color: var(--ink);
     }
-    .stat-card .value.blue   { color: var(--orange); text-shadow: 0 0 18px rgba(247, 147, 26, 0.4); }
-    .stat-card .value.orange { color: var(--gold);   text-shadow: 0 0 18px rgba(255, 209, 102, 0.35); }
+    .stat-card .value.blue   { color: var(--orange); text-shadow: 0 0 18px rgba(47, 116, 249, 0.4); }
+    .stat-card .value.orange { color: var(--gold);   text-shadow: 0 0 18px rgba(82, 168, 255, 0.35); }
     .stat-card .value.green  { color: var(--green);  text-shadow: 0 0 18px rgba(14, 203, 129, 0.35); }
 
     .section-label {
@@ -674,10 +678,10 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
       letter-spacing: 0.06em;
       border-radius: 5px;
     }
-    .tier-haiku       { background: linear-gradient(180deg, #14e695, #0bb371); color: #01180e; box-shadow: 0 0 16px rgba(14, 203, 129, 0.3); }
-    .tier-sonnet      { background: linear-gradient(180deg, #ffa53d, #ef8a0e); color: #1d0e00; box-shadow: 0 0 16px rgba(247, 147, 26, 0.35); }
-    .tier-opus        { background: linear-gradient(180deg, #ffdd85, #f5c04e); color: #1e1400; box-shadow: 0 0 16px rgba(255, 209, 102, 0.35); }
-    .tier-fable       { background: linear-gradient(180deg, #c79bff, #9d5ff0); color: #16022e; box-shadow: 0 0 16px rgba(180, 124, 255, 0.35); }
+    .tier-haiku       { background: linear-gradient(180deg, #7cf2cc, var(--t-haiku));  color: #01180e; box-shadow: 0 0 16px rgba(46, 230, 168, 0.3); }
+    .tier-sonnet      { background: linear-gradient(180deg, #7ae6f4, var(--t-sonnet)); color: #00181d; box-shadow: 0 0 16px rgba(34, 211, 238, 0.3); }
+    .tier-opus        { background: linear-gradient(180deg, #8fb4ff, var(--t-opus));   color: #020d24; box-shadow: 0 0 16px rgba(79, 139, 255, 0.35); }
+    .tier-fable       { background: linear-gradient(180deg, #c9b8fc, var(--t-fable));  color: #16022e; box-shadow: 0 0 16px rgba(167, 139, 250, 0.35); }
     .tier-passthrough { background: linear-gradient(180deg, #55607a, #414b61); color: #dde3ee; }
 
     .table-shell { padding: 4px; }
@@ -707,7 +711,7 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
       white-space: nowrap;
     }
     tbody tr { transition: background 0.15s ease; }
-    tbody tr:hover td { background: rgba(247, 147, 26, 0.045); }
+    tbody tr:hover td { background: rgba(47, 116, 249, 0.045); }
     .badge {
       display: inline-block;
       padding: 3px 10px;
@@ -718,21 +722,21 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
       text-transform: uppercase;
       border: 1px solid;
     }
-    .badge-haiku       { background: rgba(14, 203, 129, 0.1);  color: var(--green);  border-color: rgba(14, 203, 129, 0.35); }
-    .badge-sonnet      { background: rgba(247, 147, 26, 0.1);  color: var(--orange); border-color: rgba(247, 147, 26, 0.4); }
-    .badge-opus        { background: rgba(255, 209, 102, 0.1); color: var(--gold);   border-color: rgba(255, 209, 102, 0.4); }
-    .badge-fable       { background: rgba(180, 124, 255, 0.1); color: var(--violet); border-color: rgba(180, 124, 255, 0.4); }
-    .badge-passthrough { background: rgba(139, 149, 167, 0.1); color: var(--steel);  border-color: rgba(139, 149, 167, 0.35); }
+    .badge-haiku       { background: rgba(46, 230, 168, 0.1);  color: var(--t-haiku);  border-color: rgba(46, 230, 168, 0.4); }
+    .badge-sonnet      { background: rgba(34, 211, 238, 0.1);  color: var(--t-sonnet); border-color: rgba(34, 211, 238, 0.4); }
+    .badge-opus        { background: rgba(79, 139, 255, 0.1);  color: var(--t-opus);   border-color: rgba(79, 139, 255, 0.4); }
+    .badge-fable       { background: rgba(167, 139, 250, 0.1); color: var(--t-fable);  border-color: rgba(167, 139, 250, 0.4); }
+    .badge-passthrough { background: rgba(159, 176, 200, 0.1); color: var(--steel);  border-color: rgba(159, 176, 200, 0.35); }
     td.reason          { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; color: var(--steel); }
     td.role            { font-size: 12px; }
     .stat-card .sub    { font-size: 11px; color: var(--steel); margin-top: 4px; }
     .roles             { padding: 8px 16px; margin-bottom: 26px; }
-    .role-row          { display: grid; grid-template-columns: 1fr auto auto; gap: 16px; padding: 6px 0; font-size: 13px; border-bottom: 1px solid rgba(139, 149, 167, 0.15); }
+    .role-row          { display: grid; grid-template-columns: 1fr auto auto; gap: 16px; padding: 6px 0; font-size: 13px; border-bottom: 1px solid rgba(159, 176, 200, 0.15); }
     .role-row:last-child { border-bottom: 0; }
     .role-name         { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
     .badge-retry       { background: rgba(246, 70, 93, 0.1);   color: var(--red);    border-color: rgba(246, 70, 93, 0.4); }
     .badge-pin-honored    { background: rgba(14, 203, 129, 0.1); color: var(--green); border-color: rgba(14, 203, 129, 0.35); }
-    .badge-pin-overridden { background: rgba(255, 209, 102, 0.1); color: var(--gold);  border-color: rgba(255, 209, 102, 0.4); }
+    .badge-pin-overridden { background: rgba(82, 168, 255, 0.1); color: var(--gold);  border-color: rgba(82, 168, 255, 0.4); }
     td.pin             { font-size: 12px; }
     .none { color: var(--ink-dim); }
     .unknown { color: var(--gold); }
@@ -742,6 +746,10 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
     .negative { color: var(--red); text-shadow: 0 0 12px rgba(246, 70, 93, 0.35); }
     .empty { text-align: center; padding: 30px; color: var(--ink-dim); font-family: var(--sans); font-size: 13px; }
     .footer .version { opacity: 0.7; margin-left: 8px; }
+    .gh { color: var(--ink-dim); display: flex; }
+    .gh:hover { color: var(--gold); }
+    .footer.credit { margin-top: 6px; }
+    .footer.credit a { color: inherit; }
     .footer {
       margin-top: 18px;
       font-family: var(--mono);
@@ -764,6 +772,7 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
       <div class="tagline">routing ledger &middot; cost engine</div>
     </div>
     <div class="live${auto ? '' : ' paused'}" title="LED: pulsing green while refreshing, red when off"><span class="dot"></span>live &middot; refresh <select name="auto" form="filter-form" aria-label="Refresh interval" onchange="this.form.submit()">${REFRESH_INTERVALS.map((s) => `<option value="${s}"${s === interval ? ' selected' : ''}>${s === 0 ? 'off' : `${s}s`}</option>`).join('')}</select></div>
+    <a class="gh" href="https://github.com/smoochy/Claude-router" title="smoochy/Claude-router on GitHub" aria-label="GitHub repository"><svg viewBox="0 0 16 16" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.6 7.6 0 0 1 4 0c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg></a>
   </header>
 
   <form id="filter-form" class="filter-bar card" method="GET" action="/dashboard">
@@ -855,6 +864,7 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
   </div>
 
   <div class="footer">${auto ? `Auto-refreshes every ${interval} seconds` : 'Auto-refresh is off'}. Showing last ${Math.min(50, filtered.length)} of ${filtered.length} requests.${version ? ` <span class="version">v${esc(version)}</span>` : ''}</div>
+  <div class="footer credit">Theme: Neon glass &middot; palette from <a href="https://github.com/RayVelez27/instalanding.ai/tree/main/pages/neon-glass-app-landing-page">instalanding.ai/neon-glass-app-landing-page</a> (MIT, Ray Velez)</div>
   ${refreshScript}
 </body>
 </html>`;
