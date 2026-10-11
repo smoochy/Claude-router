@@ -763,10 +763,6 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
     .filter-bar label.has-tip:hover .tip-body, .filter-bar label.has-tip:focus .tip-body { display: block; }
     .filter-bar .mode-filter:nth-last-child(-n+4) .tip-body { left: auto; right: 0; }
     .filter-bar .tip-body { text-transform: none; letter-spacing: normal; text-decoration: none; white-space: normal; width: 260px; }
-    /* Feed header popover: opens leftwards over the rows below */
-    th.has-tip { position: relative; cursor: help; text-decoration: underline dotted; text-underline-offset: 4px; }
-    th.has-tip:hover .tip-body, th.has-tip:focus .tip-body { display: block; }
-    th.has-tip .tip-body { left: auto; right: 0; width: 280px; text-transform: none; letter-spacing: normal; text-decoration: none; white-space: normal; font-weight: 400; }
     .stat-card:hover { z-index: 21; }
     .stat-card:hover { transform: translateY(-2px); }
     .stat-card .label {
@@ -942,7 +938,7 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
             <th data-tip="${esc(HEADER_HELP.reason)}" class="help">Reason</th>
             <th data-tip="${esc(HEADER_HELP.role)}" class="help">Role</th>
             <th>Cost</th>
-            <th class="has-tip" tabindex="0">Saved<span class="tip-body" role="tooltip">${esc(HEADER_HELP.saved)} ${esc(REQUESTED_MODEL_HELP)}</span></th>
+            <th data-tip="${esc(`${HEADER_HELP.saved} ${REQUESTED_MODEL_HELP}`)}" class="help">Saved</th>
             <th data-tip="${esc(HEADER_HELP.confidence)}" class="help">Confidence</th>
             <th>In Tokens</th>
             <th>Out Tokens</th>

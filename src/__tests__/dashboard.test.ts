@@ -209,7 +209,8 @@ describe('filter row and retry help', () => {
     assert.equal(labels.length, 10);
   });
   it('explains Saved in the feed header and the requested model in a popover', () => {
-    assert.match(html, /<th class="has-tip" tabindex="0">Saved<span class="tip-body" role="tooltip">Net saving: [^<]*egative when the served model was priced above the requested one[^<]*Requested model: the model field Claude Code sent/);
+    assert.match(html, /<th data-tip="Net saving: [^"]*egative when the served model was priced above the requested one[^"]*Requested model: the model field Claude Code sent[^"]*" class="help">Saved<\/th>/);
+    assert.doesNotMatch(html, /<th class="has-tip"/);
     assert.match(html, /<div>Requested model: the model field Claude Code sent in the request body/);
   });
   it('filters by retry reason and by not retried, ANDed with other filters', () => {
