@@ -70,6 +70,13 @@ describe('renderDashboard — recomputation per mode', () => {
     const history = [e({ routingMode: 'route' }), e({ routingMode: undefined })];
     assert.equal(renderDashboard(history), renderDashboard(history, undefined, { mode: 'all' }));
   });
+
+  it('styles select popups dark, including the refresh dropdown and the selected option', () => {
+    const html = renderDashboard([]);
+    assert.match(html, /select \{ color-scheme: dark; \}/);
+    assert.match(html, /\.live select option,\s*\.mode-filter select option \{\s*background: var\(--void\);\s*color: var\(--ink\);/);
+    assert.match(html, /select option:checked \{ background: var\(--orange\); color: var\(--void\); \}/);
+  });
 });
 
 describe('filterHistory - AND combination across all filters', () => {

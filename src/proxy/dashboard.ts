@@ -589,10 +589,13 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
       font-family: var(--mono);
       font-size: 11px;
     }
+    select { color-scheme: dark; }
+    .live select option,
     .mode-filter select option {
       background: var(--void);
       color: var(--ink);
     }
+    select option:checked { background: var(--orange); color: var(--void); }
 
     /* Glass panel: transparency stack + 1px edge + inner top highlight + warm glow */
     .card {
