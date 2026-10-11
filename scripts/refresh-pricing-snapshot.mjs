@@ -6,8 +6,19 @@
 // half-trusted price table.
 import fs from 'node:fs';
 
-const URL_ = 'https://raw.githubusercontent.com/smoochy/openrouter-model-list/main/anthropic-models.json';
-const OUT = new URL('../src/pricing-snapshot.json', import.meta.url);
+// PRICING_SNAPSHOT_URL / PRICING_SNAPSHOT_OUT let a branch file or a test point elsewhere.
+const URL_ = process.env.PRICING_SNAPSHOT_URL || 'https://raw.githubusercontent.com/smoochy/openrouter-model-list/main/anthropic-models.json';
+const OUT = process.env.PRICING_SNAPSHOT_OUT || new URL('../src/pricing-snapshot.json', import.meta.url);
+
+const TIER_PRICES = ['input', 'cache_write_5m', 'cache_write_1h', 'cache_read', 'output'];
+const pos = (n) => typeof n === 'number' && Number.isFinite(n) && n > 0;
+function checkLongContext(m) {
+  const t = m.pricing_long_context;
+  if (t === undefined) return;
+  if (!t || !pos(t.threshold_input_tokens) || !TIER_PRICES.every((k) => pos(t[k]))) {
+    throw new Error(`malformed pricing_long_context on ${m.id}`);
+  }
+}
 
 try {
   const res = await fetch(URL_, { signal: AbortSignal.timeout(15000) });
@@ -17,7 +28,12 @@ try {
   // Keep only what the router reads; the full list carries capabilities etc.
   const slim = list
     .filter((m) => m && typeof m.id === 'string' && m.pricing && m.pricing.input > 0 && m.pricing.output >= 0)
-    .map((m) => ({ id: m.id, line: m.line, created_at: m.created_at, pricing: m.pricing }))
+    .map((m) => {
+      checkLongContext(m);
+      const e = { id: m.id, line: m.line, created_at: m.created_at, pricing: m.pricing };
+      if (m.pricing_long_context) e.pricing_long_context = m.pricing_long_context;
+      return e;
+    })
     .sort((a, b) => a.id.localeCompare(b.id));
   const lines = new Set(slim.map((m) => m.line));
   for (const f of ['haiku', 'sonnet', 'opus', 'fable']) {
