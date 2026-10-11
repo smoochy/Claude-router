@@ -1,4 +1,4 @@
-import { emptyTotals, foldOutcome, tierBreakdown } from '../totals.js';
+import { emptyTotals, foldOutcome } from '../totals.js';
 import { DISPLAY_TIERS, DEFAULT_MODELS, DEFAULT_PRICING, counterfactualCents, type DisplayTier } from '../models.js';
 import { savedCentsDisplay } from './format.js';
 import { lookupSessionTitle } from './session-names.js';
@@ -9,13 +9,95 @@ import { HISTORY_TAIL_LINES, type LifetimeStats } from './history.js';
  * slice rather than silently excluded, the precedent set for routingMode. */
 const NONE = '__none__';
 
-const TIER_BAR_LABEL: Record<DisplayTier, string> = {
+/** Typed Record<DisplayTier, ...>: a new tier fails the build until it has a name and a help text. */
+const TIER_NAME: Record<DisplayTier, string> = {
   haiku: 'Haiku',
   sonnet: 'Sonnet',
   opus: 'Opus',
   fable: 'Fable',
   passthrough: 'Pass',
 };
+
+const TIER_HELP: Record<DisplayTier, string> = {
+  haiku: 'Cheapest tier. Recon subagents, short mechanical transforms and trivial agentic turns land here.',
+  sonnet: 'Default tier. Builders, batch work and any request with no stronger signal.',
+  opus: 'Deep reasoning. Gate and audit roles, and prompts that asked for depth.',
+  fable: 'Top tier. Prompts asking for depth over a long horizon.',
+  passthrough: 'Routing was off for these requests: the client model went through untouched, only logged.',
+};
+
+/** Meaning and origin of each role (see src/roles.ts); unknown names fall back to a custom-role text. */
+const ROLE_HELP: Record<string, { what: string; how: string }> = {
+  'no role': { what: 'Ordinary requests outside any subagent or coordinator turn, such as plain single prompts.', how: 'No agent id and no role marker in the request.' },
+  coordinator: { what: 'The main Claude Code session that can hand work to subagents.', how: 'Not a subagent: a request with tools but no agent id.' },
+  recon: { what: 'Read-only reconnaissance: find things, report facts. Pinned to haiku.', how: 'Marker "claude-router:role=recon", the agent type, or read-only tools.' },
+  builder: { what: 'Scoped implementation that needs local judgement. Sonnet.', how: 'Marker "claude-router:role=builder", the agent type, or a subagent with write tools.' },
+  batch: { what: 'Same-shape edits across many files, fully specified. Sonnet.', how: 'Marker "claude-router:role=batch" at the start of the agent prompt.' },
+  gate: { what: 'Fresh-context readiness check before risky work is approved. Opus.', how: 'Marker "claude-router:role=gate" at the start of the agent prompt.' },
+  audit: { what: 'Fresh-context falsification after risky work lands. Opus.', how: 'Marker "claude-router:role=audit" at the start of the agent prompt.' },
+};
+
+const NO_ROLE = 'no role';
+/** Dim ink for percentages and the passthrough tier name; both are AA (>= 4.5:1) on the card and on the #0b0f19 popover (pinned in the tests). */
+export const DIM_INK = '#a9b3c6';
+export const PASSTHROUGH_INK = '#8b95a7';
+const pct1 = (n: number, d: number): string => (d > 0 ? `${((n / d) * 100).toFixed(1)}%` : '-');
+const usd4 = (c: number): string => `$${(c / 100).toFixed(4)}`;
+
+/**
+ * One shared fixed-position popover for every [data-tip] target. The feed sits in
+ * `.table-wrap { overflow-x: auto }`, which clips any absolutely positioned
+ * popover, so these use the fixed variant, clamped to the viewport and flipped
+ * above the target when it would leave the bottom.
+ */
+const DATA_TIP_SCRIPT = `<script>(function(){var t=document.createElement('div');t.className='tip-body';t.setAttribute('role','tooltip');t.style.cssText='position:fixed;z-index:100;pointer-events:none';document.body.appendChild(t);
+function show(el){t.textContent=el.getAttribute('data-tip');t.style.display='block';var r=el.getBoundingClientRect(),w=t.offsetWidth,h=t.offsetHeight,x=Math.min(Math.max(8,r.left),innerWidth-w-8),y=r.bottom+6;if(y+h>innerHeight-8)y=Math.max(8,r.top-h-6);t.style.left=x+'px';t.style.top=y+'px'}
+function hide(){t.style.display='none'}
+document.addEventListener('mouseover',function(e){var el=e.target.closest&&e.target.closest('[data-tip]');el?show(el):hide()});
+document.addEventListener('focusin',function(e){var el=e.target.closest&&e.target.closest('[data-tip]');el?show(el):hide()});
+document.addEventListener('scroll',hide,true)})()</script>`;
+
+interface Share { name: string; cls: string; n: number; c: number }
+
+/**
+ * Per-tier and per-role breakdown of one view. Tier cost is summed here from the
+ * events (errors excluded, as foldOutcome does) rather than kept in RouteTotals.
+ * "no role" is the remainder, so both rows add up to Session Requests / Cost.
+ */
+function breakdown(totals: ReturnType<typeof emptyTotals>, events: RouteEvent[]): { tiers: Share[]; roles: Share[] } {
+  const tierCost: Record<string, number> = {};
+  for (const e of events) if (!e.error) tierCost[e.tier] = (tierCost[e.tier] ?? 0) + e.costCents;
+  const tiers = DISPLAY_TIERS.map((t) => ({ name: TIER_NAME[t], cls: t, n: totals.tiers[t] ?? 0, c: tierCost[t] ?? 0 }))
+    .filter((x) => x.cls !== 'passthrough' || x.n > 0);
+  const roles = Object.entries(totals.byRole)
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([name, r]) => ({ name, cls: '', n: r.requests, c: r.costCents }));
+  const rest = { name: NO_ROLE, cls: '', n: totals.requests - roles.reduce((a, r) => a + r.n, 0), c: totals.costCents - roles.reduce((a, r) => a + r.c, 0) };
+  if (rest.n > 0) roles.push(rest);
+  return { tiers, roles };
+}
+
+function roleTip(name: string): string[] {
+  const h = ROLE_HELP[name] ?? { what: `Custom role "${name}".`, how: 'Named by a prompt marker or agent type.' };
+  return [`${esc(name)}: ${esc(h.what)}`, `Comes from: ${esc(h.how)}`];
+}
+
+/** One entry of the Tier / Role rows: `name n (p%) $cost (p%)` with a hover popover. */
+function entry(x: Share, dot: boolean, totals: ReturnType<typeof emptyTotals>, help: string[]): string {
+  return `<span class="ent has-tip" tabindex="0">${dot ? `<span class="dot t-${x.cls}"></span>` : ''}<b class="${dot ? '' : 'mono'}">${esc(x.name)}</b> ${x.n} <i>(${pct1(x.n, totals.requests)})</i> <u>${usd4(x.c)}</u> <i>(${pct1(x.c, totals.costCents)})</i><span class="tip-body" role="tooltip">${help.map((l) => `<div>${l}</div>`).join('')}</span></span>`;
+}
+
+/** Hover lines for Session Requests / Session Cost: what is counted, then the composition by tier and by role. */
+function sessionTips(b: { tiers: Share[]; roles: Share[] }, totals: ReturnType<typeof emptyTotals>): { requests: string[]; cost: string[] } {
+  const list = (xs: Share[], f: (x: Share) => string): string =>
+    xs.filter((x) => x.n > 0).map((x) => `<b class="tn${x.cls ? ` tt-${x.cls}` : ''}">${esc(x.name)}</b> ${f(x)}`).join(' &middot; ');
+  const rq = (x: Share): string => `${x.n} <i>(${pct1(x.n, totals.requests)})</i>`;
+  const co = (x: Share): string => `${usd4(x.c)} <i>(${pct1(x.c, totals.costCents)})</i>`;
+  return {
+    requests: ['Routed requests in the current view; failed streams are not counted.', `By tier: ${list(b.tiers, rq)}`, `By role: ${list(b.roles, rq)}`],
+    cost: ['What these requests cost on the billed models at list price, in dollars.', `By tier: ${list(b.tiers, co)}`, `By role: ${list(b.roles, co)}`],
+  };
+}
 
 /**
  * Derived per-event label, not a filter: compares the pilotfish
@@ -24,10 +106,10 @@ const TIER_BAR_LABEL: Record<DisplayTier, string> = {
  * field — both render as "-", never as a wrong label.
  */
 function pinLabel(e: RouteEvent): string {
-  if (!e.requestedModel) return '<span class="none" title="No pin: the client sent no model, or this line predates the field.">-</span>';
+  if (!e.requestedModel) return '<span class="none" data-tip="No pin: the client sent no model, or this line predates the field.">-</span>';
   return e.requestedModel === e.model
-    ? `<span class="badge badge-pin-honored" title="Pin honored: the client asked for ${esc(e.requestedModel)} and that is the model that was billed.">pin honored</span>`
-    : `<span class="badge badge-pin-overridden" title="Overridden: the client asked for ${esc(e.requestedModel)} but the router billed ${esc(e.model)}.">overridden</span>`;
+    ? `<span class="badge badge-pin-honored" data-tip="Pin honored: the client asked for ${esc(e.requestedModel)} and that is the model that was billed.">pin honored</span>`
+    : `<span class="badge badge-pin-overridden" data-tip="Overridden: the client asked for ${esc(e.requestedModel)} but the router billed ${esc(e.model)}.">overridden</span>`;
 }
 
 /** Filterable form of the pin comparison: honored / overridden, or absent when no model was requested. */
@@ -353,24 +435,13 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
     allOpus > 0 ? 'upper bound' : '',
     [`Same tokens priced on ${esc(opusModel)}. An upper bound, not a measurement.`],
   );
-  const roleRows = Object.entries(totals.byRole)
-    .sort((a, b) => b[1].costCents - a[1].costCents)
-    .map(([name, r]) => `<div class="role-row"><span class="role-name">${esc(name)}</span><span>${r.requests} req</span><span>$${(r.costCents / 100).toFixed(4)}</span></div>`)
-    .join('');
-
   // DISPLAY_TIERS, not a hand-written list: the list here used to omit `fable`,
-  // which both hid fable routes from the chart and left them out of its own
-  // percentage denominator, so the bars quietly failed to total 100%.
-  const tierCounts = tierBreakdown(totals, DISPLAY_TIERS);
-  const tierTotal = DISPLAY_TIERS.reduce((n, t) => n + tierCounts[t], 0) || 1;
-  const tierBars = DISPLAY_TIERS.map((t) => ({
-    tier: t,
-    count: tierCounts[t],
-    pct: ((tierCounts[t] / tierTotal) * 100).toFixed(1),
-  }))
-    .filter((b) => Number(b.pct) > 0)
-    .map((b) => `<div class="tier-${b.tier}" style="width:${b.pct}%">${TIER_BAR_LABEL[b.tier]} ${b.count} (${b.pct}%)</div>`)
-    .join('');
+  // which hid fable routes from the section. Roles come from totals.byRole, so a
+  // new role shows up on its own.
+  const split = breakdown(totals, filtered);
+  const tierEntries = split.tiers.map((x) => entry(x, true, totals, [esc(TIER_HELP[x.cls as DisplayTier])])).join('');
+  const roleEntries = split.roles.map((x) => entry(x, false, totals, roleTip(x.name))).join('');
+  const sessionTipLines = sessionTips(split, totals);
 
   // A card reading "$0.0000 saved" is indistinguishable from a quiet week, so
   // any unpriced call gets called out next to the figures it silently deflates.
@@ -483,7 +554,7 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
   // last pointer position seen: on the open select (or its popup) keeps the pause, elsewhere on the page lifts it and the reload
   // closes the dropdown. A click, change, blur or Escape ends "open". Mouse-opened popups only; a keyboard-opened one does not pause.
   const refreshScript = auto
-    ? `<script>var o,i,d=document,s=function(e){return e.target.closest&&e.target.closest('select')};d.addEventListener('mousedown',function(e){var x=s(e);o=x&&x!==o?x:null;i=1});d.addEventListener('mousemove',function(e){i=s(e)===o});d.addEventListener('change',function(){o=null});d.addEventListener('focusout',function(e){if(e.target===o)o=null});d.addEventListener('keydown',function(e){if(e.key==='Escape')o=null});setTimeout(function t(){if(d.querySelector('.has-tip:hover,.has-tip:focus-within,[title]:hover')||o&&i)setTimeout(t,500);else location.href=${JSON.stringify(refreshUrl)}},${interval * 1000})</script>`
+    ? `<script>var o,i,d=document,s=function(e){return e.target.closest&&e.target.closest('select')};d.addEventListener('mousedown',function(e){var x=s(e);o=x&&x!==o?x:null;i=1});d.addEventListener('mousemove',function(e){i=s(e)===o});d.addEventListener('change',function(){o=null});d.addEventListener('focusout',function(e){if(e.target===o)o=null});d.addEventListener('keydown',function(e){if(e.key==='Escape')o=null});setTimeout(function t(){if(d.querySelector('.has-tip:hover,.has-tip:focus-within,[data-tip]:hover')||o&&i)setTimeout(t,500);else location.href=${JSON.stringify(refreshUrl)}},${interval * 1000})</script>`
     : '';
 
   const rows = recent
@@ -494,14 +565,14 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
         <td><span class="badge badge-${esc(String(e.tier))}">${esc(String(e.tier))}</span></td>
         <td>${esc(e.model)}</td>
         <td class="pin">${pinLabel(e)}</td>
-        <td class="reason" title="${esc(reasonHelp(e.reason))}">${e.reason ? esc(e.reason) : '<span class="none">-</span>'}</td>
-        <td class="role" title="${esc(roleHelp(e))}">${e.role ? esc(e.role) : e.coordinator ? 'coordinator' : '<span class="none">-</span>'}${e.dispatched ? ' <span class="badge badge-retry" title="This coordinator turn called the Agent tool.">dispatched</span>' : ''}</td>
-        <td>${e.priced === false ? '<span class="unknown" title="no pricing for this model">—</span>' : `$${(e.costCents / 100).toFixed(4)}`}</td>
+        <td class="reason" data-tip="${esc(reasonHelp(e.reason))}">${e.reason ? esc(e.reason) : '<span class="none">-</span>'}</td>
+        <td class="role" data-tip="${esc(roleHelp(e))}">${e.role ? esc(e.role) : e.coordinator ? 'coordinator' : '<span class="none">-</span>'}${e.dispatched ? ' <span class="badge badge-retry" data-tip="This coordinator turn called the Agent tool.">dispatched</span>' : ''}</td>
+        <td>${e.priced === false ? '<span class="unknown" data-tip="no pricing for this model">—</span>' : `$${(e.costCents / 100).toFixed(4)}`}</td>
         <td class="${e.priced === false ? 'unknown' : e.savedCents >= 0 ? 'positive' : 'negative'}">${e.priced === false ? '—' : `$${(e.savedCents / 100).toFixed(4)}`}</td>
-        <td title="${esc(confidenceHelp(e))}">${e.confidence.toFixed(2)}</td>
+        <td data-tip="${esc(confidenceHelp(e))}">${e.confidence.toFixed(2)}</td>
         <td>${e.inputTokens}</td>
         <td>${e.outputTokens}</td>
-        <td title="${esc(retryHelp(e))}">${e.retried ? `<span class="badge badge-retry">${esc(e.retryReason ?? '')}</span>` : '<span class="none">-</span>'}</td>
+        <td data-tip="${esc(retryHelp(e))}">${e.retried ? `<span class="badge badge-retry">${esc(e.retryReason ?? '')}</span>` : '<span class="none">-</span>'}</td>
       </tr>`,
     )
     .join('');
@@ -678,11 +749,12 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
     /* Hover or keyboard focus opens the explanation, same pattern as the cryo-dash schema tab */
     .tip-body {
       position: absolute; z-index: 20; top: calc(100% + 6px); left: 0; display: none;
-      width: max-content; max-width: 320px; padding: 8px 10px;
+      width: max-content; max-width: 300px; padding: 8px 10px;
       font-family: var(--sans); font-size: 12px; line-height: 1.5; color: var(--ink);
-      background: var(--void); border: 1px solid var(--edge); border-radius: 8px;
-      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.55);
+      background: #0b0f19; border: 1px solid #3a4560; border-radius: 8px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.67); white-space: normal; text-align: left; font-weight: 400;
     }
+    .tip-body > div + div { margin-top: 4px; }
     .tip-body b { font-family: var(--mono); font-variant-numeric: tabular-nums; margin-left: 6px; }
     .stat-card:hover .tip-body, .stat-card:focus-within .tip-body, .stat-card:focus .tip-body { display: block; }
     /* Filter labels: same popover; the bar stacks above the cards below it, and the right-hand labels open leftwards */
@@ -731,21 +803,22 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
       background: linear-gradient(90deg, var(--edge), transparent);
     }
 
-    .tier-shell { margin-bottom: 26px; padding: 8px; }
-    .tier-bar { display: flex; gap: 3px; height: 30px; border-radius: 8px; overflow: hidden; }
-    .tier-bar div {
-      display: flex; align-items: center; justify-content: center;
-      overflow: hidden; white-space: nowrap;
-      font-family: var(--mono);
-      font-size: 10.5px; font-weight: 700;
-      letter-spacing: 0.06em;
-      border-radius: 5px;
-    }
-    .tier-haiku       { background: linear-gradient(180deg, #7cf2cc, var(--t-haiku));  color: #01180e; box-shadow: 0 0 16px rgba(46, 230, 168, 0.3); }
-    .tier-sonnet      { background: linear-gradient(180deg, #7ae6f4, var(--t-sonnet)); color: #00181d; box-shadow: 0 0 16px rgba(34, 211, 238, 0.3); }
-    .tier-opus        { background: linear-gradient(180deg, #8fb4ff, var(--t-opus));   color: #020d24; box-shadow: 0 0 16px rgba(79, 139, 255, 0.35); }
-    .tier-fable       { background: linear-gradient(180deg, #c9b8fc, var(--t-fable));  color: #16022e; box-shadow: 0 0 16px rgba(167, 139, 250, 0.35); }
-    .tier-passthrough { background: linear-gradient(180deg, #55607a, #414b61); color: #dde3ee; }
+    /* Tier / Role rows: one wrapping flex row per card. The hovered card stacks above the next one so its popovers are not overdrawn. */
+    .ents { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 18px; margin-bottom: 26px; padding: 10px 14px; font-size: 12px; font-variant-numeric: tabular-nums; }
+    .ents:hover, .ents:focus-within { z-index: 40; }
+    .ent { position: relative; white-space: nowrap; cursor: help; }
+    .ent b { font-weight: 600; }
+    .ent b.mono { font-family: var(--mono); }
+    .ent i, .tip-body i { font-style: normal; color: ${DIM_INK}; }
+    .ent u { text-decoration: none; }
+    .ent .dot { display: inline-block; width: 8px; height: 8px; margin-right: 6px; border-radius: 50%; }
+    .ent:hover .tip-body, .ent:focus .tip-body { display: block; }
+    .ent:nth-last-child(-n+3) .tip-body { left: auto; right: 0; }
+    .t-haiku { background: var(--t-haiku); } .t-sonnet { background: var(--t-sonnet); } .t-opus { background: var(--t-opus); } .t-fable { background: var(--t-fable); } .t-passthrough { background: #55607a; }
+    .tip-body b.tn { font-family: inherit; font-weight: 600; margin-left: 0; }
+    .tt-haiku { color: var(--t-haiku); } .tt-sonnet { color: var(--t-sonnet); } .tt-opus { color: var(--t-opus); } .tt-fable { color: var(--t-fable); } .tt-passthrough { color: ${PASSTHROUGH_INK}; }
+    [data-tip] { cursor: help; }
+    td[data-tip]:not(.none) { text-decoration: underline dotted ${PASSTHROUGH_INK}; text-underline-offset: 4px; }
 
     .table-shell { padding: 4px; }
     .table-wrap { overflow-x: auto; border-radius: 10px; }
@@ -793,10 +866,6 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
     td.reason          { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; color: var(--steel); }
     td.role            { font-size: 12px; }
     .stat-card .sub    { font-size: 11px; color: var(--steel); margin-top: 4px; }
-    .roles             { padding: 8px 16px; margin-bottom: 26px; }
-    .role-row          { display: grid; grid-template-columns: 1fr auto auto; gap: 16px; padding: 6px 0; font-size: 13px; border-bottom: 1px solid rgba(159, 176, 200, 0.15); }
-    .role-row:last-child { border-bottom: 0; }
-    .role-name         { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
     .badge-retry       { background: rgba(246, 70, 93, 0.1);   color: var(--red);    border-color: rgba(246, 70, 93, 0.4); }
     .badge-pin-honored    { background: rgba(14, 203, 129, 0.1); color: var(--green); border-color: rgba(14, 203, 129, 0.35); }
     .badge-pin-overridden { background: rgba(82, 168, 255, 0.1); color: var(--gold);  border-color: rgba(82, 168, 255, 0.4); }
@@ -831,38 +900,34 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
 <body>
   <header>
     <div>
-      <h1><a href="/dashboard" title="Reset all filters" style="color:inherit;text-decoration:none">claude-router dashboard</a></h1>
+      <h1><a href="/dashboard" style="color:inherit;text-decoration:none">claude-router dashboard</a></h1>
       <div class="tagline">routing ledger &middot; cost engine</div>
     </div>
-    <div class="live${auto ? '' : ' paused'}" title="LED: pulsing green while refreshing, red when off"><span class="dot"></span>live &middot; refresh <select name="auto" form="filter-form" aria-label="Refresh interval" onchange="this.form.submit()">${REFRESH_INTERVALS.map((s) => `<option value="${s}"${s === interval ? ' selected' : ''}>${s === 0 ? 'off' : `${s}s`}</option>`).join('')}</select></div>
-    <a class="gh" href="https://github.com/smoochy/Claude-router" title="smoochy/Claude-router on GitHub" aria-label="GitHub repository"><svg viewBox="0 0 16 16" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.6 7.6 0 0 1 4 0c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg></a>
+    <div class="live${auto ? '' : ' paused'}"><span class="dot"></span>live &middot; refresh <select name="auto" form="filter-form" aria-label="Refresh interval" onchange="this.form.submit()">${REFRESH_INTERVALS.map((s) => `<option value="${s}"${s === interval ? ' selected' : ''}>${s === 0 ? 'off' : `${s}s`}</option>`).join('')}</select></div>
+    <a class="gh" href="https://github.com/smoochy/Claude-router" aria-label="GitHub repository"><svg viewBox="0 0 16 16" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.6 7.6 0 0 1 4 0c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg></a>
   </header>
 
   <form id="filter-form" class="filter-bar card" method="GET" action="/dashboard">
     ${filterFields}
-    <a class="reset-btn" href="${esc(resetUrl)}" title="Clear every filter and the scope, keep the refresh setting">Reset filters</a>
+    <a class="reset-btn" href="${esc(resetUrl)}">Reset filters</a>
   </form>
 
   <div class="stats">
-    ${statCard('Session Requests', String(totalRequests), 'blue', '', [])}
-    ${statCard('Session Cost', `$${(totalCost / 100).toFixed(4)}`, 'orange', '', [])}
+    ${statCard('Session Requests', String(totalRequests), 'blue', '', sessionTipLines.requests)}
+    ${statCard('Session Cost', `$${(totalCost / 100).toFixed(4)}`, 'orange', '', sessionTipLines.cost)}
     ${savedCard('Session Saved', totals, 4, unpricedNote(totals.unpricedModels))}
-    ${statCard('Auto-retried', String(retried), '', '', [])}
+    ${statCard('Auto-retried', String(retried), '', '', ['Requests the router re-sent to a stronger model after a truncated or refused answer.', `${retried} of ${totalRequests} requests in the current view.`])}
     ${dispatchCard}
     ${counterfactualCard}
     ${lifetime ? savedCard('Lifetime Saved', lifetime, undefined, unpricedNote(lifetime.unpricedModels)) : ''}
     ${lifetime ? statCard('Lifetime Requests', String(lifetime.requests), 'blue', '', []) : ''}
   </div>
 
-  ${roleRows ? `<div class="section-label">By Role</div>
-  <div class="card roles">${roleRows}</div>` : ''}
+  ${roleEntries ? `<div class="section-label">By Role</div>
+  <div class="card ents">${roleEntries}</div>` : ''}
 
   <div class="section-label">Tier Distribution</div>
-  <div class="tier-shell card">
-    <div class="tier-bar">
-      ${tierBars}
-    </div>
-  </div>
+  <div class="card ents">${tierEntries}</div>
 
   <div class="section-label">Route Feed</div>
   <div class="table-shell card">
@@ -873,15 +938,15 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
             <th>Time</th>
             <th>Tier</th>
             <th>Model</th>
-            <th title="${esc(HEADER_HELP.pin)}" class="help">Pin</th>
-            <th title="${esc(HEADER_HELP.reason)}" class="help">Reason</th>
-            <th title="${esc(HEADER_HELP.role)}" class="help">Role</th>
+            <th data-tip="${esc(HEADER_HELP.pin)}" class="help">Pin</th>
+            <th data-tip="${esc(HEADER_HELP.reason)}" class="help">Reason</th>
+            <th data-tip="${esc(HEADER_HELP.role)}" class="help">Role</th>
             <th>Cost</th>
             <th class="has-tip" tabindex="0">Saved<span class="tip-body" role="tooltip">${esc(HEADER_HELP.saved)} ${esc(REQUESTED_MODEL_HELP)}</span></th>
-            <th title="${esc(HEADER_HELP.confidence)}" class="help">Confidence</th>
+            <th data-tip="${esc(HEADER_HELP.confidence)}" class="help">Confidence</th>
             <th>In Tokens</th>
             <th>Out Tokens</th>
-            <th title="${esc(HEADER_HELP.retry)}" class="help">Retry</th>
+            <th data-tip="${esc(HEADER_HELP.retry)}" class="help">Retry</th>
           </tr>
         </thead>
         <tbody>
@@ -894,6 +959,7 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
   <div class="footer">${auto ? `Auto-refreshes every ${interval} seconds` : 'Auto-refresh is off'}. Showing last ${Math.min(50, filtered.length)} of ${filtered.length} requests.${version ? ` <span class="version">v${esc(version)}</span>` : ''}</div>
   <div class="footer credit">Theme: Neon glass &middot; palette from <a href="https://github.com/RayVelez27/instalanding.ai/tree/main/pages/neon-glass-app-landing-page">instalanding.ai/neon-glass-app-landing-page</a> (MIT, Ray Velez)</div>
   ${refreshScript}
+  ${DATA_TIP_SCRIPT}
 </body>
 </html>`;
 }

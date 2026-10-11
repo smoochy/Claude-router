@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { extraCostNote, filterByMode, filterHistory, parseRefresh, renderDashboard, sessionLabel } from '../proxy/dashboard.js';
+import { DIM_INK, PASSTHROUGH_INK, extraCostNote, filterByMode, filterHistory, parseRefresh, renderDashboard, sessionLabel } from '../proxy/dashboard.js';
 import { emptyTotals, foldOutcome } from '../totals.js';
 import type { RouteEvent } from '../proxy/route-event.js';
 
@@ -192,8 +192,8 @@ describe('pin and reason filters', () => {
   });
   it('explains reasons and headers on hover', () => {
     const html = renderDashboard(h);
-    assert.match(html, /<th title="[^"]+" class="help">Confidence<\/th>/);
-    assert.match(html, /title="Role named by an explicit marker in the prompt\."/);
+    assert.match(html, /<th data-tip="[^"]+" class="help">Confidence<\/th>/);
+    assert.match(html, /data-tip="Role named by an explicit marker in the prompt\."/);
   });
 });
 
@@ -228,8 +228,8 @@ describe('filter row and retry help', () => {
     assert.ok(page.includes('retry=refusal'), 'refresh url keeps the retry filter');
   });
   it('explains retry in header and cell', () => {
-    assert.match(html, /<th title="[^"]+" class="help">Retry<\/th>/);
-    assert.match(html, /title="Retried after truncation/);
+    assert.match(html, /<th data-tip="[^"]+" class="help">Retry<\/th>/);
+    assert.match(html, /data-tip="Retried after truncation/);
   });
 });
 
@@ -246,7 +246,7 @@ describe('refresh pill and reset button', () => {
     assert.match(html, /<option value="30" selected>30s<\/option>/);
     assert.ok(!html.includes('http-equiv="refresh"'));
     const scripts = html.match(/<script>[\s\S]*?<\/script>/g) ?? [];
-    assert.equal(scripts.length, 1);
+    assert.equal(scripts.length, 2, 'refresh script plus the shared tooltip script');
     assert.ok(scripts[0].includes('.has-tip:hover'), 'defers while a tooltip is open');
     assert.ok(scripts[0].includes('"/dashboard?tier=haiku&auto=30"'));
     // Open-dropdown pause: the DOM-event logic is not run here (no DOM); it is verified by hand in a browser.
@@ -264,7 +264,7 @@ describe('refresh pill and reset button', () => {
     const off = renderDashboard([e()], undefined, { auto: 0 });
     assert.match(off, /<div class="live paused"/);
     assert.match(off, /<option value="0" selected>off<\/option>/);
-    assert.ok(!off.includes('<script'));
+    assert.ok(!off.includes('setTimeout'), 'no refresh timer');
   });
   it('resets filters but keeps the interval, and has no auto checkbox', () => {
     const html = renderDashboard([e()], undefined, { tier: 'haiku', auto: 45 });
@@ -289,7 +289,7 @@ describe('dashboard Neon glass theme', () => {
   it('defines the decoupled tier tokens and uses them for bars and badges', () => {
     for (const [t, c] of [['haiku', '#2ee6a8'], ['sonnet', '#22d3ee'], ['opus', '#4f8bff'], ['fable', '#a78bfa']]) {
       assert.ok(html.includes(`--t-${t}: ${c};`));
-      assert.match(html, new RegExp(`\\.tier-${t}\\s+\\{[^}]*var\\(--t-${t}\\)`));
+      assert.match(html, new RegExp(`\\.t-${t}\\s+\\{[^}]*var\\(--t-${t}\\)`));
       assert.match(html, new RegExp(`\\.badge-${t}\\s+\\{[^}]*color: var\\(--t-${t}\\)`));
     }
   });
@@ -301,5 +301,70 @@ describe('dashboard Neon glass theme', () => {
   });
   it('credits the theme source in the footer', () => {
     assert.match(html, /Theme: Neon glass &middot; palette from <a href="https:\/\/github\.com\/RayVelez27\/instalanding\.ai\/tree\/main\/pages\/neon-glass-app-landing-page">instalanding\.ai\/neon-glass-app-landing-page<\/a> \(MIT, Ray Velez\)/);
+  });
+});
+
+describe('tier and role rows', () => {
+  const h = [
+    e({ tier: 'haiku', costCents: 1, role: 'recon' }),
+    e({ tier: 'sonnet', costCents: 2, role: 'builder' }),
+    e({ tier: 'sonnet', costCents: 3, coordinator: true }),
+    e({ tier: 'opus', costCents: 4 }),
+    e({ tier: 'opus', costCents: 99, error: 'boom' }),
+  ];
+  const html = renderDashboard(h);
+  const rows = [...html.matchAll(/<div class="card ents">([\s\S]*?)<\/div>\n/g)].map((m) => m[1]);
+  const names = (row: string): string[] => [...row.matchAll(/<b class="[^"]*">([^<]+)<\/b>/g)].map((m) => m[1]);
+
+  it('renders one row per section and no bars', () => {
+    assert.equal(rows.length, 2);
+    assert.doesNotMatch(html, /tier-bar|role-row/);
+  });
+  it('lists the four real tiers always, passthrough only above 0', () => {
+    assert.deepEqual(names(rows[1]), ['Haiku', 'Sonnet', 'Opus', 'Fable']);
+    const withPass = renderDashboard([e({ tier: 'passthrough' })]);
+    assert.match(withPass, /<b class="">Pass<\/b> 1 <i>\(100\.0%\)<\/i>/);
+  });
+  it('formats an entry as name n (p%) $cost (p%) with the tier cost, errors excluded', () => {
+    assert.match(rows[1], /<b class="">Sonnet<\/b> 2 <i>\(50\.0%\)<\/i> <u>\$0\.0500<\/u> <i>\(50\.0%\)<\/i>/);
+    assert.match(rows[1], /<b class="">Fable<\/b> 0 <i>\(0\.0%\)<\/i> <u>\$0\.0000<\/u>/);
+  });
+  it('sorts roles alphabetically with "no role" last as the remainder', () => {
+    assert.deepEqual(names(rows[0]), ['builder', 'coordinator', 'recon', 'no role']);
+    assert.match(rows[0], /<b class="mono">no role<\/b> 1 <i>\(25\.0%\)<\/i> <u>\$0\.0400<\/u> <i>\(40\.0%\)<\/i>/);
+  });
+  it('gives custom roles the fallback hover and omits "no role" at 0', () => {
+    const page = renderDashboard([e({ role: 'scribe' })]);
+    assert.match(page, /Custom role &quot;scribe&quot;|Custom role "scribe"/);
+    assert.doesNotMatch(page, /<b class="mono">no role<\/b>/);
+  });
+  it('explains Session Requests and Session Cost by tier and by role', () => {
+    assert.match(html, /By tier: <b class="tn tt-haiku">Haiku<\/b> 1 <i>\(25\.0%\)<\/i>/);
+    assert.match(html, /By role: <b class="tn">builder<\/b> 1/);
+    assert.match(html, /By tier: [\s\S]*?<b class="tn tt-sonnet">Sonnet<\/b> \$0\.0500 <i>\(50\.0%\)<\/i>/);
+    assert.match(html, /Requests the router re-sent to a stronger model/);
+  });
+  it('uses no native title attribute and no hover on the header controls', () => {
+    assert.doesNotMatch(html, / title="/);
+    assert.match(html, /<a href="\/dashboard" style/);
+    assert.doesNotMatch(html, /class="reset-btn"[^>]*data-tip|class="gh"[^>]*data-tip|class="live[^"]*"[^>]*data-tip/);
+  });
+  it('shares one fixed popover for [data-tip] and restyles .tip-body', () => {
+    assert.match(html, /position:fixed/);
+    assert.match(html, /background: #0b0f19; border: 1px solid #3a4560/);
+  });
+});
+
+describe('tier and role colour contrast (AA)', () => {
+  const lin = (c: number): number => { const s = c / 255; return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4; };
+  const lum = (hex: string): number => { const n = parseInt(hex.slice(1), 16); return 0.2126 * lin(n >> 16) + 0.7152 * lin((n >> 8) & 255) + 0.0722 * lin(n & 255); };
+  const ratio = (a: string, b: string): number => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
+  // The card is the page void with a 3% white glass on top; #1c2230 is a safe upper bound for the brightest part of the body gradient.
+  const surfaces = ['#0b0f19', '#1c2230'];
+  it('dim ink and the passthrough name clear 4.5:1 on the popover and the card', () => {
+    for (const bg of surfaces) for (const fg of [DIM_INK, PASSTHROUGH_INK, '#f4f7fb']) assert.ok(ratio(fg, bg) >= 4.5, `${fg} on ${bg}`);
+  });
+  it('tier colours used as text in the popover clear 4.5:1', () => {
+    for (const fg of ['#2ee6a8', '#22d3ee', '#4f8bff', '#a78bfa']) assert.ok(ratio(fg, '#0b0f19') >= 4.5, fg);
   });
 });
