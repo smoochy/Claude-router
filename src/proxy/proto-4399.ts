@@ -49,7 +49,9 @@ export function protoTierRole(totals: RouteTotals, events: Array<{ tier: string;
     requests: totals.requests - named.reduce((a, [, r]) => a + r.requests, 0),
     costCents: totals.costCents - named.reduce((a, [, r]) => a + r.costCents, 0),
   };
-  const roles = (noRole.requests > 0 ? [...named, ['no role', noRole] as [string, typeof noRole]] : named).sort((a, b) => b[1].costCents - a[1].costCents);
+  // alphabetical; "no role" is the remainder and always comes last
+  const roles = [...named].sort((a, b) => a[0].localeCompare(b[0]));
+  if (noRole.requests > 0) roles.push(['no role', noRole]);
   const reqSum = totals.requests;
   const costSum = totals.costCents;
 
@@ -89,13 +91,13 @@ export function protoTierRole(totals: RouteTotals, events: Array<{ tier: string;
   // E: D on a single line per section, with a Total entry; no wrapping, scrolls only if the window is too narrow
   const ent = (nm: string, cls: string, n: number, nd: number, c: number, cd: number, t: string): string =>
     `<span class="p-e p-hov"><b class="${cls}">${nm}</b> ${n} <i>(${pct(n, nd)})</i> <u>${usd(c)}</u> <i>(${pct(c, cd)})</i>${t}</span>`;
-  const tierE = `<div class="p-one">${tiers
+  const tierE = `<div class="p-one"><div class="p-ents">${tiers
     .filter((x) => x.n > 0 || x.t !== 'passthrough')
     .map((x) => ent(`<span class="p-dot t-${x.t}"></span>${TIER_NAME[x.t]}`, '', x.n, tierSum, tierCost[x.t] ?? 0, tcSum, tip([TIER_HELP[x.t]])))
-    .join('')}<span class="p-e p-tot p-hov"><b>Total</b> ${tierSum} <u>${usd(tcSum)}</u>${tip(['Total: all routed requests in the current view and what they cost on the billed models at list price. Failed streams are not counted.', 'Equals the sum of the tier entries; passthrough is included when shown.'])}</span></div>`;
-  const roleE = `<div class="p-one">${roles
+    .join('')}</div><span class="p-e p-tot p-hov"><b>Total</b> ${tierSum} <u>${usd(tcSum)}</u>${tip(['Total: all routed requests in the current view and what they cost on the billed models at list price. Failed streams are not counted.', 'Equals the sum of the tier entries; passthrough is included when shown.'])}</span></div>`;
+  const roleE = `<div class="p-one"><div class="p-ents">${roles
     .map(([name, r]) => ent(esc(name), 'mono', r.requests, reqSum, r.costCents, costSum, roleTip(name)))
-    .join('')}<span class="p-e p-tot p-hov"><b>Total</b> ${reqSum} <u>${usd(costSum)}</u>${tip(['Total: all routed requests in the current view and their cost; the 100% the role percentages refer to.', 'Same figure as the Tier Distribution total: requests outside any role are the "no role" entry.'])}</span></div>`;
+    .join('')}</div><span class="p-e p-tot p-hov"><b>Total</b> ${reqSum} <u>${usd(costSum)}</u>${tip(['Total: all routed requests in the current view and their cost; the 100% the role percentages refer to.', 'Same figure as the Tier Distribution total: requests outside any role are the "no role" entry.'])}</span></div>`;
 
   const block = (v: string, role: string, tier: string): string =>
     `<div class="p-var" data-v="${v}"><div class="section-label">By Role</div><div class="card p-card">${role}</div><div class="section-label">Tier Distribution</div><div class="card p-card">${tier}</div></div>`;
@@ -115,9 +117,9 @@ td.p-hov,th.p-hov{text-decoration:underline dotted #8b95a7;text-underline-offset
 .b-haiku{border-left-color:var(--t-haiku)}.b-sonnet{border-left-color:var(--t-sonnet)}.b-opus{border-left-color:var(--t-opus)}.b-fable{border-left-color:var(--t-fable)}
 .p-lbl{font:10px ui-monospace,monospace;letter-spacing:.14em;text-transform:uppercase;color:#a9b3c6}.p-big{font-size:24px;font-weight:700;font-variant-numeric:tabular-nums}.p-big small{font-size:12px;color:#a9b3c6;font-weight:400}.p-big.m{font-size:16px;margin-top:6px}.p-sub{font-size:12px;color:#a9b3c6}
 [data-tip]{cursor:help}td[data-tip]:not(.none){text-decoration:underline dotted #8b95a7;text-underline-offset:4px}.p-card:hover{z-index:40}.p-tip{white-space:normal}.p-e:nth-last-child(-n+3)>.p-tip{left:auto;right:0}
-.p-one{display:flex;flex-wrap:wrap;justify-content:space-between;gap:6px 18px;font-size:12px;font-variant-numeric:tabular-nums;padding:2px 0}.p-e{white-space:nowrap}
+.p-one{display:flex;flex-wrap:nowrap;align-items:flex-start;gap:18px;font-size:12px;}.p-ents{flex:1;min-width:0;display:flex;flex-wrap:wrap;justify-content:space-between;gap:6px 18px}.p-one{font-variant-numeric:tabular-nums;padding:2px 0}.p-e{white-space:nowrap}
 .p-e{position:relative}.p-e b{font-weight:600}.p-e i{font-style:normal;color:#a9b3c6}.p-e u{text-decoration:none;color:#e6ebf5;margin-left:4px}.p-e .p-dot{width:8px;height:8px;margin-right:6px}
-.p-tot{flex:0 0 190px;box-sizing:border-box;padding-left:18px;border-left:1px solid #8b95a766}
+.p-tot>.p-tip{left:auto;right:0}.p-tot{flex:0 0 190px;box-sizing:border-box;padding-left:18px;border-left:1px solid #8b95a766}
 .p-flow{display:flex;flex-wrap:wrap;gap:14px 34px;padding:4px 2px}.p-ent{min-width:120px}.p-nm{font-size:14px;font-weight:600;margin-bottom:3px}.p-fg{font-size:13px;font-variant-numeric:tabular-nums;line-height:1.55}.p-fg i{font-style:normal;color:#a9b3c6}
 .p-line{display:flex;flex-wrap:wrap;gap:6px 22px;font-size:14px;padding:4px 0}.p-chip b{font-weight:600}.p-chip i,.p-led i{font-style:normal;color:#a9b3c6}
 .p-led>div{display:grid;grid-template-columns:1fr auto auto;gap:24px;padding:6px 0;font-size:13px;border-bottom:1px solid #8b95a726;font-variant-numeric:tabular-nums}.p-led>div:last-child{border:0}
