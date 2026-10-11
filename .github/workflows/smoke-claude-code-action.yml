@@ -1,8 +1,8 @@
 name: smoke-claude-code-action
 
 on:
-  push:
-    branches: [claude/smoke-claude-code-action]
+  pull_request:
+    branches: [smoo/main]
 
 permissions:
   contents: read
