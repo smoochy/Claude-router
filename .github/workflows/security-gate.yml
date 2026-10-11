@@ -1,0 +1,153 @@
+name: security-gate
+
+# Release security gate (homelab-private #4417). Runs on release PRs (head branch release/*) and on demand.
+# claude-code-action only runs a workflow file identical to the one on the default branch and rejects `push`,
+# so this file takes effect only after it is merged to smoo/main.
+# Review commands are vendored under .claude/commands (the public fork cannot reference the private marketplace).
+#
+# Fix rounds: a failing verdict makes the `fix` job push a commit with GATE_PUSH_TOKEN (a PAT or app token, not
+# GITHUB_TOKEN, so the push re-triggers this workflow). Rounds are counted from "security-gate fix" commits on the
+# branch; after 2 the `escalate` job opens a labelled issue and sends a push notification (optional NTFY_URL secret).
+
+on:
+  pull_request:
+    branches: [smoo/main]
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Branch to review (default: the selected branch)
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-gate-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  MAX_FIX_ROUNDS: 2
+  SCHEMA: >-
+    {"type":"object","required":["verdict","findings"],"properties":{"verdict":{"enum":["pass","fail"]},"findings":{"type":"array","items":{"type":"object","required":["severity","title","file","detail"],"properties":{"severity":{"enum":["CRITICAL","HIGH","MEDIUM","LOW","INFO"]},"title":{"type":"string"},"file":{"type":"string"},"line":{"type":"integer"},"detail":{"type":"string"},"fix":{"type":"string"}}}}}}
+
+jobs:
+  review:
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.head_ref, 'release/')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      pull-requests: read
+      id-token: write
+    outputs:
+      blocking: ${{ steps.verdict.outputs.blocking }}
+      rounds: ${{ steps.verdict.outputs.rounds }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Diff base (last release tag)
+        id: base
+        run: |
+          tag=$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || true)
+          echo "tag=${tag:-none}" >> "$GITHUB_OUTPUT"
+
+      - id: claude
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            Security gate for a release. Run the two vendored review commands, /appsec and /security-review (read
+            .claude/commands/appsec.md and .claude/commands/security-review.md and follow them), over the changes
+            since the last release tag `${{ steps.base.outputs.tag }}` (`git diff ${{ steps.base.outputs.tag }}...HEAD`;
+            if the tag is `none`, review the whole tree). Review the diff and the code it touches, not the whole repo.
+            Do not modify any file. Reply only with the structured result: verdict is "fail" when any finding is
+            HIGH or CRITICAL, otherwise "pass"; list every finding with its severity.
+          claude_args: |
+            --max-turns 40
+            --allowedTools "Read,Grep,Glob,Bash(git diff:*),Bash(git log:*),Bash(git show:*)"
+            --json-schema '${{ env.SCHEMA }}'
+
+      - name: Verdict and cost
+        id: verdict
+        env:
+          OUT: ${{ steps.claude.outputs.structured_output }}
+          EXEC: ${{ steps.claude.outputs.execution_file }}
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          echo "$OUT" | jq -e '.verdict' > /dev/null
+          blocking=$(echo "$OUT" | jq '[.findings[] | select(.severity=="HIGH" or .severity=="CRITICAL")] | length')
+          rounds=$(git log --format=%s "origin/smoo/main..HEAD" | grep -c '^security-gate fix' || true)
+          cost=$(jq -r '[.[] | select(.type=="result")] | last | .total_cost_usd // "unknown"' "$EXEC")
+          echo "blocking=$blocking" >> "$GITHUB_OUTPUT"
+          echo "rounds=$rounds" >> "$GITHUB_OUTPUT"
+          {
+            echo "## Security gate"
+            echo "Blocking (HIGH/CRITICAL): $blocking. Fix rounds used: $rounds of $MAX_FIX_ROUNDS. total_cost_usd: $cost. Diff base: ${{ steps.base.outputs.tag }}."
+            echo '```json'; echo "$OUT" | jq .; echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "$OUT" > findings.json
+          [ "$blocking" -eq 0 ]
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: security-gate-findings
+          path: findings.json
+          if-no-files-found: ignore
+
+  fix:
+    needs: review
+    if: failure() && needs.review.outputs.blocking != '0' && needs.review.outputs.blocking != '' && fromJSON(needs.review.outputs.rounds) < 2 && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          token: ${{ secrets.GATE_PUSH_TOKEN }}
+          fetch-depth: 0
+      - uses: actions/download-artifact@v4
+        with:
+          name: security-gate-findings
+      - uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            Fix every HIGH and CRITICAL finding in findings.json with the smallest change, then run `npm test`.
+            Do not commit findings.json. Do not touch .github/workflows.
+          claude_args: --max-turns 40 --allowedTools "Read,Edit,Write,Grep,Glob,Bash(npm test:*),Bash(git diff:*)"
+      - name: Push fix commit
+        run: |
+          rm -f findings.json
+          git config user.name "security-gate"
+          git config user.email "security-gate@users.noreply.github.com"
+          git add -A
+          git commit -m "security-gate fix" -m "Automated fix for HIGH/CRITICAL findings."
+          git push
+
+  escalate:
+    needs: review
+    if: failure() && needs.review.outputs.blocking != '0' && needs.review.outputs.blocking != '' && fromJSON(needs.review.outputs.rounds) >= 2
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Open issue and notify
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NTFY_URL: ${{ secrets.NTFY_URL }}
+          RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          gh label create security-gate -R "$GITHUB_REPOSITORY" --force
+          gh issue create -R "$GITHUB_REPOSITORY" --label security-gate \
+            --title "Security gate blocked a release after $MAX_FIX_ROUNDS fix rounds" \
+            --body "HIGH or CRITICAL findings remain. See $RUN (findings in the job summary and the security-gate-findings artifact)."
+          if [ -n "$NTFY_URL" ]; then curl -fsS -d "Security gate blocked a release: $RUN" "$NTFY_URL"; fi
