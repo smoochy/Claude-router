@@ -7,6 +7,16 @@ This fork's own sections use the upstream version plus a `-smoo.<n>` prerelease 
 
 ## [Unreleased]
 
+### Added
+
+- Dashboard Retry filter (`?retry=`): values are the retry reasons actually present in the history (`truncation`, `refusal`), plus a "No retry" slice, ANDed with the other filters and kept across auto-refresh.
+- Every dashboard filter label has a hover/focus explanation, in the same popover style as the stat cards.
+
+### Changed
+
+- Dashboard filter order is now Mode, Scope, Window, Session, Tier, Model, Pin, Reason, Retry, then Role.
+- The auto-refresh tick waits while a filter dropdown is open with the pointer on it; with the pointer elsewhere the refresh runs and closes the dropdown. Only mouse-opened dropdowns pause, because a native popup reports no events to the page otherwise.
+
 ## [0.4.0-smoo.4] - 2026-10-11
 
 ### Added

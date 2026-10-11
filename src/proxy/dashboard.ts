@@ -71,6 +71,20 @@ function confidenceHelp(e: RouteEvent): string {
   return `Classifier confidence ${e.confidence.toFixed(2)} on a 0 to 1 scale${e.classifier ? ` (${e.classifier})` : ''}. 1.00 means a fixed rule or pin, lower means a heuristic guess.`;
 }
 
+/** Hover/focus explanation for each filter label. */
+const FILTER_HELP = {
+  mode: 'Which routing mode the requests ran under: all, routed (the router chose the model) or passthrough (routing off, request logged as sent).',
+  scope: 'Session counts requests since this router started; All reads the tail of the history file, across restarts.',
+  window: 'Only requests inside this time window: all time, today, or the last hour.',
+  session: 'Only requests from one Claude Code session. The label is the session title when known, else its start time, length and request count.',
+  tier: 'The model class the router picked: haiku, sonnet, opus or fable.',
+  model: 'The exact model id that was billed for the request.',
+  pin: 'Whether the model the client asked for (pilotfish pin) is the one that was billed: honored or overridden. No pin means the client sent no model.',
+  reason: 'The routing rule that picked the tier, such as agentic:default or role:recon.',
+  retry: 'Requests the router re-sent to a stronger model after a truncated or refused answer, by retry reason. No retry means answered first time.',
+  role: 'The agent role of the request, such as recon or builder, or coordinator for a coordinator turn.',
+} as const;
+
 /** Plain-language meaning of the retry cell. */
 function retryHelp(e: RouteEvent): string {
   if (!e.retried) return 'Not retried: the first answer was used.';
@@ -146,6 +160,8 @@ export interface DashboardFilters {
   /** `honored` | `overridden` | NONE (no model requested). */
   pin?: string;
   reason?: string;
+  /** The retry reason (`truncation` | `refusal` | ...) of an auto-retried request, or NONE (not retried). */
+  retry?: string;
   session?: string;
   window?: TimeWindow;
   /** Refresh interval in seconds; 0 = off. Default 10. */
@@ -189,6 +205,11 @@ function inWindow(timestamp: string, window: TimeWindow): boolean {
   );
 }
 
+/** Filterable form of the retry cell: the retry reason, `retried` when none was recorded, absent when not retried. */
+function retryState(e: RouteEvent): string | undefined {
+  return e.retried ? e.retryReason || 'retried' : undefined;
+}
+
 /** Applies every active control as one AND, recomputed from the full history — exported for the filter/recomputation tests. */
 export function filterHistory(history: RouteEvent[], filters: DashboardFilters): RouteEvent[] {
   let out = filterByMode(history, filters.mode ?? 'all');
@@ -197,6 +218,7 @@ export function filterHistory(history: RouteEvent[], filters: DashboardFilters):
   if (filters.tier) out = out.filter((e) => String(e.tier) === filters.tier);
   if (filters.pin) out = out.filter((e) => (filters.pin === NONE ? pinState(e) === undefined : pinState(e) === filters.pin));
   if (filters.reason) out = out.filter((e) => (filters.reason === NONE ? e.reason === undefined : e.reason === filters.reason));
+  if (filters.retry) out = out.filter((e) => (filters.retry === NONE ? retryState(e) === undefined : retryState(e) === filters.retry));
   if (filters.session) out = out.filter((e) => (filters.session === NONE ? e.sessionId === undefined : e.sessionId === filters.session));
   if (filters.window) out = out.filter((e) => inWindow(e.timestamp, filters.window!));
   return out;
@@ -412,6 +434,28 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
   const reasonValues = distinct(history, (e) => e.reason);
   const reasonOptions = simpleOptions(reasonValues.values, reasonValues.hasNone, 'No reason', filters.reason);
 
+  const retryValues = distinct(history, retryState);
+  const retryOptions = simpleOptions(retryValues.values, retryValues.hasNone, 'No retry', filters.retry);
+
+  const scopeOptions = `<option value="session"${filters.scope === 'all' ? '' : ' selected'}>Session (since start)</option><option value="all"${filters.scope === 'all' ? ' selected' : ''}>All (last ${HISTORY_TAIL_LINES} from history)</option>`;
+  const filterFields = ([
+    ['mode', 'Mode', FILTER_HELP.mode, modeOptions],
+    ['scope', 'Scope', FILTER_HELP.scope, scopeOptions],
+    ['window', 'Window', FILTER_HELP.window, windowOptions],
+    ['session', 'Session', FILTER_HELP.session, sessionOptions],
+    ['tier', 'Tier', FILTER_HELP.tier, tierOptions],
+    ['model', 'Model', FILTER_HELP.model, modelOptions],
+    ['pin', 'Pin', FILTER_HELP.pin, pinOptions],
+    ['reason', 'Reason', FILTER_HELP.reason, reasonOptions],
+    ['retry', 'Retry', FILTER_HELP.retry, retryOptions],
+    ['role', 'Role', FILTER_HELP.role, roleOptions],
+  ] as const)
+    .map(([id, label, help, options]) => `<div class="mode-filter">
+      <label for="${id}" class="has-tip" tabindex="0">${label}<span class="tip-body" role="tooltip">${esc(help)}</span></label>
+      <select id="${id}" name="${id}" onmouseenter="this.title = this.selectedOptions[0].text" onchange="this.form.submit()">${options}</select>
+    </div>`)
+    .join('\n    ');
+
   const interval = filters.auto ?? 10;
   const auto = interval > 0;
   // Carries the active filters as query params so the refresh target keeps
@@ -423,6 +467,7 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
   if (filters.tier) refreshParams.set('tier', filters.tier);
   if (filters.pin) refreshParams.set('pin', filters.pin);
   if (filters.reason) refreshParams.set('reason', filters.reason);
+  if (filters.retry) refreshParams.set('retry', filters.retry);
   if (filters.session) refreshParams.set('session', filters.session);
   if (filters.window && filters.window !== 'all') refreshParams.set('window', filters.window);
   if (filters.scope === 'all') refreshParams.set('scope', 'all');
@@ -430,9 +475,12 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
   const refreshUrl = `/dashboard?${refreshParams.toString()}`;
   // Clears every filter and the scope, keeps only the refresh interval.
   const resetUrl = `/dashboard?auto=${interval}`;
-  // The one inline script (allowlisted in the tests): reload after the interval, but wait while a tooltip is hovered or focused.
+  // The one inline script (allowlisted in the tests): reload after the interval, but wait while a tooltip is hovered or focused,
+  // or while a select popup is open with the pointer on it. A native popup swallows mouse events, so "pointer inside" is the
+  // last pointer position seen: on the open select (or its popup) keeps the pause, elsewhere on the page lifts it and the reload
+  // closes the dropdown. A click, change, blur or Escape ends "open". Mouse-opened popups only; a keyboard-opened one does not pause.
   const refreshScript = auto
-    ? `<script>setTimeout(function t(){if(document.querySelector('.has-tip:hover,.has-tip:focus-within,[title]:hover'))setTimeout(t,500);else location.href=${JSON.stringify(refreshUrl)}},${interval * 1000})</script>`
+    ? `<script>var o,i,d=document,s=function(e){return e.target.closest&&e.target.closest('select')};d.addEventListener('mousedown',function(e){var x=s(e);o=x&&x!==o?x:null;i=1});d.addEventListener('mousemove',function(e){i=s(e)===o});d.addEventListener('change',function(){o=null});d.addEventListener('focusout',function(e){if(e.target===o)o=null});d.addEventListener('keydown',function(e){if(e.key==='Escape')o=null});setTimeout(function t(){if(d.querySelector('.has-tip:hover,.has-tip:focus-within,[title]:hover')||o&&i)setTimeout(t,500);else location.href=${JSON.stringify(refreshUrl)}},${interval * 1000})</script>`
     : '';
 
   const rows = recent
@@ -634,6 +682,12 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
     }
     .tip-body b { font-family: var(--mono); font-variant-numeric: tabular-nums; margin-left: 6px; }
     .stat-card:hover .tip-body, .stat-card:focus-within .tip-body, .stat-card:focus .tip-body { display: block; }
+    /* Filter labels: same popover; the bar stacks above the cards below it, and the right-hand labels open leftwards */
+    .filter-bar { z-index: 22; }
+    .filter-bar label.has-tip { position: relative; cursor: help; text-decoration: underline dotted; text-underline-offset: 4px; }
+    .filter-bar label.has-tip:hover .tip-body, .filter-bar label.has-tip:focus .tip-body { display: block; }
+    .filter-bar .mode-filter:nth-last-child(-n+4) .tip-body { left: auto; right: 0; }
+    .filter-bar .tip-body { text-transform: none; letter-spacing: normal; text-decoration: none; white-space: normal; width: 260px; }
     .stat-card:hover { z-index: 21; }
     .stat-card:hover { transform: translateY(-2px); }
     .stat-card .label {
@@ -778,42 +832,7 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
   </header>
 
   <form id="filter-form" class="filter-bar card" method="GET" action="/dashboard">
-    <div class="mode-filter">
-      <label for="scope">Scope</label>
-      <select id="scope" name="scope" onmouseenter="this.title = this.selectedOptions[0].text" onchange="this.form.submit()"><option value="session"${filters.scope === 'all' ? '' : ' selected'}>Session (since start)</option><option value="all"${filters.scope === 'all' ? ' selected' : ''}>All (last ${HISTORY_TAIL_LINES} from history)</option></select>
-    </div>
-    <div class="mode-filter">
-      <label for="window">Window</label>
-      <select id="window" name="window" onmouseenter="this.title = this.selectedOptions[0].text" onchange="this.form.submit()">${windowOptions}</select>
-    </div>
-    <div class="mode-filter">
-      <label for="tier">Tier</label>
-      <select id="tier" name="tier" onmouseenter="this.title = this.selectedOptions[0].text" onchange="this.form.submit()">${tierOptions}</select>
-    </div>
-    <div class="mode-filter">
-      <label for="model">Model</label>
-      <select id="model" name="model" onmouseenter="this.title = this.selectedOptions[0].text" onchange="this.form.submit()">${modelOptions}</select>
-    </div>
-    <div class="mode-filter">
-      <label for="pin">Pin</label>
-      <select id="pin" name="pin" onmouseenter="this.title = this.selectedOptions[0].text" onchange="this.form.submit()">${pinOptions}</select>
-    </div>
-    <div class="mode-filter">
-      <label for="reason">Reason</label>
-      <select id="reason" name="reason" onmouseenter="this.title = this.selectedOptions[0].text" onchange="this.form.submit()">${reasonOptions}</select>
-    </div>
-    <div class="mode-filter">
-      <label for="role">Role</label>
-      <select id="role" name="role" onmouseenter="this.title = this.selectedOptions[0].text" onchange="this.form.submit()">${roleOptions}</select>
-    </div>
-    <div class="mode-filter">
-      <label for="session">Session</label>
-      <select id="session" name="session" onmouseenter="this.title = this.selectedOptions[0].text" onchange="this.form.submit()">${sessionOptions}</select>
-    </div>
-    <div class="mode-filter">
-      <label for="mode">Mode</label>
-      <select id="mode" name="mode" onmouseenter="this.title = this.selectedOptions[0].text" onchange="this.form.submit()">${modeOptions}</select>
-    </div>
+    ${filterFields}
     <a class="reset-btn" href="${esc(resetUrl)}" title="Clear every filter and the scope, keep the refresh setting">Reset filters</a>
   </form>
 
