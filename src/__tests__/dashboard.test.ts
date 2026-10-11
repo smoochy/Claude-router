@@ -255,3 +255,23 @@ describe('dashboard version footer', () => {
     assert.doesNotMatch(renderDashboard([e()]), /class="version"/);
   });
 });
+
+describe('dashboard Neon glass theme', () => {
+  const html = renderDashboard([e()]);
+  it('defines the decoupled tier tokens and uses them for bars and badges', () => {
+    for (const [t, c] of [['haiku', '#2ee6a8'], ['sonnet', '#22d3ee'], ['opus', '#4f8bff'], ['fable', '#a78bfa']]) {
+      assert.ok(html.includes(`--t-${t}: ${c};`));
+      assert.match(html, new RegExp(`\\.tier-${t}\\s+\\{[^}]*var\\(--t-${t}\\)`));
+      assert.match(html, new RegExp(`\\.badge-${t}\\s+\\{[^}]*color: var\\(--t-${t}\\)`));
+    }
+  });
+  it('carries no leftover amber palette', () => {
+    assert.doesNotMatch(html, /247, 147, 26|255, 209, 102|#f7931a|#ffd166/);
+  });
+  it('links the own repo with an inline icon in the header', () => {
+    assert.match(html, /<header>[\s\S]*<a class="gh" href="https:\/\/github\.com\/smoochy\/Claude-router"[^>]*><svg[\s\S]*<\/header>/);
+  });
+  it('credits the theme source in the footer', () => {
+    assert.match(html, /Theme: Neon glass &middot; palette from <a href="https:\/\/github\.com\/RayVelez27\/instalanding\.ai\/tree\/main\/pages\/neon-glass-app-landing-page">instalanding\.ai\/neon-glass-app-landing-page<\/a> \(MIT, Ray Velez\)/);
+  });
+});
