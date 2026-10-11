@@ -112,11 +112,11 @@
   <h1>Cut your Claude bill.<br>Change <em>zero</em> lines of code.</h1>
   <p class="sub">A local proxy that classifies every request by structural evidence and routes it to the cheapest Claude model that can handle it — Haiku, Sonnet, or Opus. Every response reports what it cost and why it went where it went.</p>
   <a class="cta" href="#start">Get started</a>
-  <a class="cta ghost" href="https://www.npmjs.com/package/@sheruq/claude-router">npm ↗</a>
+  <a class="cta ghost" href="https://www.npmjs.com/package/@smoochy/claude-router">npm ↗</a>
   <div class="badges">
     <a href="https://github.com/Serhii-Leniv/claude-router/actions/workflows/test.yml"><img src="https://github.com/Serhii-Leniv/claude-router/actions/workflows/test.yml/badge.svg" alt="CI"></a>
-    <a href="https://www.npmjs.com/package/@sheruq/claude-router"><img src="https://img.shields.io/npm/v/@sheruq/claude-router?color=D97757&label=npm" alt="npm"></a>
-    <img src="https://img.shields.io/npm/l/@sheruq/claude-router?color=D97757" alt="MIT">
+    <a href="https://www.npmjs.com/package/@smoochy/claude-router"><img src="https://img.shields.io/npm/v/@smoochy/claude-router?color=D97757&label=npm" alt="npm"></a>
+    <img src="https://img.shields.io/npm/l/@smoochy/claude-router?color=D97757" alt="MIT">
   </div>
 
   <div class="term">
@@ -157,7 +157,7 @@
 <section class="wrap steps" id="start">
   <h2>Get started in 60 seconds</h2>
   <p style="margin-top:18px"><span class="n">1</span>Install and set up (starts the proxy, wires up autostart + <code>ANTHROPIC_BASE_URL</code>):</p>
-  <div class="codebox"><button class="copy" data-c="npm install -g @sheruq/claude-router&#10;claude-router install --force-route">copy</button><pre><code>npm install -g @sheruq/claude-router
+  <div class="codebox"><button class="copy" data-c="npm install -g @smoochy/claude-router&#10;claude-router install --force-route">copy</button><pre><code>npm install -g @smoochy/claude-router
 claude-router install --force-route</code></pre></div>
   <p><span class="n">2</span>Open a new terminal and use Claude Code normally:</p>
   <div class="codebox"><button class="copy" data-c="claude">copy</button><pre><code>claude</code></pre></div>
@@ -186,8 +186,8 @@ claude-router doctor       <span class="c-dim"># diagnose setup problems</span><
 <section class="wrap" id="library">
   <h2>Or use it as a library</h2>
   <p class="lede">Prefer routing inside your own app? Same engine, no proxy.</p>
-  <div class="codebox"><button class="copy" data-c="npm install @sheruq/claude-router">copy</button><pre><code>npm install @sheruq/claude-router</code></pre></div>
-  <div class="codebox"><pre><code><span class="c-purple">import</span> { createRouter } <span class="c-purple">from</span> <span class="c-green">'@sheruq/claude-router'</span>;
+  <div class="codebox"><button class="copy" data-c="npm install @smoochy/claude-router">copy</button><pre><code>npm install @smoochy/claude-router</code></pre></div>
+  <div class="codebox"><pre><code><span class="c-purple">import</span> { createRouter } <span class="c-purple">from</span> <span class="c-green">'@smoochy/claude-router'</span>;
 
 <span class="c-purple">const</span> router = <span class="c-blue">createRouter</span>({ apiKey: process.env.<span class="c-cyan">ANTHROPIC_API_KEY</span> });
 
@@ -203,7 +203,7 @@ res.meta.savedCents;  <span class="c-dim">// 1.2</span></code></pre></div>
 <footer>
   <div class="wrap">
     <a href="https://github.com/Serhii-Leniv/claude-router">GitHub</a> ·
-    <a href="https://www.npmjs.com/package/@sheruq/claude-router">npm</a> ·
+    <a href="https://www.npmjs.com/package/@smoochy/claude-router">npm</a> ·
     <a href="https://github.com/Serhii-Leniv/claude-router/blob/master/CHANGELOG.md">Changelog</a> ·
     <a href="https://github.com/Serhii-Leniv/claude-router/issues">Issues</a> ·
     MIT License · built by <a href="https://github.com/Serhii-Leniv">Serhii Leniv</a>
