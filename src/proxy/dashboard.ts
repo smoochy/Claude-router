@@ -93,9 +93,12 @@ function retryHelp(e: RouteEvent): string {
   return `Auto-retried${e.retryReason ? ` (${e.retryReason})` : ''} on a stronger model.`;
 }
 
+const REQUESTED_MODEL_HELP = 'Requested model: the model field Claude Code sent in the request body, before the router chose a tier. Older log lines have none.';
+
 const HEADER_HELP = {
+  saved: 'Net saving: what the requested model would have cost, minus what was paid. Negative when the served model was priced above the requested one; a dash when unpriced or no model was requested.',
   retry: 'Whether the router re-sent the request to a stronger model after a truncated or refused answer.',
-  pin: 'Whether the model the client asked for (pilotfish pin) is the one that was billed: honored or overridden.',
+  pin: 'Whether the requested model (the model field the client sent, e.g. a pilotfish pin) is the one that was billed: honored or overridden.',
   reason: 'The routing rule that picked the tier. Hover an entry for its meaning.',
   role: 'What kind of request this was: coordinator, a subagent role, or none.',
   confidence: 'How sure the classifier was, 0 to 1. 1.00 means a fixed rule or pin.',
@@ -310,7 +313,7 @@ export function extraCostNote(t: LifetimeStats): string {
  * events (no requestedModel, baseline unknown) as their own slice.
  */
 export function savedTipLines(t: LifetimeStats): string[] {
-  const lines = ['Net: what the requested model would have cost, minus what was paid.'];
+  const lines = ['Net: what the requested model would have cost, minus what was paid.', REQUESTED_MODEL_HELP];
   if (t.extra.events === 0) return lines;
   lines.push(`Gross saved <b>${usd2(t.savedCents + t.extra.cents)}</b>`);
   lines.push(`Extra cost <b class="negative">${usd2(t.extra.cents)}</b> &middot; ${t.extra.events} event${t.extra.events === 1 ? '' : 's'} on a model above the baseline`);
@@ -688,6 +691,10 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
     .filter-bar label.has-tip:hover .tip-body, .filter-bar label.has-tip:focus .tip-body { display: block; }
     .filter-bar .mode-filter:nth-last-child(-n+4) .tip-body { left: auto; right: 0; }
     .filter-bar .tip-body { text-transform: none; letter-spacing: normal; text-decoration: none; white-space: normal; width: 260px; }
+    /* Feed header popover: opens leftwards over the rows below */
+    th.has-tip { position: relative; cursor: help; text-decoration: underline dotted; text-underline-offset: 4px; }
+    th.has-tip:hover .tip-body, th.has-tip:focus .tip-body { display: block; }
+    th.has-tip .tip-body { left: auto; right: 0; width: 280px; text-transform: none; letter-spacing: normal; text-decoration: none; white-space: normal; font-weight: 400; }
     .stat-card:hover { z-index: 21; }
     .stat-card:hover { transform: translateY(-2px); }
     .stat-card .label {
@@ -870,7 +877,7 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
             <th title="${esc(HEADER_HELP.reason)}" class="help">Reason</th>
             <th title="${esc(HEADER_HELP.role)}" class="help">Role</th>
             <th>Cost</th>
-            <th>Saved</th>
+            <th class="has-tip" tabindex="0">Saved<span class="tip-body" role="tooltip">${esc(HEADER_HELP.saved)} ${esc(REQUESTED_MODEL_HELP)}</span></th>
             <th title="${esc(HEADER_HELP.confidence)}" class="help">Confidence</th>
             <th>In Tokens</th>
             <th>Out Tokens</th>

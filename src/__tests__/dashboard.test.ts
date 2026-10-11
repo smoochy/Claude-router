@@ -208,6 +208,10 @@ describe('filter row and retry help', () => {
     const labels = [...html.matchAll(/<label for="(\w+)" class="has-tip" tabindex="0">(\w+)<span class="tip-body" role="tooltip">[^<]+<\/span><\/label>/g)];
     assert.equal(labels.length, 10);
   });
+  it('explains Saved in the feed header and the requested model in a popover', () => {
+    assert.match(html, /<th class="has-tip" tabindex="0">Saved<span class="tip-body" role="tooltip">Net saving: [^<]*egative when the served model was priced above the requested one[^<]*Requested model: the model field Claude Code sent/);
+    assert.match(html, /<div>Requested model: the model field Claude Code sent in the request body/);
+  });
   it('filters by retry reason and by not retried, ANDed with other filters', () => {
     const h = [
       e({ retried: true, retryReason: 'truncation', tier: 'opus' }),
