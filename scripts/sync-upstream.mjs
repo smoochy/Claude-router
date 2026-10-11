@@ -2,7 +2,7 @@
 //   node scripts/sync-upstream.mjs latest        stdin: tag names, one per line -> highest vX.Y.Z (empty if none)
 //   node scripts/sync-upstream.mjs base <ver>    package version -> upstream base (strips -smoo.<n>)
 //   node scripts/sync-upstream.mjs newer <a> <b> exit 0 when a > b (both X.Y.Z)
-//   node scripts/sync-upstream.mjs bump <ver> <newBase>   -> <newBase>-smoo.<n>, counter kept (#4418)
+//   node scripts/sync-upstream.mjs bump <ver> <newBase>   -> <newBase>-smoo.<n>, counter kept
 import { readFileSync } from 'node:fs';
 
 const RE = /^v?(\d+)\.(\d+)\.(\d+)$/;

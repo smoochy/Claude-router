@@ -1,9 +1,9 @@
 name: sync-upstream
 
-# Upstream sync decided in #4418. Daily: fast-forward `master` to upstream's tip
+# Upstream sync. Daily: fast-forward `master` to upstream's tip
 # (pure mirror, never a PR, a non-ff is a failure). When upstream has tagged a
 # release newer than the base of smoo/main, open a sync PR `sync/<tag>` that
-# MERGES the tag into smoo/main (merge, never rebase, #4228). Conflicts are
+# MERGES the tag into smoo/main (merge, never rebase). Conflicts are
 # resolved by claude-code-action inside the merge commit, with per-hunk reasoning
 # in the PR body. The version bump touches the upstream base only and keeps the
 # -smoo.<n> counter. The sync PR is the release PR: the security gate runs on it
@@ -43,7 +43,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  UPSTREAM: https://github.com/Serhii-Leniv/Claude-router.git
+  UPSTREAM: https://github.com/Serhii-Leniv/Claude-router
   GH_TOKEN: ${{ secrets.SYNC_PUSH_TOKEN || github.token }}
   IN_REF: ${{ inputs.ref }}
   IN_BASE: ${{ inputs.base_version }}
@@ -151,7 +151,7 @@ jobs:
           B="${{ steps.due.outputs.branch }}"
           git push -u origin "$B"
           {
-            echo "Merges upstream ${{ steps.due.outputs.ref }} into smoo/main and bumps the version to \`$version\` (upstream base only, the -smoo counter is kept, #4418). This is the release PR: the security gate runs here, and merge starts tag, GitHub Release and npm publish."
+            echo "Merges upstream ${{ steps.due.outputs.ref }} into smoo/main and bumps the version to \`$version\` (upstream base only, the -smoo counter is kept). This is the release PR: the security gate runs here, and merge starts tag, GitHub Release and npm publish."
             echo
             echo "Review the resolution with \`git show --remerge-diff <merge commit>\`."
             echo
