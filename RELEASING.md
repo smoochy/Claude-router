@@ -22,13 +22,9 @@ Tags use the upstream base plus a `-smoo.<n>` prerelease suffix, e.g. `0.4.0-smo
 7. The `publish` workflow tests, verifies tag ⇔ version ⇔ `smoo/main`, packs the tarball, and creates the GitHub release with that tarball attached.
 8. Confirm: the release page has the `.tgz` asset, and `npm install -g <that asset's URL>` installs it.
 
-## Prerequisites (one-time)
+## Pricing snapshot
 
-- The `maintenance` label exists (the weekly `pricing-check` workflow applies it).
-
-## Pricing freshness
-
-`PRICING_LAST_CHECKED` in `src/models.ts` is a dated claim that the table was verified. Bump it whenever you re-verify, even with no changes. The weekly workflow opens an issue past 60 days; `claude-router doctor` warns past 90.
+Prices come from `src/pricing-snapshot.json`, a trimmed copy of the published model list. The `publish` workflow runs `npm run pricing:refresh` before testing and packing, so a tarball carries the list as of the release; if the list cannot be fetched or fails validation the build fails rather than shipping a stale table. Run the same command locally to refresh the committed copy.
 
 ## Mac install
 

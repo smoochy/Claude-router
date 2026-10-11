@@ -283,7 +283,6 @@ export { normalizeParamsForTier } from './params.js';
 export {
   DEFAULT_MODELS,
   DEFAULT_PRICING,
-  FAMILY_PRICING,
   computeCostCents,
   priceForModel,
   familyForModel,

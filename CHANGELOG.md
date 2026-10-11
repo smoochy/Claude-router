@@ -11,6 +11,8 @@ This fork's own sections use the upstream version plus a `-smoo.<n>` prerelease 
 
 ### Changed
 
+- Pricing comes from a build-time snapshot of the published model list (`src/pricing-snapshot.json`, refreshed by `npm run pricing:refresh` and by the `publish` workflow before packing, which fails the build if the list is unreachable or invalid) instead of hand-written tables in `src/models.ts`. The load order stays remote list, then `~/.claude-router/model-list-cache.json`, then the snapshot (reported as source `snapshot`, formerly `built-in`).
+- Ids the list does not carry (Bedrock, Vertex, dated snapshots) are priced from the newest model of the same family in the loaded list or snapshot, so legacy ids such as Opus 4.1 no longer keep a hand-kept legacy rate.
 - Release tarballs are attached as `claude-router-<version>.tgz` instead of `sheruq-claude-router-<version>.tgz`: the publish workflow renames the `npm pack` output, since the `sheruq` scope is not this fork's.
 - Dashboard auto-update is toggled by clicking the "live - refresh on/off" pill (pulsing green LED when on, steady red when off) instead of a checkbox, and a Reset filters button takes the checkbox's place in the filter row.
 - Dashboard filters sit in a single row in route-feed column order (Scope, Window, Tier, Model, Pin, Reason, Role, Session, Mode, Auto-update); a clipped select shows its full value on hover, and the Retry header and cells explain themselves on hover.
@@ -34,6 +36,10 @@ This fork's own sections use the upstream version plus a `-smoo.<n>` prerelease 
 - `master` was no longer a pure upstream mirror: two own commits (`5ebce7b`, adding the centrally managed `.github/dependabot.yml`, and `202b40e`, editing it) had been pushed there directly, which would have conflicted on the next upstream merge over a line upstream never ships. The branch was reset to upstream's tip, so it is byte-identical to upstream again. Nothing was lost: the baseline script writes that file through the contents API with no `branch` parameter, so it lands on the default branch `smoo/main`, and Dependabot reads the config only from the default branch - the `master` copy was read by nobody. `docs/BRANCHING.md` now states that centrally managed repository infrastructure belongs on `smoo/main` too, so the rule describes reality.
 
 - The `restoreDelegation` test fixture is now wire-captured: a real Claude Code 2.1.296 request (`claude-opus-5`, one tool-bearing turn) through `claude-router start --capture-system-prompt` showed the combined line renders as `Do not use the Agent tool, workflows, or deep-research unless the user, a CLAUDE.md file, or a skill asks for it`, and `delegation.test.ts` now asserts the stripper removes exactly that line. Only the matched line is carried into the repository; the captured file was deleted. The `claude-opus-5-5` model id did not receive the line at all in the same experiment.
+
+### Removed
+
+- The weekly `pricing-check` workflow, `scripts/check-pricing-age.mjs`, the `doctor` 90-day pricing warning and the exports `FAMILY_PRICING`, `DIVERGENT_PRICING`, `PRICING_LAST_CHECKED` and `pricingAgeDays`: with prices taken from the list there is no hand-kept table to go stale.
 
 ### Added
 

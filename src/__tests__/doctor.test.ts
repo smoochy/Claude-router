@@ -1,7 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { failureCount, runDiagnostics, PRICING_STALE_DAYS, type Diagnostic, type DoctorProbes } from '../proxy/doctor.js';
-import { PRICING_LAST_CHECKED } from '../models.js';
+import { failureCount, runDiagnostics, type Diagnostic, type DoctorProbes } from '../proxy/doctor.js';
 import { SERVICE_ID, type HealthInfo } from '../proxy/health.js';
 
 const HEALTHY: HealthInfo = {
@@ -24,7 +23,6 @@ function probes(overrides: Partial<DoctorProbes> = {}): DoctorProbes {
   return {
     nodeVersion: '22.1.0',
     platform: 'linux',
-    now: () => new Date(`${PRICING_LAST_CHECKED}T12:00:00Z`),
     loadConfig: () => ({ loaded: true }),
     checkHealth: async () => HEALTHY,
     isEnvVarSet: () => true,
@@ -81,25 +79,6 @@ describe('runDiagnostics', () => {
     const neither = await runDiagnostics(OPTIONS, probes({ isEnvVarSet: () => false, isClaudeCodeEnvSet: () => false }));
     assert.equal(failureCount(neither), 1);
     assert.match(find(neither, /Nothing points at the proxy/).hint ?? '', /claude-router install/);
-  });
-
-  it('warns, without failing, when the pricing table is older than the stale window', async () => {
-    // Every savings figure depends on the table; a stale one is a reason to
-    // re-verify, not a broken install, so it never moves the exit code.
-    const later = new Date(Date.parse(`${PRICING_LAST_CHECKED}T00:00:00Z`) + (PRICING_STALE_DAYS + 30) * 86_400_000);
-    const diagnostics = await runDiagnostics(OPTIONS, probes({ now: () => later }));
-    const pricing = find(diagnostics, /Pricing table/);
-    assert.equal(pricing.ok, false);
-    assert.equal(pricing.warnOnly, true);
-    assert.match(pricing.label, new RegExp(`${PRICING_STALE_DAYS + 30} days ago`));
-    assert.equal(failureCount(diagnostics), 0);
-  });
-
-  it('reports a freshly verified pricing table as ok', async () => {
-    const diagnostics = await runDiagnostics(OPTIONS, probes());
-    const pricing = find(diagnostics, /Pricing table/);
-    assert.equal(pricing.ok, true);
-    assert.match(pricing.label, /verified 0 days ago/);
   });
 
   it('counts only hard failures toward the exit code', async () => {

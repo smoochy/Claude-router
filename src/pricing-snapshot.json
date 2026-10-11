@@ -1,0 +1,170 @@
+[
+  {
+    "id": "claude-fable-5",
+    "line": "fable",
+    "created_at": "2026-06-07T00:00:00Z",
+    "pricing": {
+      "input": 10,
+      "cache_write_5m": 12.5,
+      "cache_write_1h": 20,
+      "cache_read": 1,
+      "output": 50
+    }
+  },
+  {
+    "id": "claude-fable-5-1",
+    "line": "fable",
+    "created_at": "2026-08-28T00:00:00Z",
+    "pricing": {
+      "input": 10,
+      "cache_write_5m": 12.5,
+      "cache_write_1h": 20,
+      "cache_read": 0.25,
+      "output": 50
+    }
+  },
+  {
+    "id": "claude-haiku-4-5-20251001",
+    "line": "haiku",
+    "created_at": "2025-10-15T00:00:00Z",
+    "pricing": {
+      "input": 1,
+      "cache_write_5m": 1.25,
+      "cache_write_1h": 2,
+      "cache_read": 0.1,
+      "output": 5
+    }
+  },
+  {
+    "id": "claude-haiku-5-5",
+    "line": "haiku",
+    "created_at": "2026-10-07T18:00:00Z",
+    "pricing": {
+      "input": 0.1,
+      "cache_write_5m": 0.125,
+      "cache_write_1h": 0.2,
+      "cache_read": 0.01,
+      "output": 0.5
+    }
+  },
+  {
+    "id": "claude-opus-4-5-20251101",
+    "line": "opus",
+    "created_at": "2025-11-24T00:00:00Z",
+    "pricing": {
+      "input": 5,
+      "cache_write_5m": 6.25,
+      "cache_write_1h": 10,
+      "cache_read": 0.5,
+      "output": 25
+    }
+  },
+  {
+    "id": "claude-opus-4-6",
+    "line": "opus",
+    "created_at": "2026-02-04T00:00:00Z",
+    "pricing": {
+      "input": 5,
+      "cache_write_5m": 6.25,
+      "cache_write_1h": 10,
+      "cache_read": 0.5,
+      "output": 25
+    }
+  },
+  {
+    "id": "claude-opus-4-7",
+    "line": "opus",
+    "created_at": "2026-04-14T00:00:00Z",
+    "pricing": {
+      "input": 5,
+      "cache_write_5m": 6.25,
+      "cache_write_1h": 10,
+      "cache_read": 0.5,
+      "output": 25
+    }
+  },
+  {
+    "id": "claude-opus-4-8",
+    "line": "opus",
+    "created_at": "2026-05-28T00:00:00Z",
+    "pricing": {
+      "input": 5,
+      "cache_write_5m": 6.25,
+      "cache_write_1h": 10,
+      "cache_read": 0.5,
+      "output": 25
+    }
+  },
+  {
+    "id": "claude-opus-5",
+    "line": "opus",
+    "created_at": "2026-07-24T00:00:00Z",
+    "pricing": {
+      "input": 5,
+      "cache_write_5m": 6.25,
+      "cache_write_1h": 10,
+      "cache_read": 0.5,
+      "output": 25
+    }
+  },
+  {
+    "id": "claude-opus-5-5",
+    "line": "opus",
+    "created_at": "2026-09-21T16:24:00Z",
+    "pricing": {
+      "input": 4,
+      "cache_write_5m": 5,
+      "cache_write_1h": 8,
+      "cache_read": 0.2,
+      "output": 20
+    }
+  },
+  {
+    "id": "claude-sonnet-4-5-20250929",
+    "line": "sonnet",
+    "created_at": "2025-09-29T00:00:00Z",
+    "pricing": {
+      "input": 3,
+      "cache_write_5m": 3.75,
+      "cache_write_1h": 6,
+      "cache_read": 0.3,
+      "output": 15
+    }
+  },
+  {
+    "id": "claude-sonnet-4-6",
+    "line": "sonnet",
+    "created_at": "2026-02-17T00:00:00Z",
+    "pricing": {
+      "input": 3,
+      "cache_write_5m": 3.75,
+      "cache_write_1h": 6,
+      "cache_read": 0.3,
+      "output": 15
+    }
+  },
+  {
+    "id": "claude-sonnet-5",
+    "line": "sonnet",
+    "created_at": "2026-06-29T00:00:00Z",
+    "pricing": {
+      "input": 2,
+      "cache_write_5m": 2.5,
+      "cache_write_1h": 4,
+      "cache_read": 0.2,
+      "output": 10
+    }
+  },
+  {
+    "id": "claude-sonnet-5-5",
+    "line": "sonnet",
+    "created_at": "2026-09-28T00:00:00Z",
+    "pricing": {
+      "input": 2,
+      "cache_write_5m": 2.5,
+      "cache_write_1h": 4,
+      "cache_read": 0.1,
+      "output": 10
+    }
+  }
+]

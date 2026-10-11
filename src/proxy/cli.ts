@@ -234,15 +234,15 @@ async function cmdStart(args: string[], paths: RouterPaths): Promise<CommandResu
     return failed([...warnings, failLine(`Provider init failed: ${String(e)}`)]);
   }
 
-  // Remote list → local cache → compiled-in DEFAULT_PRICING,
+  // Remote list → local cache → build-time snapshot DEFAULT_PRICING,
   // in that order; a user's own `pricing` config always wins over all three. This
   // is the one network call on the startup path, so it's bounded by a short
   // per-attempt timeout (`fetchModelList`'s default) and never throws — a
-  // dead network just means `source: 'built-in'` and nothing else changes.
+  // dead network just means `source: 'snapshot'` and nothing else changes.
   const modelList = await loadModelListPricing();
   const pricing = { ...modelList.pricing, ...options.pricing };
   // Reuses the list just loaded for pricing — no second fetch, and nothing to
-  // validate against when that load fell through to the compiled-in table.
+  // validate against when that load fell through to the build-time snapshot table.
   warnStaleTierIds(models, modelList);
 
   const app = createProxyApp({
@@ -785,7 +785,6 @@ function liveProbes(paths: RouterPaths, options: ServeOptions): DoctorProbes {
   return {
     nodeVersion: process.versions.node,
     platform: platformName(),
-    now: () => new Date(),
     loadConfig: () => loadFileConfig(paths.configFile),
     checkHealth: (port) => checkHealth(port),
     isEnvVarSet: (port) => isEnvVarSet(port),

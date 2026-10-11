@@ -1,5 +1,7 @@
 import type Anthropic from '@anthropic-ai/sdk';
 import type { ModelPricing, Tier } from './types.js';
+import type { ModelListEntry } from './model-list.js';
+import snapshot from './pricing-snapshot.json';
 
 export const DEFAULT_MODELS: Record<Tier, string> = {
   haiku: 'claude-haiku-5-5',
@@ -33,140 +35,33 @@ export const VERTEX_MODELS: Record<Tier, string> = {
 };
 
 /**
- * Current-generation Claude pricing ($ per 1M tokens), keyed by tier/family.
- * Verified against platform.claude.com pricing on PRICING_LAST_CHECKED:
- *   Haiku 4.5 — $1.00 / $5.00
- *   Sonnet 5  — $2.00 / $10.00
- *   Opus 5 / 4.5/4.6/4.7/4.8 — $5.00 / $25.00  (note: NOT the old $15/$75 of
- *     Opus 4.0/4.1. Opus 5 ships at the same rate as 4.8, so promoting the opus
- *     tier to it changes no cost figure — only the model ID.)
- *
- *   Fable 5 / 5.1 — $10.00 / $50.00 (2x Opus; the most expensive routable tier)
- *
- * **Sonnet's $2/$10 is the standard rate, not a discount.** It shipped as an
- * introductory rate through 2026-08-31, and we deliberately priced Sonnet at the
- * announced $3/$15 successor so savings math would not jump when the intro
- * expired. It never expired: Anthropic made $2/$10 standard and cancelled the
- * 2026-09-01 increase. Guessing the *direction* of a scheduled change is the
- * same bet as not tracking it — the sonnet tier is the savings baseline, so the
- * whole ledger overstated every win for as long as the guess stood. Price what
- * the table says today; there is no forward-looking rate.
- *
- * Pricing drift here silently corrupts every `savedCents` figure the router
- * reports — keep this in sync when a new generation ships, and rely on the
- * family fallback in `priceForModel` to cover Bedrock/Vertex/dated IDs.
+ * Turn a model list into a pricing table. Entries are inserted oldest-first by
+ * `created_at`, so within a family the LAST key is the newest model - the
+ * family fallback in {@link priceForModel} relies on that insertion order.
+ * `ModelPricing.cacheRead` is a fraction of `input`; cache-write columns are not
+ * modeled per model (`CACHE_WRITE_RATE` is global).
  */
-/**
- * The date this table was last verified against platform.claude.com, ISO
- * `YYYY-MM-DD`. Every savings figure the router reports is downstream of these
- * constants, and nothing else notices when they drift. The weekly
- * `pricing-check` workflow opens an issue once this is older than 60 days;
- * `claude-router doctor` warns past 90. Bump it whenever you re-verify, even
- * if nothing changed — the point is a dated claim, not a diff.
- */
-export const PRICING_LAST_CHECKED = '2026-09-02';
-
-/** Whole days since {@link PRICING_LAST_CHECKED}. */
-export function pricingAgeDays(now: Date = new Date()): number {
-  const checked = Date.parse(`${PRICING_LAST_CHECKED}T00:00:00Z`);
-  return Math.floor((now.getTime() - checked) / 86_400_000);
+export function pricingTableFromList(entries: ModelListEntry[]): Record<string, ModelPricing> {
+  const table: Record<string, ModelPricing> = {};
+  const byAge = [...entries].sort((a, b) =>
+    String(a.created_at ?? '').localeCompare(String(b.created_at ?? '')),
+  );
+  for (const { id, pricing: p } of byAge) {
+    if (!p || !(p.input > 0) || !(p.output >= 0)) continue;
+    const cacheRead = p.cache_read >= 0 ? p.cache_read / p.input : undefined;
+    table[id] = { input: p.input, output: p.output, ...(cacheRead !== undefined ? { cacheRead } : {}) };
+  }
+  return table;
 }
 
-export const FAMILY_PRICING: Record<Tier, ModelPricing> = {
-  haiku:  { input: 1.00, output: 5.00 },
-  sonnet: { input: 2.00, output: 10.00 },
-  opus:   { input: 5.00, output: 25.00 },
-  fable:  { input: 10.00, output: 50.00 },
-};
-
-/** Old-generation Opus (4.0, 4.1) — 3x the current Opus family rate. */
-const LEGACY_OPUS: ModelPricing = { input: 15.00, output: 75.00 };
-
 /**
- * Sonnet 4.x (4, 4.5, 4.6) — the generation before Sonnet 5's price cut, at 1.5x
- * the current Sonnet family rate. These became divergent the moment Sonnet 5's
- * $2/$10 became standard: until then the family default *was* $3/$15 and the
- * fallback resolved them for free.
+ * Pricing from the snapshot committed at `src/pricing-snapshot.json`, refreshed
+ * by `npm run pricing:refresh` (and by the release workflow before packing). No
+ * price is written by hand anywhere in the source.
  */
-const LEGACY_SONNET: ModelPricing = { input: 3.00, output: 15.00 };
-
-/**
- * Fable 5.1 / Mythos 5.1 — same $10/$50 base as Fable 5, but cache reads bill at
- * 2.5% of input rather than the usual 10% ($0.25/MTok). On a cache-heavy client
- * like Claude Code the read line is most of the input bill, so treating it as
- * 10% overstates a fable route's cost by ~4x on that component.
- */
-const FABLE_5_1: ModelPricing = { input: 10.00, output: 50.00, cacheRead: 0.025 };
-
-/**
- * Models whose price does NOT follow their family default. Each exact entry is
- * the only thing standing between that model and a wrong cost figure — two
- * distinct failure modes:
- *
- *  - **Legacy Opus** (4.0, 4.1) family-matches to the *current* Opus price, so
- *    the fallback understates every call by 3x.
- *  - **Legacy Sonnet** (4, 4.5, 4.6) has the same shape one generation down: the
- *    family default followed Sonnet 5 to $2/$10, so the fallback now understates
- *    the whole prior generation by a third.
- *  - **Mythos 5 / 5.1** match no family at all (`familyForModel` has no substring
- *    to key on), so the fallback prices them at *nothing* — see `warnIfUnpriced`
- *    for what happens when a model reaches that state. Fable 5 no longer needs an
- *    entry here: it is a tier now, so the family fallback resolves it.
- *  - **Fable 5.1** diverges on `cacheRead` alone — the base $10/$50 is its
- *    family's, but its cache reads bill at 2.5% instead of 10%.
- *
- * Enumerating a superseded generation is open-ended by nature: a dated snapshot
- * ID that is not listed here still falls through to the (now cheaper) family
- * rate. That is the accepted cost of a family fallback, and it is why the entries
- * below cover the dateless IDs plus the dated snapshots we have actually seen on
- * the wire, rather than pretending the list is exhaustive.
- *
- * Every entry here must genuinely diverge from its family (or have no family);
- * `models.test.ts` asserts that, so a redundant entry fails the build rather
- * than quietly rotting. Keeping the divergent set as its own exported table is
- * also what lets that test derive its exclusions instead of hand-maintaining a
- * parallel list that silently drifts.
- */
-export const DIVERGENT_PRICING: Record<string, ModelPricing> = {
-  'claude-opus-4-1': LEGACY_OPUS,
-  'claude-opus-4-1-20250805': LEGACY_OPUS,
-  'claude-opus-4-0': LEGACY_OPUS,
-  'claude-opus-4-20250514': LEGACY_OPUS,
-  'claude-sonnet-4-6': LEGACY_SONNET,
-  'claude-sonnet-4-5': LEGACY_SONNET,
-  'claude-sonnet-4-5-20250929': LEGACY_SONNET,
-  'claude-sonnet-4-0': LEGACY_SONNET,
-  'claude-sonnet-4-20250514': LEGACY_SONNET,
-  // Base price matches the fable tier; the cache-read rate does not.
-  'claude-fable-5-1': FABLE_5_1,
-  // Same price as the fable tier, but no substring for familyForModel to match.
-  'claude-mythos-5': FAMILY_PRICING.fable,
-  'claude-mythos-5-1': FABLE_5_1,
-};
-
-/** IDs that price at their family default. Listed for clarity, not necessity —
- * `priceForModel`'s family fallback would resolve each of these anyway. */
-const FAMILY_DERIVED_PRICING: Record<string, ModelPricing> = {
-  'claude-haiku-4-5': FAMILY_PRICING.haiku,
-  'claude-haiku-4-5-20251001': FAMILY_PRICING.haiku,
-  'claude-sonnet-5': FAMILY_PRICING.sonnet,
-  'claude-opus-5': FAMILY_PRICING.opus,
-  'claude-opus-4-8': FAMILY_PRICING.opus,
-  'claude-opus-4-7': FAMILY_PRICING.opus,
-  'claude-opus-4-6': FAMILY_PRICING.opus,
-  'claude-opus-4-5': FAMILY_PRICING.opus,
-  'claude-fable-5': FAMILY_PRICING.fable,
-};
-
-/**
- * Pricing keyed by exact model ID. Any first-party, Bedrock, or Vertex ID not
- * listed here is resolved by family in `priceForModel` — so a newly-dated
- * snapshot still prices right.
- */
-export const DEFAULT_PRICING: Record<string, ModelPricing> = {
-  ...FAMILY_DERIVED_PRICING,
-  ...DIVERGENT_PRICING,
-};
+export const DEFAULT_PRICING: Record<string, ModelPricing> = pricingTableFromList(
+  snapshot as ModelListEntry[],
+);
 
 export const TIER_ORDER: Tier[] = ['haiku', 'sonnet', 'opus', 'fable'];
 
@@ -220,9 +115,13 @@ export function priceForModel(
   if (pricing[model]) return pricing[model];
   const fam = familyForModel(model);
   if (!fam) return undefined;
-  // Honor a user override that targets the family's default model ID, else the
-  // canonical family price.
-  return pricing[DEFAULT_MODELS[fam]] ?? FAMILY_PRICING[fam];
+  // Newest model of the family in the table (insertion order is oldest-first,
+  // see pricingTableFromList). This is the single seam every price goes through.
+  let newest: ModelPricing | undefined;
+  for (const [id, price] of Object.entries(pricing)) {
+    if (familyForModel(id) === fam) newest = price;
+  }
+  return newest;
 }
 
 /**
