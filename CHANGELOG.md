@@ -9,6 +9,7 @@ This fork's own sections use the upstream version plus a `-smoo.<n>` prerelease 
 
 ### Added
 
+- Route feed `Saved` header has a hover/focus explanation (net saving, negative when the served model cost more), and the Session/Lifetime Saved popovers and the Pin header now say what the requested model is (the `model` field the client sent before routing).
 - Dashboard Retry filter (`?retry=`): values are the retry reasons actually present in the history (`truncation`, `refusal`), plus a "No retry" slice, ANDed with the other filters and kept across auto-refresh.
 - Every dashboard filter label has a hover/focus explanation, in the same popover style as the stat cards.
 
