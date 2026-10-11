@@ -681,9 +681,10 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
       position: absolute; z-index: 20; top: calc(100% + 6px); left: 0; display: none;
       width: max-content; max-width: 320px; padding: 8px 10px;
       font-family: var(--sans); font-size: 12px; line-height: 1.5; color: var(--ink);
-      background: var(--void); border: 1px solid var(--edge); border-radius: 8px;
-      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.55);
+      background: #0b0f19; border: 1px solid #3a4560; border-radius: 8px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.67); white-space: normal; text-align: left;
     }
+    .tip-body > div + div { margin-top: 4px; }
     .tip-body b { font-family: var(--mono); font-variant-numeric: tabular-nums; margin-left: 6px; }
     .stat-card:hover .tip-body, .stat-card:focus-within .tip-body, .stat-card:focus .tip-body { display: block; }
     /* Filter labels: same popover; the bar stacks above the cards below it, and the right-hand labels open leftwards */
