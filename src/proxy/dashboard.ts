@@ -715,7 +715,7 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
     td.reason          { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; color: var(--steel); }
     td.role            { font-size: 12px; }
     .stat-card .sub    { font-size: 11px; color: var(--steel); margin-top: 4px; }
-    .roles             { padding: 8px 16px; }
+    .roles             { padding: 8px 16px; margin-bottom: 26px; }
     .role-row          { display: grid; grid-template-columns: 1fr auto auto; gap: 16px; padding: 6px 0; font-size: 13px; border-bottom: 1px solid rgba(139, 149, 167, 0.15); }
     .role-row:last-child { border-bottom: 0; }
     .role-name         { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
