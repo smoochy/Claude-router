@@ -1,6 +1,6 @@
 # Releasing
 
-This fork ships as `@smoochy/claude-router` on npm and, in addition, as a tarball attached to the GitHub Release (decision #4419, which supersedes the tarball-only decision #4229: npm is added, the tarball stays). Both come from one tag-triggered `publish` workflow; releases are always cut from `smoo/main`, never from `master` (the pure upstream mirror).
+This fork ships as `@smoochy/claude-router` on npm and, in addition, as a tarball attached to the GitHub Release (decision 4419, which supersedes the tarball-only decision 4229: npm is added, the tarball stays). Both come from one tag-triggered `publish` workflow; releases are always cut from `smoo/main`, never from `master` (the pure upstream mirror).
 
 Every release must be reproducible from a tag on `smoo/main`. 0.3.2 and 0.3.3 (upstream's own releases, before this fork existed) were published by hand from a side branch and could not be reproduced; the `publish` workflow refuses a tag that is not on `smoo/main` or does not match `package.json`.
 

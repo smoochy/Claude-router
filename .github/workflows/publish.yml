@@ -1,6 +1,6 @@
 name: publish
 
-# Tag-triggered release chain (decision #4419). A `v*` tag set on smoo/main after the gate-green release PR merged runs: tag checks, pricing refresh, tests, pack, npm publish (OIDC trusted publishing, provenance), dist-tags, GitHub Release with the tarball. Re-running the same tag is safe: npm publish is skipped when the version already exists, and the release asset is replaced with --clobber.
+# Tag-triggered release chain (decision 4419). A `v*` tag set on smoo/main after the gate-green release PR merged runs: tag checks, pricing refresh, tests, pack, npm publish (OIDC trusted publishing, provenance), dist-tags, GitHub Release with the tarball. Re-running the same tag is safe: npm publish is skipped when the version already exists, and the release asset is replaced with --clobber.
 # The gate (appsec + security-review) is a separate pull_request workflow on the release PR; it is not part of this file.
 
 on:
