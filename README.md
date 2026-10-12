@@ -32,16 +32,16 @@
 
 ## What this fork adds
 
-- **A `routingMode` switch.** `route` routes every call, `observe` forwards the client's model untouched but still records every request, and `off` neither routes nor records. The dashboard splits the recorded history by mode so the three can be compared.
-- **A generated model and price list.** Prices and model ids come from a CI-generated list, read remote first, then from a local cache, then from a build-time snapshot. The defaults are the Claude 5.5 generation, and a configured tier id that is missing from the list triggers a warning, also in `doctor`.
+- **A `routingMode` switch.** `route` routes every call, `observe` forwards the client's model untouched but still records every request, and `off` forwards it untouched and records nothing. It is read once at start, so changing it takes a restart; `--force-route` and `forceRoute` remain aliases for `route` (and `forceRoute: false` for `observe`). `status`, `doctor`, the startup banner and the statusline show the active mode, and the dashboard can filter the recorded history by mode (including entries recorded before the switch existed) so the modes can be compared.
+- **A generated model and price list.** Prices and model ids come from a CI-generated list, read remote first, then from a local cache, then from a build-time snapshot. The default tiers are Haiku 5.5, Sonnet 5.5 and Opus 5.5 (Fable 5.1 when enabled). A tier id that equals a former built-in default is routed to the newest model of its family with a one-time warning, `install` rewrites it in the config, and `doctor` reports it. Models with a long-context price tier are billed at the higher rate once the prompt passes its threshold.
 - **A security gate and releases.** Every release goes through an `/appsec` and `/security-review` gate, versions are the upstream version plus a `-smoo.<n>` suffix, each release is published to npm and attached as a tarball, and a workflow opens a pull request whenever upstream tags a new release.
-- **Dashboard filters and cost display.** Filter by role, model, tier, session and time window, see in a Pin column whether the requested model was honored, and read every dollar amount with four decimals.
+- **Dashboard filters and cost display.** Filter by routing mode, role, model, tier, pin, reason, retry, session and time window (all time, today, last hour), switch the scope between this session and the last 2000 history entries, pick the refresh interval (off, 10, 20, 30, 45 or 60 seconds), see in a Pin column whether the requested model was honored, and read every dollar amount with four decimals.
 
 **Cut your Anthropic API bill by routing every request to the cheapest Claude model that can handle it — Haiku, Sonnet, or Opus.** `claude-router` is a self-hosted, drop-in proxy: point any Anthropic-compatible app (Claude Code, Cursor, Cline, or your own SDK code) at it with one environment variable and get automatic, complexity-aware model routing — **zero code changes, no SaaS in your request path, no per-token markup**. Every response reports exactly what you saved.
 
 ```text
-[claude-router] → haiku  (heuristic, 0ms) | cost: $0.0010 | saved: $0.0030 vs claude-sonnet-5
-[claude-router] → opus   (hybrid, 48ms)   | cost: $0.0890 | extra: $0.0740 vs claude-sonnet-5
+[claude-router] → haiku  (heuristic, 0ms) | cost: $0.0010 | saved: $0.0030 vs claude-sonnet-5-5
+[claude-router] → opus   (hybrid, 48ms)   | cost: $0.0890 | extra: $0.0740 vs claude-sonnet-5-5
 ```
 
 ## Is this for you?
@@ -113,7 +113,7 @@ Watch routing live in the logs, or open the dashboard at `http://localhost:4000/
 **1. Start the proxy** in one terminal:
 
 ```bash
-npx @smoochy/claude-router start --port 4000 --force-route --verbose
+npx @smoochy/claude-router start --port 4000 --routing-mode route --verbose
 ```
 
 **2. Point your app at it** in another:
@@ -136,8 +136,8 @@ claude
 
 For each request the proxy classifies the task, routes to the right tier, calls the API, and returns the response plus `x-router-*` headers:
 
-- **Route** — `model: "auto"` (or omitted) is classified and routed. An explicit model passes through unchanged **unless** `--force-route` is set.
-- **Coordinator pin** *(optional)* — with `--session-model <tier>`, the Claude Code **main session** is pinned to that tier (e.g. `opus` for a large context window and no early compaction) while subagents still route by evidence. It keys off the gateway protocol's `x-claude-code-agent-id` header, which Claude Code sets only on subagent requests — so a request without it is the coordinator. Needs `--force-route` (otherwise the client's pinned model already passes through). See [Pin the coordinator session](#pin-the-coordinator-session).
+- **Route** — `model: "auto"` (or omitted) is classified and routed. An explicit model passes through unchanged **unless** `routingMode` is `route` (the default; `--force-route` is an alias). Under `observe` it passes through and is recorded, under `off` it passes through unrecorded.
+- **Coordinator pin** *(optional)* — with `--session-model <tier>`, the Claude Code **main session** is pinned to that tier (e.g. `opus` for a large context window and no early compaction) while subagents still route by evidence. It keys off the gateway protocol's `x-claude-code-agent-id` header, which Claude Code sets only on subagent requests — so a request without it is the coordinator. Needs `--routing-mode route` (otherwise the client's pinned model already passes through). See [Pin the coordinator session](#pin-the-coordinator-session).
 - **Sonnet by default** — leaving it needs positive evidence. Gates are *conjunctive*, so coincidental keyword matches can't sum into an expensive verdict.
 - **Loop-position aware** — a turn answering a `tool_result` is a mid-loop step, and those are largely tier-insensitive. Agentic turns never reach Haiku unless `routing.allowHaikuInAgentic: true`.
 - **Auto-retry** — a truncated or refused response escalates one tier and retries.
@@ -149,7 +149,7 @@ For each request the proxy classifies the task, routes to the right tier, calls 
 | Mode | Overhead | How it decides |
 |------|----------|----------------|
 | `heuristic` | ~0ms | Conjunctive gates on request shape: tool use, loop position, message count, length, code fences, explicit depth markers. |
-| `ai` | one Haiku call (~$0.00004) | Asks Haiku to rate task complexity 1–3. |
+| `ai` | one Haiku call (a fraction of a cent) | Asks Haiku to rate task complexity 1–3. |
 | `hybrid` *(default)* | 0ms, or one Haiku call | Gates first; asks Haiku only when no gate fired and routing fell through to the default. |
 
 Every decision carries a `reason` (e.g. `agentic:mid-loop`), so routing is auditable. **Fable** is opt-in (`routing.allowFable`). AI classification is resilient by design — results are cached (LRU 500), calls time out at 1.5s, and any failure falls back to the heuristic, so a Haiku outage never blocks a request.
@@ -163,7 +163,7 @@ claude-router start --session-model opus
 # or in ~/.claude-router/config.json:  "sessionModel": "opus"
 ```
 
-How it tells them apart: Claude Code sets the `x-claude-code-agent-id` header **only** on requests from a subagent it spawned ([gateway protocol](https://code.claude.com/docs/en/llm-gateway-protocol)). A request without it is the coordinator, so it gets pinned (classifier skipped, `x-router-classifier: pinned`); a request with it routes by evidence as usual. To route subagents down to cheaper tiers, give them lower models in their `.claude/agents/*.md` frontmatter — the pin never touches them. Only takes effect under `--force-route`; without it, the client's explicit model already passes through untouched.
+How it tells them apart: Claude Code sets the `x-claude-code-agent-id` header **only** on requests from a subagent it spawned ([gateway protocol](https://code.claude.com/docs/en/llm-gateway-protocol)). A request without it is the coordinator, so it gets pinned (classifier skipped, `x-router-classifier: pinned`); a request with it routes by evidence as usual. To route subagents down to cheaper tiers, give them lower models in their `.claude/agents/*.md` frontmatter — the pin never touches them. Only takes effect under `--routing-mode route`; otherwise the client's explicit model already passes through untouched.
 
 The pin also requires the request to **carry tools**, which every real coordinator turn does. Claude Code's own meta-calls — generating a session title, summarising a conversation — arrive without the agent-id header too, but with no tools and the conversation quoted in `<session>…</session>`. Those keep routing by evidence, so pinning `opus` doesn't pay Opus rates to name a session.
 
@@ -222,12 +222,12 @@ Set defaults once in `~/.claude-router/config.json` instead of passing flags. **
   "verbose": false,
   "sessionModel": "opus",
   "tiers": {
-    "haiku": "claude-haiku-4-5",
-    "sonnet": "claude-sonnet-5",
-    "opus": "claude-opus-5"
+    "haiku": "claude-haiku-5-5",
+    "sonnet": "claude-sonnet-5-5",
+    "opus": "claude-opus-5-5"
   },
   "pricing": {
-    "claude-opus-5": { "input": 5.0, "output": 25.0 }
+    "claude-opus-5-5": { "input": 4.0, "output": 20.0 }
   },
   "routing": {
     "aiTimeoutMs": 1500,
@@ -266,7 +266,9 @@ claude-router --version, -V         Print version
 Options (install / start / restart / status / doctor):
   --port, -p <number>    Port (default: 4000)
   --host <address>       Bind address (default: 127.0.0.1 — local only)
-  --routing-mode <mode>  route (default) | observe | off. --force-route is an alias for route
+  --routing-mode <mode>  route (default) | observe (pass through, still record) | off (pass through, record nothing). --force-route is an alias for route
+  --restore-delegation <bool>  Strip the injected "do not spawn agents" lines (default: on)
+  --role-routing <on|off>  Route subagents by role (default: on)
   --session-model <tier> Pin the Claude Code coordinator session to a tier (haiku|sonnet|opus|fable); subagents still route. Off by default
   --verbose, -v          Log routing decisions
   --classifier <mode>    heuristic | ai | hybrid (default: hybrid)
@@ -276,37 +278,40 @@ Options (install / start / restart / status / doctor):
 Install-only options:
   --no-autostart         Skip login autostart registration
   --no-env               Skip setting ANTHROPIC_BASE_URL
+  --no-policy            Skip the orchestration plugin
+  --shell-env            Also export ANTHROPIC_BASE_URL in your shell (for SDK apps)
+  --api-only             Plain proxy for API clients: shell env only, no Claude Code profile or plugin
   --statusline           Add the Claude Code statusline (off by default; --no-statusline is accepted and does nothing)
 ```
 
-**Something not routing?** Run `claude-router doctor` — it checks the Node version, config validity, proxy health on your port, `ANTHROPIC_BASE_URL`, credentials, stale daemon state, autostart, and the statusline, with a fix hint for anything that fails.
+**Something not routing?** Run `claude-router doctor` — it checks the Node version, the model-list cache age, stale former-default tier ids, config validity and unknown keys, proxy health on your port, the active routing mode, `ANTHROPIC_BASE_URL`, credentials, stale daemon state, autostart, the statusline and the orchestration plugin, with a fix hint for anything that fails.
 
 ---
 
 ## Pricing & savings
 
-Each response's `savedCents` is `(baseline cost − actual cost)` for the tokens used, where the baseline is **the model the client asked for** — the counterfactual of "what this request would have cost without the router". Claude Code pins a model on every request (that is what `--force-route` overrides), so an opus-pinned request routed to Sonnet books the real opus→sonnet saving, and one the coordinator pin keeps on Opus books exactly `$0.00`. The proxy falls back to `defaultModel` only when the client named nothing usable: no `model` field, `"auto"`, or a model with no pricing entry. **Prompt-cache tokens are included** — reads bill at 10% of the input rate (2.5% on Fable 5.1 / Mythos 5.1) and writes at 125% — so figures stay accurate for cache-heavy clients like Claude Code. Every routed request is appended to `~/.claude-router/history.jsonl`, so savings survive restarts (`claude-router stats` / the dashboard's *Lifetime Saved* card).
+Each response's `savedCents` is `(baseline cost − actual cost)` for the tokens used, where the baseline is **the model the client asked for** — the counterfactual of "what this request would have cost without the router". Claude Code pins a model on every request (that is what `routingMode: route` overrides), so an opus-pinned request routed to Sonnet books the real opus→sonnet saving, and one the coordinator pin keeps on Opus books exactly `$0.00`. The proxy falls back to `defaultModel` only when the client named nothing usable: no `model` field, `"auto"`, or a model with no pricing entry. **Prompt-cache tokens are included** — reads bill at the model's own rate from the price list (5% of input on Sonnet 5.5 and Opus 5.5, 10% on Haiku 5.5, 2.5% on Fable 5.1) and writes at 125% — so figures stay accurate for cache-heavy clients like Claude Code. Every request is appended to `~/.claude-router/history.jsonl`, so savings survive restarts (`claude-router stats` / the dashboard's *Lifetime Saved* card), except under `routingMode: off`, which records nothing.
 
 `history.jsonl` is append-only by design and never rotated — it *is* the lifetime-savings ledger (~250 bytes/event; a million routed requests ≈ 250 MB). Archive or delete it anytime to start fresh; stats restart from zero. The daemon log (`~/.claude-router/proxy.log`) *does* rotate: past 5 MiB it rolls over to `proxy.log.1` on the next daemon start.
 
-Pricing tracks the **current Claude generation**; unknown/dated/Bedrock/Vertex IDs are priced by family so the math stays correct across model launches:
+No price is written by hand in the source. Rates come from the generated model and price list: fetched at start, else the last-good local cache (`~/.claude-router/model-list-cache.json`), else the snapshot (`src/pricing-snapshot.json`) built into the release (`npm run pricing:refresh` rewrites it, and the release workflow runs it before packing). Unknown, dated, Bedrock and Vertex IDs are priced by the newest model of their family in the table, so the math stays correct across model launches. The default tiers at the time of writing:
 
 | Model | ID | Input $/1M | Output $/1M |
 |-------|-----|-----------:|------------:|
 | Claude Fable 5.1 | `claude-fable-5-1` | $10.00 | $50.00 |
-| Claude Opus 5 | `claude-opus-5` | $5.00 | $25.00 |
-| Claude Sonnet 5 | `claude-sonnet-5` | $2.00 | $10.00 |
-| Claude Haiku 4.5 | `claude-haiku-4-5` | $1.00 | $5.00 |
+| Claude Opus 5.5 | `claude-opus-5-5` | $4.00 | $20.00 |
+| Claude Sonnet 5.5 | `claude-sonnet-5-5` | $2.00 | $10.00 |
+| Claude Haiku 5.5 | `claude-haiku-5-5` | $0.10 | $0.50 |
 
-> Sonnet 5's **$2.00 / $10.00** is the standard rate. It launched as introductory pricing through 2026-08-31, and this router used to price the announced $3.00 / $15.00 successor so savings would not jump when it expired — but the increase was cancelled and $2/$10 became standard. Since the sonnet tier is the savings baseline, that guess made every reported saving too high, and by more than the 50% rate error: a saving is a difference and only one side of it moved, so on a typical Claude Code turn a haiku route reported roughly **twice** what it actually saved. Override via `pricing` for negotiated or enterprise rates.
+> **Long-context tier.** A model whose list entry carries a long-context price is billed at that higher rate for the whole request once its prompt (uncached input plus cache reads plus cache writes) is strictly above the threshold. In the current snapshot that is Haiku 5.5: above 100,000 prompt tokens it costs $0.50 / $2.50 per 1M. Override via `pricing` for negotiated or enterprise rates.
 >
-> **Cache reads are 10% of the input rate on every model except Fable 5.1 / Mythos 5.1, which read at 2.5%** ($0.25/1M). On a cache-heavy client like Claude Code the read line is most of the input bill, so the rate is per-model (`ModelPricing.cacheRead`), not a global constant. Cache writes are 125% everywhere.
+> **Cache reads are a per-model fraction of the input rate**, taken from the list (`ModelPricing.cacheRead`), not a global constant: 10% on Haiku 5.5, 5% on Sonnet 5.5 and Opus 5.5, 2.5% on Fable 5.1. A model with no list value falls back to 10%. On a cache-heavy client like Claude Code the read line is most of the input bill. Cache writes are 125% everywhere.
 
 Every response also carries the decision as headers:
 
 ```text
 x-router-tier: haiku
-x-router-model: claude-haiku-4-5
+x-router-model: claude-haiku-5-5
 x-router-cost-cents: 0.045
 x-router-saved-cents: 1.200
 x-router-classifier: heuristic
