@@ -7,7 +7,7 @@ Thanks for taking the time to contribute! 🎉 This guide gets you from a fresh 
 ## TL;DR
 
 ```bash
-git clone https://github.com/Serhii-Leniv/claude-router.git
+git clone https://github.com/smoochy/Claude-router.git
 cd claude-router
 npm install
 npm test        # build + run the full suite (no network, no API key needed)
@@ -93,11 +93,11 @@ Maintainers cut releases by the checklist in [RELEASING.md](RELEASING.md).
 
 ## Reporting bugs & requesting features
 
-Open an [issue](https://github.com/Serhii-Leniv/claude-router/issues) using the templates. For bugs, the most useful thing you can include is a minimal repro and the output of `claude-router doctor`. For security-sensitive reports, please **do not** open a public issue — see `SECURITY.md`.
+Open an [issue](https://github.com/smoochy/Claude-router/issues) using the templates. For bugs, the most useful thing you can include is a minimal repro and the output of `claude-router doctor`. For security-sensitive reports, please **do not** open a public issue — see `SECURITY.md`.
 
 ## Questions
 
-Not sure where something goes, or whether an idea fits? Open a [discussion](https://github.com/Serhii-Leniv/claude-router/discussions) or a draft PR and ask. We'd rather help early than have you guess.
+Not sure where something goes, or whether an idea fits? Open a [discussion](https://github.com/smoochy/Claude-router/discussions) or a draft PR and ask. We'd rather help early than have you guess.
 
 ---
 

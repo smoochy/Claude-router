@@ -29,6 +29,7 @@ This fork's own sections use the upstream version plus a `-smoo.<n>` prerelease 
 
 ### Changed
 
+- The author, owner and repository references in the plugin manifest, marketplace manifest, `package.json`, `SECURITY.md`, `CONTRIBUTING.md` and the docs site point at `smoochy` and `smoochy/Claude-router` instead of upstream, so security reports and contributions reach the maintainer who ships this fork. `LICENSE` keeps the upstream copyright line and gains a fork line; the README credit and the sync workflow stay on upstream. The docs site drops the `og:url` that pointed at upstream's GitHub Pages.
 - Every dollar amount renders with 4 decimals (dashboard, statusline, proxy log line, `stats` output) through one shared `usd()` formatter in `src/proxy/format.ts`; `savedCentsDisplay` now defaults to 4 decimals.
 - `RELEASING.md` now says the security gate detects a release PR by the `version` in `package.json` rising against the base branch, not by a `release/*` head branch name. The gate files are managed centrally; no hand-maintained copy remains.
 - The package is now `@smoochy/claude-router`, and `publish.yml` publishes it to npm by OIDC trusted publishing with provenance (skipped when the version exists), sets dist-tags `latest` and `smoo`, and creates or updates the GitHub Release tarball idempotently. RELEASING.md rewritten: 4229 superseded, both install paths, trusted-publisher expiry.
