@@ -40,7 +40,7 @@
     "orchestration",
     "subagents"
   ],
-  "author": "Serhii Leniv",
+  "author": "smoochy",
   "license": "MIT",
   "publishConfig": {
     "access": "public"

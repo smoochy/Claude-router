@@ -3,9 +3,9 @@
   "version": "0.4.0-smoo.4",
   "description": "Orchestration mode for Claude Code: role agents for reconnaissance, implementation and fresh-context review, with the claude-router proxy pinning each role's model and measuring what it saved.",
   "author": {
-    "name": "Serhii Leniv"
+    "name": "smoochy"
   },
-  "repository": "https://github.com/serhiileniv/claude-router",
+  "repository": "https://github.com/smoochy/Claude-router",
   "license": "MIT",
   "keywords": [
     "claude-code",
