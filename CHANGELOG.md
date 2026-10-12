@@ -11,7 +11,13 @@ This fork's own sections use the upstream version plus a `-smoo.<n>` prerelease 
 
 - `research/2026-10-13-end-to-end-savings-smoo.md`: a reproducible end-to-end savings run of the fork as it ships (`0.4.0-smoo.5`, 5.5 pricing), 330 synthetic turns through the real CLI against a stub upstream under a scratch `HOME`. By the router's own `savedCents`: 25.0 percent against all-Opus with the coordinator pinned to opus, 47.9 percent unpinned, 0 in observe mode. The harness is inlined in the document.
 
+### Security
+
+- `sync-upstream.yml` hardened per the v0.4.0-smoo.5 release gate: step outputs derived from the upstream tag name (`ref`, `branch`, `target`, `newbase`) reach shell only through `env:`, never inline `${{ }}`; `actions/checkout` runs with `persist-credentials: false` and SYNC_PUSH_TOKEN is supplied only to the steps that fetch, push or call `gh` (as an `http.extraheader` passed per command, masked); the conflict agent gets `Read,Edit,Write,Glob,Grep` plus Bash limited to `git add`, `git commit`, `git status`, `git diff`, `npm ci` and `npm test`, receives no ref in its prompt (the merge message is pre-seeded, the agent runs `git commit --no-edit`) and the action itself is given `github.token` instead of the PAT.
+
 ### Changed
+
+- Removed `docs/promo.png`, an unreferenced image that still advertised the upstream install command, site and the old `--force-route` flag.
 
 - README "What this fork adds" now shows four dashboard screenshots (overview, observe mode filter, role plus window filter, and a hover tooltip), kept in `docs/images/` and captured from a local build over synthetic history.
 
