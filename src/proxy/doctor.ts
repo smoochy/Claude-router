@@ -55,10 +55,10 @@ export interface DoctorProbes {
    * (see `MODEL_LIST_URL`'s doc comment) — just "how long since this proxy
    * last reached the remote list". */
   modelListCacheAgeDays(): number | undefined;
-  /** Configured tier ids the model list does not carry (see `model-list.ts`'s
-   * `staleTierIds`) — empty when every tier resolves, `undefined` when there
-   * was nothing to validate against (built-in pricing only, no remote/cache). */
-  staleTierIds(): Promise<Array<{ tier: Tier; id: string }> | undefined>;
+  /** Configured tier ids that are a former built-in default (see `model-list.ts`'s
+   * `staleTierIds`) - empty when none is, with the newest model of the family as the replacement. `undefined` is kept for a probe that
+   * cannot run. */
+  staleTierIds(): Promise<Array<{ tier: Tier; id: string; replacement?: string }> | undefined>;
   /** Has `restoreDelegation` matched nothing for `STALE_PATTERN_STREAK` starts
    * in a row (see src/proxy/delegation.ts)? `undefined` when `restoreDelegation`
    * is off — there is no streak to report on. */
@@ -104,9 +104,9 @@ export async function runDiagnostics(
     diagnostics.push({
       ok: stale.length === 0,
       label: stale.length === 0
-        ? 'Tier model ids match the current model list'
-        : `Stale tier id(s): ${stale.map((s) => `${s.tier}="${s.id}"`).join(', ')} — may be a previous generation`,
-      hint: 'Check the "tiers" config against the current model ids (routing and pricing are unaffected)',
+        ? 'No tier id is a stale former default'
+        : `Stale tier id(s): ${stale.map((s) => `${s.tier}="${s.id}"${s.replacement ? ` (now ${s.replacement})` : ''}`).join(', ')} - a former default`,
+      hint: 'Run "claude-router install" to rewrite the stale ids (start already routes to the replacement)',
       warnOnly: true,
     });
   }

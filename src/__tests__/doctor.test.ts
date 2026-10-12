@@ -196,21 +196,21 @@ describe('runDiagnostics', () => {
   it('warns, without failing, on a stale tier id', async () => {
     const diagnostics = await runDiagnostics(
       OPTIONS,
-      probes({ staleTierIds: async () => [{ tier: 'opus', id: 'claude-opus-5' }] }),
+      probes({ staleTierIds: async () => [{ tier: 'opus', id: 'claude-opus-5', replacement: 'claude-opus-5-5' }] }),
     );
     const d = find(diagnostics, /Stale tier/);
     assert.equal(d.ok, false);
     assert.equal(d.warnOnly, true);
-    assert.match(d.label, /opus="claude-opus-5"/);
+    assert.match(d.label, /opus="claude-opus-5".*claude-opus-5-5/);
     assert.equal(failureCount(diagnostics), 0);
   });
 
   it('reports ok when every tier id resolves, and says nothing when there is nothing to check', async () => {
     const ok = await runDiagnostics(OPTIONS, probes({ staleTierIds: async () => [] }));
-    assert.match(find(ok, /Tier model ids/).label, /match the current model list/);
+    assert.match(find(ok, /stale former default/).label, /No tier id/);
 
     const skipped = await runDiagnostics(OPTIONS, probes({ staleTierIds: async () => undefined }));
-    assert.equal(skipped.some((x) => /[Tt]ier.*model ids|Stale tier/.test(x.label)), false);
+    assert.equal(skipped.some((x) => /stale former default|Stale tier/.test(x.label)), false);
   });
 
   it('warns, without failing, when the delegation-blocker patterns look stale', async () => {
