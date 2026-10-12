@@ -9,6 +9,8 @@ This fork's own sections use the upstream version plus a `-smoo.<n>` prerelease 
 
 ### Fixed
 
+- `claude-router install` no longer prints Node's DEP0190 warning, and the Windows `.cmd` command line is hardened. The two Windows `.cmd` spawns (`claude` in `policy.ts`, `claude-router` in the SessionStart hook) hand the shell one command string built by `winCmdLine`, which quotes each word, rejects `"%^&|<>!` and line breaks (`!` expands inside quotes under delayed expansion), and doubles backslashes before the closing quote so `C:\My Dir\` arrives intact. The hook now quotes `CLAUDE_ROUTER_BIN` too, so a path with spaces starts the proxy. POSIX spawns are unchanged. (An earlier merge had dropped the DEP0190 code while keeping its changelog line; this restores it.)
+
 - `sync-upstream.yml` bumped only `package.json` and `package-lock.json`, so `npm test` failed on the plugin-version check (`plugin/.claude-plugin/plugin.json` still carried the old base) and every sync PR died before it opened. The bump step now writes the same version into `plugin.json` and commits it.
 
 ### Security
