@@ -3,6 +3,7 @@
 **Date:** 2026-07-21
 **Method:** the **published** `@sheruq/claude-router@0.2.2` from npm, installed in an isolated sandbox, driven with 200 real turns from this project's Claude Code transcripts against a stub upstream.
 **Status:** first measurement of the router *operating*. Everything before this measured models or detectors, never the router itself.
+**See also:** [2026-10-13-end-to-end-savings-smoo.md](2026-10-13-end-to-end-savings-smoo.md), the same question re-run on the fork as it ships now.
 
 ## Why this was needed
 
