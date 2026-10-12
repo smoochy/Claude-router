@@ -99,7 +99,12 @@ jobs:
               number: int | None
 
 
-          def fleet_owners() -> frozenset[str]:
+          def _repo_name(name: str) -> str:
+              """Drop a clone-URL `.git` suffix; the visibility lookup needs the bare repo name."""
+              return name.removesuffix(".git")
+
+
+          def fleet_owners()-> frozenset[str]:
               """Lowercased owners a bare `owner/name` must have to be a candidate; empty means all."""
               raw = os.environ.get("CROSS_REPO_OWNERS", "")
               return frozenset(o.strip().lower() for o in raw.split(",") if o.strip())
@@ -146,10 +151,14 @@ jobs:
 
               _take(
                   _OWNER_NAME_ISSUE_RE,
-                  lambda m: Reference(m.group(0), m.group(1), m.group(2), int(m.group(3))),
+                  lambda m: Reference(m.group(0), m.group(1), _repo_name(m.group(2)), int(m.group(3))),
               )
-              _take(_URL_RE, lambda m: Reference(m.group(0), m.group(1), m.group(2), None))
-              _take(_BARE_OWNER_NAME_RE, lambda m: Reference(m.group(0), m.group(1), m.group(2), None), bare_owners)
+              _take(_URL_RE, lambda m: Reference(m.group(0), m.group(1), _repo_name(m.group(2)), None))
+              _take(
+                  _BARE_OWNER_NAME_RE,
+                  lambda m: Reference(m.group(0), m.group(1), _repo_name(m.group(2)), None),
+                  bare_owners,
+              )
               _take(_BARE_NUMBER_RE, lambda m: Reference(m.group(0), None, None, int(m.group(1))), skip=css_hex)
 
               return references
