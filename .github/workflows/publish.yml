@@ -1,6 +1,6 @@
 name: publish
 
-# Tag-triggered release chain (decision 4419). A `v*` tag set on smoo/main after the gate-green release PR merged runs: tag checks, pricing refresh, tests, pack, npm publish (OIDC trusted publishing, provenance), dist-tags, GitHub Release with the tarball. Re-running the same tag is safe: npm publish is skipped when the version already exists, and the release asset is replaced with --clobber.
+# Tag-triggered release chain (decision 4419). A `v*` tag set on smoo/main after the gate-green release PR merged runs: tag checks, pricing refresh, tests, pack, npm publish to `latest` (OIDC trusted publishing, provenance), GitHub Release with the tarball. Re-running the same tag is safe: npm publish is skipped when the version already exists, and the release asset is replaced with --clobber.
 # The gate (appsec + security-review) is a separate pull_request workflow on the release PR; it is not part of this file.
 
 on:
@@ -58,16 +58,9 @@ jobs:
           if npm view "${NAME}@${VERSION}" version >/dev/null 2>&1; then
             echo "${NAME}@${VERSION} already on the registry - skipping publish"
           else
-            npm publish "./claude-router-${VERSION}.tgz" --access public --provenance --tag smoo
+            # A prerelease needs an explicit --tag. The dist-tag is set here because trusted publishing (OIDC) authorizes only publish; a separate `npm dist-tag add` fails with E401.
+            npm publish "./claude-router-${VERSION}.tgz" --access public --provenance --tag latest
           fi
-
-      # Mutable pointers; the immutable pin is the exact version. Needs the trusted publisher to be allowed to publish, and is idempotent.
-      - name: Dist-tags latest and smoo
-        run: |
-          NAME="$(node -p "require('./package.json').name")"
-          VERSION="$(node -p "require('./package.json').version")"
-          npm dist-tag add "${NAME}@${VERSION}" latest
-          npm dist-tag add "${NAME}@${VERSION}" smoo
 
       - name: GitHub Release from the CHANGELOG section, with the tarball attached
         env:

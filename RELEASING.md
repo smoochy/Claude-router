@@ -19,12 +19,12 @@ Tags use the upstream base plus a `-smoo.<n>` prerelease suffix, e.g. `0.4.0-smo
    git tag -a vx.y.z-smoo.n -m "x.y.z-smoo.n"
    git push origin vx.y.z-smoo.n
    ```
-7. The `publish` workflow then runs, in order: tag equals `package.json`, tag reachable from `smoo/main`, `pricing:refresh`, `npm test`, `npm pack`, `npm publish --access public --provenance`, `npm dist-tag add` for `latest` and `smoo`, GitHub Release with the tarball.
-8. Confirm: `npm view @smoochy/claude-router dist-tags` shows the new version on `latest` and `smoo`, and the release page has the `.tgz` asset.
+7. The `publish` workflow then runs, in order: tag equals `package.json`, tag reachable from `smoo/main`, `pricing:refresh`, `npm test`, `npm pack`, `npm publish --access public --provenance --tag latest`, GitHub Release with the tarball.
+8. Confirm: `npm view @smoochy/claude-router dist-tags` shows the new version on `latest`, and the release page has the `.tgz` asset.
 
 ## Re-running a tag
 
-A failed run is healed by re-running the workflow on the same tag. `npm publish` is skipped when the version already exists on the registry, dist-tags are set idempotently, and an existing GitHub Release gets the tarball replaced with `gh release upload --clobber` instead of failing on `gh release create`.
+A failed run is healed by re-running the workflow on the same tag. `npm publish` is skipped when the version already exists on the registry (its dist-tag is then not touched; move it by hand with `npm dist-tag add` after `npm login`), and an existing GitHub Release gets the tarball replaced with `gh release upload --clobber` instead of failing on `gh release create`.
 
 ## npm publishing
 
@@ -32,7 +32,7 @@ Publishing uses npm trusted publishing (OIDC, no token): the trusted publisher i
 
 The trusted publisher expires without one successful publish within 2 days of registration. Nothing is built for this: the sync-PR cadence keeps releases flowing, and an expired publisher is fixed by re-registering it on npmjs.com.
 
-Dist-tags: every `-smoo.n` goes to `latest`, and `smoo` is set to the same version. Both are mutable pointers like image tags. The immutable pin is the exact version (`@smoochy/claude-router@0.4.0-smoo.n`, which npm never lets anyone overwrite) plus the sha512 `dist.integrity` the lockfile pins; npm has no `@sha256:` specifier.
+Dist-tags: every `-smoo.n` is published straight to `latest` with `npm publish --tag latest`. A prerelease needs an explicit `--tag`, and trusted publishing authorizes only `npm publish`: a separate `npm dist-tag add` in CI fails with E401, so no second pointer is set. The former `smoo` dist-tag stays where it is (`0.4.0-smoo.5`) and is no longer moved. `latest` is a mutable pointer like an image tag. The immutable pin is the exact version (`@smoochy/claude-router@0.4.0-smoo.n`, which npm never lets anyone overwrite) plus the sha512 `dist.integrity` the lockfile pins; npm has no `@sha256:` specifier.
 
 ## Install paths
 
