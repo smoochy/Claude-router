@@ -27,6 +27,10 @@ This fork's own sections use the upstream version plus a `-smoo.<n>` prerelease 
 - Dashboard Retry filter (`?retry=`): values are the retry reasons actually present in the history (`truncation`, `refusal`), plus a "No retry" slice, ANDed with the other filters and kept across auto-refresh.
 - Every dashboard filter label has a hover/focus explanation, in the same popover style as the stat cards.
 
+### Fixed
+
+- `claude-router restart` no longer resurrects flags removed from `config.json` (e.g. `--session-model` pinning the coordinator): inherited `daemon.json` flags are dropped when their key is absent, null or an empty string in an existing `config.json`.
+
 ### Changed
 
 - The package is now `@smoochy/claude-router`, and `publish.yml` publishes it to npm by OIDC trusted publishing with provenance (skipped when the version exists), sets dist-tags `latest` and `smoo`, and creates or updates the GitHub Release tarball idempotently. RELEASING.md rewritten: 4229 superseded, both install paths, trusted-publisher expiry.
