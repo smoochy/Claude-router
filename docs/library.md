@@ -52,14 +52,14 @@ console.log(router.stats());
 const router = createRouter({
   apiKey: 'sk-...',
   classifier: 'hybrid',            // 'heuristic' | 'ai' | 'hybrid' (default: 'hybrid')
-  defaultModel: 'claude-sonnet-5', // baseline for savings (default: sonnet tier)
+  defaultModel: 'claude-sonnet-5-5', // baseline for savings (default: sonnet tier)
   tiers: {                         // override model IDs per tier
-    haiku: 'claude-haiku-4-5',
-    sonnet: 'claude-sonnet-5',
-    opus: 'claude-opus-5',
+    haiku: 'claude-haiku-5-5',
+    sonnet: 'claude-sonnet-5-5',
+    opus: 'claude-opus-5-5',
   },
   pricing: {                       // override $/1M token pricing
-    'claude-sonnet-5': { input: 2.0, output: 10.0 },
+    'claude-sonnet-5-5': { input: 2.0, output: 10.0 },
   },
   fallback: true,                  // auto-fallback to next tier on rate limit (default: true)
   verbose: true,                   // log routing decisions (default: false)
