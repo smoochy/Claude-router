@@ -1,3 +1,5 @@
+# @smoochy/claude-router
+
 <p align="center">
   <img src="assets/claude-router.svg" alt="claude-router" width="640">
 </p>
@@ -16,7 +18,7 @@
 [![Coindrop](https://img.shields.io/badge/Tip%20me%20crypto-smoochy-FFB655?logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA1MTIgNTEyIj48ZyB0cmFuc2Zvcm09InRyYW5zbGF0ZSgwIDUxMikgc2NhbGUoLjEgLS4xKSIgZmlsbD0iIzAwMCI%2BPHBhdGggZD0iTTE5NjIgNTAwOCBjMCAtNDAgMCAtNzkgLTEgLTg1IC0xIC05IC0yNSAtMTMgLTg2IC0xMyBsLTg1IDAgMCAtODUgYzAgLTYxIDQgLTg1IDEzIC04NiA2IDAgNDUgMCA4NSAxIDgyIDEgNzUgMTIgNzQgLTEwNyBsLTEgLTYzIDg3IDAgODcgMCAwIDgzIC0xIDgyIC04NiAzIC04NSAzIDEgODIgMSA4MiA4MyAzIGM2OCAyIDgyIDAgODMgLTEzIDAgLTggMSAtNDYgMiAtODUgbDAgLTcwIDg3IDAgODYgMCAtMSA4MyAtMSA4MiAtODYgMyAtODYgMyAxIDgyIDIgODIgLTg3IDMgLTg2IDMgMCAtNzN6Ii8%2BPHBhdGggZD0iTTM5MzIgNDgyMCBjLTQgLTMgLTcgLTQyIC02IC04NiBsMCAtODIgLTc5IDIgYy00MyAxIC04MiAtMSAtODYgLTQgLTQgLTMgLTcgLTQxIC03IC04NSBsMSAtODAgNzAgLTIgYzEwNCAtMyAxMDEgLTUgMTAwIDgzIC0xIDg5IDAgOTAgMTAxIDg5IGw3MCAtMiAtMiA4MSBjLTEgNDUgLTIgODQgLTMgODcgLTEgNiAtMTUwIDYgLTE1OSAtMXoiLz48cGF0aCBkPSJNNDEwMiA0NjQ1IGMtMyAtNSAtNiAtNDQgLTcgLTg3IGwwIC03NiA4NSAwIDg2IDEgMCA4NSAtMSA4NSAtNzggMSBjLTQ0IDEgLTgyIC0zIC04NSAtOXoiLz48cGF0aCBkPSJNMjg0MCA0NTUzIGMtMzAzIC02MyAtNTUyIC0zMTAgLTYwNCAtNTk5IC0xOCAtOTkgLTEyIC05MSAtNjkgLTk4IC0xNDkgLTIwIC0xMzAgLTI1IC0xNzUgNDEgLTc0IDEwOCAtMTg0IDIwMSAtMzEyIDI2MSAtNjkgMzMgLTE5NyA2MyAtMjc3IDY1IC02NCAyIC03NiAtMSAtOTUgLTIxIC0yMyAtMjIgLTIzIC0yNiAtMjYgLTMyNiBsLTMgLTMwMyAtNDIgLTIzIGMtMjYwIC0xNDMgLTUyMiAtMzg5IC02ODIgLTY0MiBsLTMwIC00NyAtMTkwIC0xIGMtMTA0IDAgLTIwMiAtMyAtMjE3IC03IC00MCAtMTEgLTk2IC02OSAtMTA4IC0xMTEgLTggLTI1IC0xMCAtMjE0IC04IC01ODMgbDMgLTU0NSAyNyAtNDEgYzQ1IC02OSA3MyAtNzYgMzAyIC03OCAxNTUgLTEgMjAxIC00IDIwNCAtMTQgNiAtMTggMTA4IC0xNjcgMTQxIC0yMDQgMTE4IC0xMzcgMjA3IC0yMjQgMzIwIC0zMTEgNDIgLTMyIDEwMCAtNzIgMTI4IC04OCAyOSAtMTcgNTYgLTM1IDYwIC00MSA0IC02IDcgLTE1OCA4IC0zMzcgMCAtMzIyIDEgLTMyNSAyNCAtMzY2IDE0IC0yNSA0MCAtNTEgNjUgLTY1IDQwIC0yMyA0NyAtMjMgMzIxIC0yNCAxNTQgMCAyOTYgMyAzMTYgOCA0OSAxMiAxMDUgNjYgMTE4IDExNCA2IDIxIDExIDEwOSAxMSAxOTYgMCAxNDYgMSAxNTggMTggMTUzIDkgLTMgNDIgLTggNzIgLTExIDMwIC0zIDYyIC04IDcwIC0xMCAzNyAtMTAgMjA5IC0xOSAzNTUgLTE5IDIzMCAwIDMzNiAxMSA1ODkgNjAgNjYgMTIgMjM2IDYwIDMxOSA4OSA1NCAxOSAxMDEgMzUgMTA1IDM1IDQgMCA3IC0xMDcgNyAtMjM4IDAgLTIyNiAxIC0yMzkgMjIgLTI4MyAxNiAtMzEgMzYgLTUzIDY1IC02OSA0MyAtMjQgNDUgLTI0IDMzOCAtMjQgMzM1IDAgMzQ2IDIgMzk3IDc3IGwyOCA0MiAxIDU1MSAxIDU1MSA0NCA1OSBjMTQ0IDE5MCAyNDAgNDE1IDI4MyA2NjEgNCAyMiAxMyAyNCA0OSAxMCA0NSAtMTkgNTAgLTM4IDUyIC0yMjIgMSAtMTM3IDMgLTE1NCAyNCAtMTkxIDMwIC01MyA4NCAtODQgMTUzIC04OCAyOSAtMiA1OSAtMSA2NiAyIDggMyAxMiAzMCAxMiA4NyBsMCA4MiAtNDIgLTEgLTQzIC0xIC0xIDE1NSBjLTEgMTM0IC00IDE2MiAtMjEgMjAyIC0zNiA4MCAtOTYgMTI4IC0xOTIgMTUyIGwtNDMgMTIgLTQgNzQgYy0yIDQxIC02IDkxIC0xMCAxMTAgLTMgMTkgLTggNDYgLTExIDYwIC0zMiAxODEgLTEyNiAzOTQgLTI1MSA1NzAgLTU2IDc4IC0yNDAgMjc2IC0zMTcgMzQwIC0xMDUgODcgLTMwMSAyMTQgLTQwOCAyNjQgbC0zOSAxOCA4IDcxIGMxNCAxNDEgNiAyMzIgLTMxIDM0NSAtODkgMjY0IC0zMDUgNDU2IC01ODQgNTE4IC01NCAxMiAtMjI4IDEwIC0yOTEgLTN6Ii8%2BPHBhdGggZD0iTTM5MzEgNDQ3NSBjLTYgLTggLTcgLTEwNCAtMiAtMTUzIDEgLTEwIDIyIC0xMiA4NCAtMTAgbDgyIDMgMCA3OCBjMSA0MyAtMyA4MSAtOCA4NCAtMTcgMTAgLTE0OCA4IC0xNTYgLTJ6Ii8%2BPHBhdGggZD0iTTQ2OTQgNDA1OCBsMSAtODMgLTg2IC0zIC04NiAtMyAwIC04NCAwIC04NCA4NiAtMyA4NiAtMyAtMSAtODMgLTEgLTgzIDg2IDMgODYgMyAwIDgwIDAgODAgLTg2IDMgLTg2IDMgMSA4NCAwIDg0IDg1IDMgODUgMyAxIDgzIDEgODIgLTg3IDAgLTg3IDAgMiAtODJ6Ii8%2BPHBhdGggZD0iTTQ4NjQgMzg4OCBsMSAtODMgODUgMCA4NSAwIDAgODAgLTEgODAgLTg1IDMgLTg1IDMgMCAtODN6Ii8%2BPC9nPjwvc3ZnPg%3D%3D)](https://coindrop.to/smoochy) [![Tip me uptime](https://img.shields.io/badge/Tip%20me%20uptime%20%F0%9F%96%A5%EF%B8%8F-smoochy84-E9C46A?logo=buymeacoffee&logoColor=000000)](https://www.buymeacoffee.com/smoochy84) [![Ko-fi](https://img.shields.io/badge/Ko--fi-smoochy-7CC6FE?logo=ko-fi&logoColor=000000)](https://ko-fi.com/smoochy)
 
 <p align="center">
-  This project exists because of <a href="https://github.com/Serhii-Leniv/claude-router">Serhii-Leniv/claude-router</a>'s work - all credit for the original routing idea and implementation goes upstream. Released independently as <code>-smoo</code> tarballs; see <a href="docs/BRANCHING.md">docs/BRANCHING.md</a> for how this fork tracks it.
+  This project exists because of <a href="https://github.com/Serhii-Leniv/claude-router">Serhii-Leniv/claude-router</a>'s work - all credit for the original routing idea and implementation goes upstream. Released independently as <code>-smoo</code> tarballs; see <a href="https://github.com/smoochy/Claude-router/blob/smoo/main/docs/BRANCHING.md">docs/BRANCHING.md</a> for how this fork tracks it.
 </p>
 
 > [!WARNING]
@@ -27,6 +29,13 @@
 > - **`history.jsonl` is a ledger of your traffic**: model, cost, role, session ID, and session titles read from Claude Code's transcripts. Treat it as sensitive, not as a plain log file.
 
 ---
+
+## What this fork adds
+
+- **A `routingMode` switch.** `route` routes every call, `observe` forwards the client's model untouched but still records every request, and `off` neither routes nor records. The dashboard splits the recorded history by mode so the three can be compared.
+- **A generated model and price list.** Prices and model ids come from a CI-generated list, read remote first, then from a local cache, then from a build-time snapshot. The defaults are the Claude 5.5 generation, and a configured tier id that is missing from the list triggers a warning, also in `doctor`.
+- **A security gate and releases.** Every release goes through an `/appsec` and `/security-review` gate, versions are the upstream version plus a `-smoo.<n>` suffix, each release is published to npm and attached as a tarball, and a workflow opens a pull request whenever upstream tags a new release.
+- **Dashboard filters and cost display.** Filter by role, model, tier, session and time window, see in a Pin column whether the requested model was honored, and read every dollar amount with four decimals.
 
 **Cut your Anthropic API bill by routing every request to the cheapest Claude model that can handle it — Haiku, Sonnet, or Opus.** `claude-router` is a self-hosted, drop-in proxy: point any Anthropic-compatible app (Claude Code, Cursor, Cline, or your own SDK code) at it with one environment variable and get automatic, complexity-aware model routing — **zero code changes, no SaaS in your request path, no per-token markup**. Every response reports exactly what you saved.
 
@@ -44,7 +53,7 @@
 ## Contents
 
 - [Quick start](#quick-start) · [How it works](#how-it-works) · [Configuration](#configuration) · [CLI reference](#cli-reference)
-- [Pricing & savings](#pricing--savings) · [Other providers](#other-providers) · [Use as a library](#use-as-a-library) · [Authentication & security](#authentication--security)
+- [Pricing & savings](#pricing--savings) · [Other providers](https://github.com/smoochy/Claude-router/blob/smoo/main/docs/providers.md) · [Use as a library](https://github.com/smoochy/Claude-router/blob/smoo/main/docs/library.md) · [Authentication & security](#authentication--security)
 
 ## Features
 
@@ -327,130 +336,10 @@ The standing caveats are in [research/README.md](research/README.md#standing-cav
 
 ---
 
-## Other providers
+## Other providers and library use
 
-The proxy binds to `127.0.0.1` by default — only your own machine can reach it.
-
-> ⚠️ **Fable on Bedrock / Vertex is not wired up.** Fable 5's inference-profile ID on those platforms is unverified, so the `fable` tier resolves to **Opus** there rather than risking a 404 — a request routed to fable on Bedrock or Vertex silently runs on Opus instead. This is inert while `routing.allowFable` is off (the default). If you enable fable on Bedrock or Vertex, set the real ID yourself via `tiers.fable` in `~/.claude-router/config.json` and verify it against your console first. On the first-party Anthropic API, fable routes to `claude-fable-5` as expected.
-
-### AWS Bedrock
-
-```bash
-npm install @anthropic-ai/bedrock-sdk
-
-AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=... AWS_REGION=us-east-1 \
-  npx @smoochy/claude-router start --provider bedrock --port 4000
-# auth comes from AWS env vars — no x-api-key needed
-export ANTHROPIC_BASE_URL=http://localhost:4000
-```
-
-### Google Vertex AI
-
-```bash
-npm install @anthropic-ai/vertex-sdk
-gcloud auth application-default login
-
-ANTHROPIC_VERTEX_PROJECT_ID=my-project \
-  npx @smoochy/claude-router start --provider vertex --port 4000
-```
-
----
-
-## Use as a library
-
-Prefer to route inside your own app instead of running a proxy? Import it directly.
-
-```bash
-npm install @smoochy/claude-router
-```
-
-```typescript
-import { createRouter } from '@smoochy/claude-router';
-
-const router = createRouter({ apiKey: process.env.ANTHROPIC_API_KEY!, verbose: true });
-
-const response = await router.send({
-  messages: [{ role: 'user', content: 'Translate to French: Hello world' }],
-  max_tokens: 100,
-});
-
-console.log(response.meta.tier);       // 'haiku'
-console.log(response.meta.savedCents); // 1.2
-```
-
-**Streaming** — `await router.stream(...)` classifies first, then returns the real SDK `MessageStream`; `meta` resolves after the stream completes:
-
-```typescript
-const { stream, meta } = await router.stream({
-  messages: [{ role: 'user', content: 'Write a detailed essay on quantum computing' }],
-  max_tokens: 4096,
-});
-
-for await (const event of stream) {
-  // standard @anthropic-ai/sdk stream events; .on()/.finalMessage() work too
-}
-
-const routeMeta = await meta;
-console.log(routeMeta.tier); // 'sonnet'
-```
-
-**Force a tier / read session stats:**
-
-```typescript
-await router.send({ messages: [/* … */], max_tokens: 50, tier: 'opus' }); // skip the classifier
-
-console.log(router.stats());
-// { totalCostCents: 5.3, totalSavedCents: 47.3, callCount: 120,
-//   tierBreakdown: { haiku: 72, sonnet: 41, opus: 7 } }
-```
-
-<details>
-<summary><strong>Full <code>createRouter</code> options and <code>RouteMeta</code> shape</strong></summary>
-
-```typescript
-const router = createRouter({
-  apiKey: 'sk-...',
-  classifier: 'hybrid',            // 'heuristic' | 'ai' | 'hybrid' (default: 'hybrid')
-  defaultModel: 'claude-sonnet-5', // baseline for savings (default: sonnet tier)
-  tiers: {                         // override model IDs per tier
-    haiku: 'claude-haiku-4-5',
-    sonnet: 'claude-sonnet-5',
-    opus: 'claude-opus-5',
-  },
-  pricing: {                       // override $/1M token pricing
-    'claude-sonnet-5': { input: 2.0, output: 10.0 },
-  },
-  fallback: true,                  // auto-fallback to next tier on rate limit (default: true)
-  verbose: true,                   // log routing decisions (default: false)
-  routing: {                       // classifier tuning (defaults shown)
-    allowFable: false,             // let classification reach fable (depth AND long-horizon evidence required)
-    aiTimeoutMs: 1500,             // AI classifier timeout → heuristic fallback
-    classifyCacheSize: 500,        // LRU size for AI results (0 disables)
-    allowHaikuInAgentic: false,    // let trivial tool-using turns reach haiku (default: floor at sonnet)
-  },
-});
-```
-
-Every `send` / `stream` response includes a `meta` object:
-
-```typescript
-interface RouteMeta {
-  tier: 'haiku' | 'sonnet' | 'opus';
-  model: string;
-  inputTokens: number;
-  outputTokens: number;
-  costCents: number;          // actual cost in cents
-  savedCents: number;         // vs baseline (negative when routed to opus)
-  classifierMethod: 'heuristic' | 'ai';
-  classifierMs: number;
-  confidence: number;         // 0–1
-  fallbackUsed: boolean;      // rate-limited and escalated
-  retried: boolean;           // auto-retried on bad output
-  retryReason: string | null; // 'truncation' | 'refusal' | null
-}
-```
-
-</details>
+- [Other providers](https://github.com/smoochy/Claude-router/blob/smoo/main/docs/providers.md): AWS Bedrock and Google Vertex AI, and the Fable caveat there.
+- [Use as a library](https://github.com/smoochy/Claude-router/blob/smoo/main/docs/library.md): route inside your own app with `createRouter` instead of running a proxy.
 
 ---
 

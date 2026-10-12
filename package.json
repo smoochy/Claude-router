@@ -1,7 +1,7 @@
 {
   "name": "@smoochy/claude-router",
   "version": "0.4.0-smoo.4",
-  "description": "TypeScript-native Claude API cost router — routes each call to Haiku/Sonnet/Opus/Fable using evidence-based gates, not keyword guesswork, to cut your Anthropic/Bedrock/Vertex bill",
+  "description": "Claude API cost router for Claude Code: routes each call to Haiku, Sonnet, Opus or Fable, with a route/observe/off switch, a CI-generated model and price list, and a security-gated release per version",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
@@ -38,9 +38,23 @@
     "anthropic-proxy",
     "llm-gateway",
     "orchestration",
-    "subagents"
+    "subagents",
+    "claude-5",
+    "cost-tracking",
+    "llm-proxy",
+    "model-routing"
   ],
   "author": "smoochy",
+  "contributors": [
+    {
+      "name": "Serhii Leniv",
+      "url": "https://github.com/Serhii-Leniv/claude-router"
+    }
+  ],
+  "funding": [
+    "https://ko-fi.com/smoochy",
+    "https://buymeacoffee.com/smoochy84"
+  ],
   "license": "MIT",
   "publishConfig": {
     "access": "public"
