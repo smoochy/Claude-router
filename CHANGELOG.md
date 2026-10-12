@@ -17,6 +17,7 @@ This fork's own sections use the upstream version plus a `-smoo.<n>` prerelease 
 
 ### Changed
 
+- The six dashboard screenshots in `docs/images/` are recaptured at high resolution from one scratch HOME with synthetic history and invented session names. The four filter and tooltip views are 3200 px wide (1600 px viewport at device pixel ratio 2); the two open-dropdown views (refresh interval, session filter) are real screen captures of a headed Chrome in kiosk mode at 2.4x on a 4K display, 3800 and 3840 px wide, with the native popup drawn by the OS, not composited. PNGs are losslessly re-encoded except the refresh-interval one, palette-quantized to stay under 1 MB. The session-filter alt text now also lists the No session id option.
 - Removed `docs/promo.png`, an unreferenced image that still advertised the upstream install command, site and the old `--force-route` flag.
 
 - README "What this fork adds" now shows four dashboard screenshots (overview, observe mode filter, role plus window filter, and a hover tooltip), kept in `docs/images/` and captured from a local build over synthetic history.
