@@ -7,6 +7,10 @@ This fork's own sections use the upstream version plus a `-smoo.<n>` prerelease 
 
 ## [Unreleased]
 
+### Security
+
+- `sync-upstream.yml` hardened per the v0.4.0-smoo.5 release gate: step outputs derived from the upstream tag name (`ref`, `branch`, `target`, `newbase`) reach shell only through `env:`, never inline `${{ }}`; `actions/checkout` runs with `persist-credentials: false` and SYNC_PUSH_TOKEN is supplied only to the steps that fetch, push or call `gh` (as an `http.extraheader` passed per command, masked); the conflict agent gets `Read,Edit,Write,Glob,Grep` plus Bash limited to `git add`, `git commit`, `git status`, `git diff`, `npm ci` and `npm test`, receives no ref in its prompt (the merge message is pre-seeded, the agent runs `git commit --no-edit`) and the action itself is given `github.token` instead of the PAT.
+
 ### Changed
 
 - README "What this fork adds" now shows four dashboard screenshots (overview, observe mode filter, role plus window filter, and a hover tooltip), kept in `docs/images/` and captured from a local build over synthetic history.

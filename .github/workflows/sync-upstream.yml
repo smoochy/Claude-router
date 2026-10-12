@@ -44,7 +44,6 @@ concurrency:
 
 env:
   UPSTREAM: https://github.com/Serhii-Leniv/Claude-router
-  GH_TOKEN: ${{ secrets.SYNC_PUSH_TOKEN || github.token }}
   IN_REF: ${{ inputs.ref }}
   IN_BASE: ${{ inputs.base_version }}
 
@@ -57,7 +56,7 @@ jobs:
         with:
           ref: smoo/main
           fetch-depth: 0
-          token: ${{ secrets.SYNC_PUSH_TOKEN || github.token }}
+          persist-credentials: false
 
       - name: Configure git
         run: |
@@ -75,18 +74,25 @@ jobs:
           cache: npm
 
       - name: Fast-forward master to upstream
+        env:
+          PUSH_TOKEN: ${{ secrets.SYNC_PUSH_TOKEN || github.token }}
         run: |
+          # The token lives only in this step's process arguments, never in .git/config.
+          AUTH=$(printf 'x-access-token:%s' "$PUSH_TOKEN" | base64 -w0); echo "::add-mask::$AUTH"
+          GA() { git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $AUTH" "$@"; }
           git fetch upstream master '+refs/tags/*:refs/upstream-tags/*'
-          git fetch origin master
+          GA fetch origin master
           git checkout -B master origin/master
           if ! git merge --ff-only upstream/master; then
             echo "::error::master cannot fast-forward to upstream/master (non-ff)"; exit 1
           fi
-          git push origin master
+          GA push origin master
           git checkout smoo/main
 
       - name: Decide whether a sync PR is due
         id: due
+        env:
+          GH_TOKEN: ${{ secrets.SYNC_PUSH_TOKEN || github.token }}
         run: |
           REF="$IN_REF"
           if [ -z "$REF" ]; then
@@ -112,10 +118,15 @@ jobs:
       - name: Merge upstream into the sync branch
         id: merge
         if: steps.due.outputs.due == 'true'
+        env:
+          REF: ${{ steps.due.outputs.ref }}
+          BRANCH: ${{ steps.due.outputs.branch }}
+          TARGET: ${{ steps.due.outputs.target }}
         run: |
-          git checkout -B "${{ steps.due.outputs.branch }}" smoo/main
-          if git merge --no-ff --no-commit "${{ steps.due.outputs.target }}"; then
-            git commit -m "Merge upstream ${{ steps.due.outputs.ref }} into smoo/main"
+          git checkout -B "$BRANCH" smoo/main
+          # -m seeds MERGE_MSG, so the agent commits with --no-edit and never sees the ref.
+          if git merge --no-ff --no-commit -m "Merge upstream $REF into smoo/main" "$TARGET"; then
+            git commit --no-edit
             echo "conflicts=false" >> "$GITHUB_OUTPUT"
           else
             echo "conflicts=true" >> "$GITHUB_OUTPUT"
@@ -126,18 +137,21 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          github_token: ${{ secrets.SYNC_PUSH_TOKEN || github.token }}
+          github_token: ${{ github.token }}
           prompt: |
-            A `git merge --no-ff --no-commit` of upstream ${{ steps.due.outputs.ref }} into this branch (smoo/main) stopped on conflicts and is still in progress in the working tree. Resolve every conflicted file: trace each side of every hunk back to why that change was made, keep both intents, and pick one side only where they are incompatible (this fork's own work lives on smoo/main; upstream's work is the incoming side). Do not abort the merge and do not touch the version in package.json or package-lock.json (a later step bumps it). Run `npm ci && npm test` and fix what the merge broke. Then `git add -A` and commit with `git commit -m "Merge upstream ${{ steps.due.outputs.ref }} into smoo/main"`. Finally write `${{ runner.temp }}/resolution.md`: one bullet per conflicted hunk as `file:lines - kept <ours|theirs|both> because <reason>`. Plain ASCII hyphens, one line per bullet.
-          claude_args: '--allowedTools "Bash,Read,Edit,Write,Glob,Grep"'
+            A `git merge --no-ff --no-commit` of the upstream release into this branch (smoo/main) stopped on conflicts and is still in progress in the working tree. Resolve every conflicted file: trace each side of every hunk back to why that change was made, keep both intents, and pick one side only where they are incompatible (this fork's own work lives on smoo/main; upstream's work is the incoming side). Do not abort the merge and do not touch the version in package.json or package-lock.json (a later step bumps it). Run `npm ci`, then `npm test` (two separate commands) and fix what the merge broke. Then `git add -A` and run `git commit --no-edit` (the merge message is already prepared). Finally write `${{ runner.temp }}/resolution.md`: one bullet per conflicted hunk as `file:lines - kept <ours|theirs|both> because <reason>`. Plain ASCII hyphens, one line per bullet.
+          claude_args: '--allowedTools "Read,Edit,Write,Glob,Grep,Bash(git add:*),Bash(git commit:*),Bash(git status:*),Bash(git diff:*),Bash(npm ci),Bash(npm test)"'
 
       - name: Bump the upstream base and verify
         if: steps.due.outputs.due == 'true'
+        env:
+          TARGET: ${{ steps.due.outputs.target }}
+          NEWBASE: ${{ steps.due.outputs.newbase }}
         run: |
           set -e
           [ -z "$(git ls-files -u)" ] || { echo "::error::unresolved conflicts remain"; exit 1; }
-          git merge-base --is-ancestor "${{ steps.due.outputs.target }}" HEAD || { echo "::error::merge commit missing"; exit 1; }
-          NEW=$(node scripts/sync-upstream.mjs bump "$(node -p "require('./package.json').version")" "${{ steps.due.outputs.newbase }}")
+          git merge-base --is-ancestor "$TARGET" HEAD || { echo "::error::merge commit missing"; exit 1; }
+          NEW=$(node scripts/sync-upstream.mjs bump "$(node -p "require('./package.json').version")" "$NEWBASE")
           npm version "$NEW" --no-git-tag-version --allow-same-version
           node -e "const f='plugin/.claude-plugin/plugin.json',fs=require('fs'),j=JSON.parse(fs.readFileSync(f));j.version=process.argv[1];fs.writeFileSync(f,JSON.stringify(j,null,2)+'\n')" "$NEW"
           npm ci
@@ -148,11 +162,16 @@ jobs:
 
       - name: Push and open the sync PR
         if: steps.due.outputs.due == 'true'
+        env:
+          B: ${{ steps.due.outputs.branch }}
+          REF: ${{ steps.due.outputs.ref }}
+          PUSH_TOKEN: ${{ secrets.SYNC_PUSH_TOKEN || github.token }}
         run: |
-          B="${{ steps.due.outputs.branch }}"
-          git push -u origin "$B"
+          export GH_TOKEN="$PUSH_TOKEN"
+          AUTH=$(printf 'x-access-token:%s' "$PUSH_TOKEN" | base64 -w0); echo "::add-mask::$AUTH"
+          git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $AUTH" push -u origin "$B"
           {
-            echo "Merges upstream ${{ steps.due.outputs.ref }} into smoo/main and bumps the version to \`$version\` (upstream base only, the -smoo counter is kept). This is the release PR: the security gate runs here, and merge starts tag, GitHub Release and npm publish."
+            echo "Merges upstream $REF into smoo/main and bumps the version to \`$version\` (upstream base only, the -smoo counter is kept). This is the release PR: the security gate runs here, and merge starts tag, GitHub Release and npm publish."
             echo
             echo "Review the resolution with \`git show --remerge-diff <merge commit>\`."
             echo
@@ -164,7 +183,7 @@ jobs:
           } > "$RUNNER_TEMP/body.md"
           gh label create upstream-sync -R "$GITHUB_REPOSITORY" --color ededed --description "Automated upstream sync" 2>/dev/null || true
           gh pr create -R "$GITHUB_REPOSITORY" --base smoo/main --head "$B" \
-            --title "Sync upstream ${{ steps.due.outputs.ref }} ($version)" \
+            --title "Sync upstream $REF ($version)" \
             --body-file "$RUNNER_TEMP/body.md" --label upstream-sync
 
   notify-failure:
