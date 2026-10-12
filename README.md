@@ -79,8 +79,8 @@ claude-router install
 
 - starts the proxy in the background and registers it to start on login (Windows Run key, macOS LaunchAgent, Linux systemd user unit);
 - points Claude Code at the proxy through its own `~/.claude/settings.json` `env` block — no shell rc edit, no `setx`, no new terminal;
-- applies the Claude Code profile and saves it to `~/.claude-router/config.json`: routing forced on (Claude Code pins a model on every request, so nothing routes otherwise), the main session pinned to Opus, delegation restored, subagents routed by role;
-- installs the [orchestration plugin](#orchestration-mode-claude-code) (role agents + session policy) and a statusline.
+- saves the defaults to `~/.claude-router/config.json`: `routingMode: "route"` (Claude Code pins a model on every request, so nothing routes otherwise) and `restoreDelegation: true`, with no session pin unless you pass `--session-model`; `start` and `init` use the same defaults;
+- installs the [orchestration plugin](#orchestration-mode-claude-code) (role agents + session policy). The statusline is opt-in: add `--statusline`; an already installed one is never removed by a re-run.
 
 From then on the plugin's session-start hook keeps it honest: if the proxy isn't running it starts it, and every session opens with one line saying `claude-router: enforcing — …` or why not.
 
@@ -97,7 +97,7 @@ claude-router uninstall # remove everything install added
 
 Watch routing live in the logs, or open the dashboard at `http://localhost:4000/dashboard`.
 
-> **Only want a plain proxy for SDK apps?** `claude-router install --api-only` skips the Claude Code profile and plugin and exports `ANTHROPIC_BASE_URL` in your shell instead (add `--shell-env` to a normal install to get both). Explicit model requests then pass through untouched unless you start with `--force-route`.
+> **Only want a plain proxy for SDK apps?** `claude-router install --api-only` skips the Claude Code profile and plugin and exports `ANTHROPIC_BASE_URL` in your shell instead (add `--shell-env` to a normal install to get both). The routing defaults are the same; add `--routing-mode observe` to let explicit model requests pass through untouched.
 
 ### Any app, without installing
 
@@ -150,7 +150,7 @@ Every decision carries a `reason` (e.g. `agentic:mid-loop`), so routing is audit
 Claude Code's main interactive session is your coordinator — it holds the growing plan and delegates work to subagents. If it routes to Sonnet, its 200k context window fills fast and compaction kicks in early. `--session-model opus` keeps that one session on Opus (large window, no early compaction) while everything the router does for **subagents** stays intact:
 
 ```bash
-claude-router start --force-route --session-model opus
+claude-router start --session-model opus
 # or in ~/.claude-router/config.json:  "sessionModel": "opus"
 ```
 
@@ -165,7 +165,7 @@ The pin also requires the request to **carry tools**, which every real coordinat
 The proxy already sees every request Claude Code makes, so it can do more than pick a model per turn: it can run the whole session as a coordinator on the top tier with role agents carrying the volume on cheaper tiers — and enforce that, and measure it.
 
 ```bash
-claude-router install --force-route --session-model opus --restore-delegation
+claude-router install --session-model opus
 # then restart Claude Code
 ```
 
@@ -203,13 +203,13 @@ Without a marker, a read-only agent Claude Code already runs on haiku (the built
 
 ## Configuration
 
-Set defaults once in `~/.claude-router/config.json` instead of passing flags. **CLI flags always override the file.** Scaffold it with `claude-router init --force-route --port 4000`.
+Set defaults once in `~/.claude-router/config.json` instead of passing flags. **CLI flags always override the file.** Scaffold it with `claude-router init --port 4000`.
 
 ```json
 {
   "port": 4000,
   "classifier": "hybrid",
-  "forceRoute": true,
+  "routingMode": "route",
   "verbose": false,
   "sessionModel": "opus",
   "tiers": {
@@ -257,8 +257,8 @@ claude-router --version, -V         Print version
 Options (install / start / restart / status / doctor):
   --port, -p <number>    Port (default: 4000)
   --host <address>       Bind address (default: 127.0.0.1 — local only)
-  --force-route          Route every request, ignoring the client's model (needed for Claude Code)
-  --session-model <tier> Pin the Claude Code coordinator session to a tier (haiku|sonnet|opus|fable); subagents still route. Needs --force-route
+  --routing-mode <mode>  route (default) | observe | off. --force-route is an alias for route
+  --session-model <tier> Pin the Claude Code coordinator session to a tier (haiku|sonnet|opus|fable); subagents still route. Off by default
   --verbose, -v          Log routing decisions
   --classifier <mode>    heuristic | ai | hybrid (default: hybrid)
   --provider <mode>      anthropic | bedrock | vertex (default: anthropic)
@@ -267,7 +267,7 @@ Options (install / start / restart / status / doctor):
 Install-only options:
   --no-autostart         Skip login autostart registration
   --no-env               Skip setting ANTHROPIC_BASE_URL
-  --no-statusline        Skip the Claude Code statusline
+  --statusline           Add the Claude Code statusline (off by default; --no-statusline is accepted and does nothing)
 ```
 
 **Something not routing?** Run `claude-router doctor` — it checks the Node version, config validity, proxy health on your port, `ANTHROPIC_BASE_URL`, credentials, stale daemon state, autostart, and the statusline, with a fix hint for anything that fails.

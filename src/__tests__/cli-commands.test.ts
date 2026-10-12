@@ -247,7 +247,7 @@ describe('startBanner', () => {
     // The pin skips the classifier for the main session, so it belongs on the
     // banner — and silently doing nothing outside routing mode route is worse
     // than saying so.
-    const inert = banner(['--session-model', 'opus']).map((l) => l.text).join('\n');
+    const inert = banner(['--session-model', 'opus', '--routing-mode', 'observe']).map((l) => l.text).join('\n');
     assert.match(inert, /Session/);
     assert.match(inert, /needs --routing-mode route to take effect/);
 
@@ -263,5 +263,25 @@ describe('startBanner', () => {
     assert.match(redirected, /\(not Anthropic\)/);
 
     assert.ok(!banner([]).map((l) => l.text).join('\n').includes('Upstream'));
+  });
+});
+
+describe('init routing defaults', () => {
+  it('scaffolds route and restoreDelegation without a session pin', async () => {
+    const paths = tempHome();
+    const result = await main(['init'], paths);
+    assert.equal(result.exitCode, 0);
+    const written = JSON.parse(fs.readFileSync(paths.configFile, 'utf8'));
+    assert.equal(written.routingMode, 'route');
+    assert.equal(written.restoreDelegation, true);
+    assert.equal('sessionModel' in written, false);
+  });
+});
+
+describe('install help', () => {
+  it('documents --statusline as opt-in and --no-statusline as a no-op alias', async () => {
+    const t = text(await main(['help'], tempHome()));
+    assert.match(t, /--statusline\s+Add the Claude Code statusline/);
+    assert.match(t, /--no-statusline is accepted and does nothing/);
   });
 });

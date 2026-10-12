@@ -10,10 +10,10 @@ import {
   parseServeArgs,
   routerPaths,
   serveArgsFrom,
+  configFromOptions,
   suggestCommand,
   OPTIONS,
   helpOptionLines,
-  withInstallProfile,
 } from '../proxy/cli-config.js';
 
 describe('parseServeArgs', () => {
@@ -23,7 +23,7 @@ describe('parseServeArgs', () => {
     assert.equal(opts.host, '127.0.0.1', 'must bind local-only by default');
     assert.equal(opts.classifier, 'hybrid');
     assert.equal(opts.provider, 'anthropic');
-    assert.equal(opts.forceRoute, false);
+    assert.equal(opts.forceRoute, true);
   });
 
   it('parses --host and file-config host', () => {
@@ -71,7 +71,7 @@ describe('parseServeArgs', () => {
       {
         port: 4100, host: '127.0.0.1', verbose: true, classifier: 'heuristic', provider: 'bedrock',
         region: 'eu-west-1', routingMode: 'route', forceRoute: true, upstream: 'https://api.anthropic.com', sessionModel: '',
-        restoreDelegation: false, captureSystemPrompt: false, roleRouting: 'on',
+        restoreDelegation: true, captureSystemPrompt: false, roleRouting: 'on',
         tiers: undefined, pricing: undefined, routing: undefined, roles: undefined, agents: undefined,
       },
     );
@@ -121,9 +121,9 @@ describe('parseServeArgs', () => {
 });
 
 describe('routingMode', () => {
-  it('defaults to observe', () => {
-    assert.equal(parseServeArgs([]).routingMode, 'observe');
-    assert.equal(parseServeArgs([]).forceRoute, false);
+  it('defaults to route', () => {
+    assert.equal(parseServeArgs([]).routingMode, 'route');
+    assert.equal(parseServeArgs([]).forceRoute, true);
   });
 
   it('parses --routing-mode and derives forceRoute from it', () => {
@@ -274,25 +274,30 @@ describe('role routing options', () => {
   });
 });
 
-describe('withInstallProfile', () => {
-  it('fills force-route, opus pin and delegation restore under the file config', () => {
-    const merged = withInstallProfile({}, false);
-    assert.deepEqual(merged, { forceRoute: true, sessionModel: 'opus', restoreDelegation: true });
-    const opts = parseServeArgs([], merged);
-    assert.equal(opts.forceRoute, true);
-    assert.equal(opts.sessionModel, 'opus');
+describe('shared install/start/init defaults', () => {
+  it('route, restoreDelegation and no session pin with no args and no file', () => {
+    const opts = parseServeArgs([]);
+    assert.equal(opts.routingMode, 'route');
     assert.equal(opts.restoreDelegation, true);
+    assert.equal(opts.sessionModel, '');
   });
 
-  it('the user\'s config and flags win over the profile', () => {
-    const merged = withInstallProfile({ sessionModel: 'sonnet', port: 4100 }, false);
-    assert.equal(merged.sessionModel, 'sonnet');
-    assert.equal(merged.port, 4100);
-    assert.equal(parseServeArgs(['--session-model', 'haiku'], merged).sessionModel, 'haiku');
+  it('observe and off stay selectable, and a file can switch delegation off', () => {
+    assert.equal(parseServeArgs(['--routing-mode', 'observe']).routingMode, 'observe');
+    assert.equal(parseServeArgs(['--routing-mode', 'off']).routingMode, 'off');
+    assert.equal(parseServeArgs([], { restoreDelegation: false }).restoreDelegation, false);
   });
 
-  it('api-only leaves the file config untouched', () => {
-    assert.deepEqual(withInstallProfile({ port: 4100 }, true), { port: 4100 });
-    assert.equal(parseServeArgs([], withInstallProfile({}, true)).forceRoute, false);
+  it('the scaffolded config carries the same routing defaults and no sessionModel', () => {
+    const config = configFromOptions(parseServeArgs([]));
+    assert.equal(config.routingMode, 'route');
+    assert.equal(config.restoreDelegation, true);
+    assert.equal('sessionModel' in config, false);
+  });
+
+  it('serve args omit the derived and default routing flags', () => {
+    assert.ok(!serveArgsFrom(parseServeArgs([])).includes('--force-route'));
+    assert.deepEqual(serveArgsFrom(parseServeArgs(['--routing-mode', 'observe'])).slice(-2), ['--routing-mode', 'observe']);
   });
 });
+

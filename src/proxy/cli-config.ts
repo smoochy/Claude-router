@@ -67,8 +67,8 @@ export interface FileConfig {
    * request is still recorded (today's `forceRoute: false`).
    * `off` — no routing and no recording.
    *
-   * `forceRoute` stays as a backwards-compatible alias so `CLAUDE_CODE_PROFILE`
-   * and config.json files written before this field existed keep working:
+   * `forceRoute` stays as a backwards-compatible alias so
+   * config.json files written before this field existed keep working:
    * `true` -> `route`, `false` -> `observe`. See {@link routingModeFromForceRoute}.
    */
   routingMode?: RoutingMode;
@@ -207,11 +207,11 @@ export const OPTIONS: readonly OptionSpec[] = [
     arg: 'number', help: 'Port' },
   { key: 'host',       flags: ['--host'],          kind: { type: 'string' },                     default: DEFAULT_HOST,
     arg: 'address', help: 'Bind address — 127.0.0.1 is local only; 0.0.0.0 exposes the proxy to the network' },
-  { key: 'routingMode', flags: ['--routing-mode'], kind: { type: 'enum', values: ['route', 'observe', 'off'] }, default: 'observe', configAlways: true,
+  { key: 'routingMode', flags: ['--routing-mode'], kind: { type: 'enum', values: ['route', 'observe', 'off'] }, default: 'route', configAlways: true,
     arg: 'mode', help: '`route` routes, `observe` passes through and still records, `off` passes through and records nothing' },
   // Deprecated alias for routingMode (true -> route, false -> observe). Kept for
   // scripts/configs written before routingMode existed; see parseServeArgs.
-  { key: 'forceRoute', flags: ['--force-route'],   kind: { type: 'boolean' },                    default: false, configAlways: true,
+  { key: 'forceRoute', flags: ['--force-route'],   kind: { type: 'boolean' },                    default: true, configAlways: true,
     help: 'Deprecated alias for --routing-mode route — required for Claude Code' },
   { key: 'verbose',    flags: ['--verbose', '-v'], kind: { type: 'boolean' },                    default: false, configAlways: true,
     help: 'Log each routing decision' },
@@ -227,8 +227,8 @@ export const OPTIONS: readonly OptionSpec[] = [
   // Empty default = disabled. A tier name pins the Claude Code coordinator session.
   { key: 'sessionModel', flags: ['--session-model'], kind: { type: 'enum', values: ['haiku', 'sonnet', 'opus', 'fable'] }, default: '',
     arg: 'tier', help: 'Pin the Claude Code main session to one tier; subagents still route by evidence (needs --force-route)' },
-  // Off by default: the one place the proxy edits a prompt. See src/proxy/delegation.ts.
-  { key: 'restoreDelegation', flags: ['--restore-delegation'], kind: { type: 'boolean' }, default: false, configAlways: true,
+  // On by default (the one place the proxy edits a prompt, and only under route). See src/proxy/delegation.ts.
+  { key: 'restoreDelegation', flags: ['--restore-delegation'], kind: { type: 'boolean' }, default: true, configAlways: true,
     help: 'Strip the injected "do not spawn agents" lines so a pinned session can still delegate' },
   // Off by default, and configAlways is deliberately absent: a scaffolded
   // config.json never mentions this key unless someone turned it on. The file
@@ -284,7 +284,7 @@ function coerce(spec: OptionSpec, raw: string | undefined): string | number | bo
 export function parseServeArgs(args: string[], file: FileConfig = {}): ServeOptions {
   const values: Record<string, string | number | boolean> = {};
   // Alias: a file with `forceRoute` but no `routingMode` of its own picks the
-  // routingMode default — covers CLAUDE_CODE_PROFILE and config.json files
+  // routingMode default — covers config.json files
   // written before routingMode existed.
   const fileRoutingModeDefault = file.routingMode ?? (file.forceRoute !== undefined ? routingModeFromForceRoute(file.forceRoute) : undefined);
   for (const spec of OPTIONS) {
@@ -355,6 +355,7 @@ export function serveArgsFrom(options: ServeOptions): string[] {
   const args: string[] = [];
   for (const spec of OPTIONS) {
     const value = (options as unknown as Record<string, unknown>)[spec.key];
+    if (spec.key === 'forceRoute') continue; // derived alias of routingMode
     if (!(spec.argAlways || value !== spec.default)) continue;
     if (spec.kind.type === 'boolean') args.push(spec.flags[0]!);
     else args.push(spec.flags[0]!, String(value));
@@ -422,24 +423,4 @@ export function suggestCommand(input: string, commands: string[]): string | null
     }
   }
   return best;
-}
-
-/**
- * What `claude-router install` sets up unless told `--api-only`: the Claude
- * Code profile. Claude Code pins a model on every request, so a proxy that is
- * not force-routing does nothing for it; the coordinator is pinned to opus and
- * delegation restored so the orchestration plugin has something to orchestrate.
- * The profile sits **under** the config file (a user's explicit choice wins)
- * and under the flags, and `install` persists the result to config.json so a
- * later `claude-router start -d` — the plugin's self-start included — carries
- * the same behaviour.
- */
-export const CLAUDE_CODE_PROFILE: FileConfig = {
-  forceRoute: true,
-  sessionModel: 'opus',
-  restoreDelegation: true,
-};
-
-export function withInstallProfile(file: FileConfig, apiOnly: boolean): FileConfig {
-  return apiOnly ? file : { ...CLAUDE_CODE_PROFILE, ...file };
 }
