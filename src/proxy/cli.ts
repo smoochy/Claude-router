@@ -37,7 +37,7 @@ import {
   serveArgsFrom,
   suggestCommand,
   type RouterPaths,
-  type ServeOptions, helpOptionLines, withInstallProfile, type FileConfig } from './cli-config.js';
+  type ServeOptions, helpOptionLines, type FileConfig } from './cli-config.js';
 import {
   checkHealth,
   isProcessAlive,
@@ -82,13 +82,12 @@ const COMMANDS = [
 function resolveOptions(
   args: string[],
   paths: RouterPaths,
-  profile: (file: FileConfig) => FileConfig = (file) => file,
 ): { options: ServeOptions; warnings: OutputLine[] } {
   const { config, error } = loadFileConfig(paths.configFile);
   const warnings = error
     ? [warnLine(`Ignoring invalid config at ${paths.configFile}: ${error}`)]
     : [];
-  return { options: parseServeArgs(args, profile(config ?? {})), warnings };
+  return { options: parseServeArgs(args, config ?? {}), warnings };
 }
 
 /** Split command-specific boolean flags out of an arg list before serve parsing. */
@@ -601,9 +600,9 @@ export function readLogTail(
 // ── install / uninstall ────────────────────────────────────────────────────
 
 async function cmdInstall(args: string[], paths: RouterPaths): Promise<CommandResult> {
-  const { rest, found } = extractFlags(args, ['--no-autostart', '--no-env', '--no-statusline', '--no-policy', '--api-only', '--shell-env']);
+  const { rest, found } = extractFlags(args, ['--no-autostart', '--no-env', '--statusline', '--no-statusline', '--no-policy', '--api-only', '--shell-env']);
   const apiOnly = found.has('--api-only');
-  const { options, warnings } = resolveOptions(rest, paths, (file) => withInstallProfile(file, apiOnly));
+  const { options, warnings } = resolveOptions(rest, paths);
   const serveArgs = serveArgsFrom(options);
 
   const lines: OutputLine[] = [
@@ -614,11 +613,10 @@ async function cmdInstall(args: string[], paths: RouterPaths): Promise<CommandRe
 
   // 0. Persist the effective options so every later start — `restart`, the
   //    autostart supervisor, the plugin's self-start — runs the same way.
-  //    Existing keys the user wrote stay; the profile only fills what is unset.
+  //    Existing keys the user wrote stay; the option defaults fill the rest.
   {
     const { config: existing } = loadFileConfig(paths.configFile);
     const merged = { ...configFromOptions(options), ...(existing ?? {}) };
-    if (!apiOnly) Object.assign(merged, { routingMode: options.routingMode, sessionModel: options.sessionModel || undefined, restoreDelegation: options.restoreDelegation });
     try {
       fs.mkdirSync(paths.configDir, { recursive: true, mode: 0o700 });
       fs.writeFileSync(paths.configFile, JSON.stringify(merged, null, 2) + '\n', { encoding: 'utf8', mode: 0o600 });
@@ -689,8 +687,8 @@ async function cmdInstall(args: string[], paths: RouterPaths): Promise<CommandRe
     }
   }
 
-  // 4. Claude Code statusline
-  if (!found.has('--no-statusline')) {
+  // 4. Claude Code statusline - opt-in; an installed one is never removed here (--no-statusline is a no-op alias)
+  if (found.has('--statusline')) {
     const result = addStatusline(options.port, paths);
     lines.push(stepLine(result));
     if (!result.ok && !result.skipped) failures++;
@@ -882,7 +880,7 @@ ${helpOptionLines().join('\n')}
 ${term.bold('Install-only options')}
   --no-autostart           Skip login autostart registration
   --no-env                 Skip setting ANTHROPIC_BASE_URL
-  --no-statusline          Skip the Claude Code statusline
+  --statusline             Add the Claude Code statusline (off by default; --no-statusline is accepted and does nothing)
   --no-policy              Skip the Claude Code orchestration plugin
   --shell-env              Also export ANTHROPIC_BASE_URL in your shell (for SDK apps)
   --api-only               Plain proxy for API clients: shell env only, no Claude Code profile or plugin
