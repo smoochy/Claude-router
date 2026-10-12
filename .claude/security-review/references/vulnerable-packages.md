@@ -1,3 +1,4 @@
+<!-- managed centrally - do not edit manually -->
 # Vulnerable & High-Risk Package Watchlist
 
 Load this during Step 2 (Dependency Audit). Check versions in the project's lock files.
