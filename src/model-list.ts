@@ -91,31 +91,46 @@ function writeCache(cachePath: string, entries: ModelListEntry[]): void {
 }
 
 /**
- * Remote list, else the last-good local cache, else the build-time snapshot
- * `DEFAULT_PRICING` table — in that order, each one only tried after the
- * previous one failed. This is the "local cache and built-in fallback" the
- * ticket asks for; there is no `schema_version` to gate on (the list
- * deliberately has none, see {@link MODEL_LIST_URL}'s doc comment), so an
- * incompatible future shape is caught by {@link isModelList} instead.
+ * Ids that were a built-in `DEFAULT_MODELS` value in an earlier release. A tier
+ * id equal to one of these is a stale default (a config written by an older
+ * `install`); any other id is a deliberate pin and is never touched. Append the
+ * outgoing id here whenever `DEFAULT_MODELS` moves.
  */
+export const FORMER_DEFAULT_MODELS: Record<Tier, readonly string[]> = {
+  haiku: ['claude-haiku-4-5', 'claude-haiku-4-5-20251001'],
+  sonnet: ['claude-sonnet-4-6', 'claude-sonnet-5'],
+  opus: ['claude-opus-4-6', 'claude-opus-4-8', 'claude-opus-5'],
+  fable: ['claude-fable-5'],
+};
+
+/** Newest model of the tier's family. The pricing table is inserted oldest-first by `created_at`, so the last matching key wins. */
+function newestOfFamily(tier: Tier, pricing: Record<string, ModelPricing>): string | undefined {
+  return Object.keys(pricing).filter((id) => id.includes(tier)).pop();
+}
+
+export interface StaleTier {
+  tier: Tier;
+  id: string;
+  /** Newest model of the same family, from the remote list, else the cache, else the built-in snapshot. */
+  replacement: string;
+}
+
 /**
- * Configured tier ids the model list does not carry. Not a routing or pricing
- * problem — `familyForModel` resolves an unlisted id by family substring, so
- * both stay correct — but it is evidence the tier config (hand-written or
- * `DEFAULT_MODELS`) names a superseded generation.
- *
- * `undefined` when `source` is `'snapshot'`: with no remote reach and no local
- * cache, there is nothing to validate the ids against, so the check is skipped
- * rather than warning about every tier.
+ * Configured tier ids that equal a former built-in default and have a newer
+ * model in their family. Works on every source, snapshot included: the former
+ * defaults are in code, and the snapshot orders the family by `created_at`.
  */
 export function staleTierIds(
-  tiers: Record<Tier, string>,
+  tiers: Partial<Record<Tier, string>>,
   modelList: ModelListResult,
-): Array<{ tier: Tier; id: string }> | undefined {
-  if (modelList.source === 'snapshot') return undefined;
-  return (Object.entries(tiers) as Array<[Tier, string]>)
-    .filter(([, id]) => !modelList.pricing[id])
-    .map(([tier, id]) => ({ tier, id }));
+): StaleTier[] {
+  const stale: StaleTier[] = [];
+  for (const [tier, id] of Object.entries(tiers) as Array<[Tier, string]>) {
+    if (!FORMER_DEFAULT_MODELS[tier]?.includes(id)) continue;
+    const replacement = newestOfFamily(tier, modelList.pricing);
+    if (replacement && replacement !== id) stale.push({ tier, id, replacement });
+  }
+  return stale;
 }
 
 const warnedStaleTiers = new Set<Tier>();
@@ -126,28 +141,52 @@ export function resetStaleTierWarnings(): void {
 }
 
 /**
- * Non-fatal startup warning for a stale tier id — once per tier per process,
- * same shape as {@link import('./routing.js').warnDeadRoutingKeys}. Must not
- * change routing or pricing, only tell the operator.
+ * `install`'s rewrite: mutate a config object so stale tier ids become their
+ * replacement and a `pricing` override keyed by a replaced id is dropped.
+ * Returns what was replaced.
  */
-export function warnStaleTierIds(
-  tiers: Record<Tier, string>,
+export function rewriteStaleTiers(
+  config: { tiers?: Partial<Record<Tier, string>>; pricing?: Record<string, unknown> },
+  modelList: ModelListResult,
+): StaleTier[] {
+  const replaced = staleTierIds(config.tiers ?? {}, modelList);
+  for (const { tier, id, replacement } of replaced) {
+    config.tiers![tier] = replacement;
+    if (config.pricing) delete config.pricing[id];
+  }
+  return replaced;
+}
+
+/**
+ * Replace stale tier ids in memory and warn once per tier per process (old id,
+ * new id). Returns the tiers to route with; the config on disk is untouched.
+ */
+export function applyStaleTierReplacements<T extends Partial<Record<Tier, string>>>(
+  tiers: T,
   modelList: ModelListResult,
   warn: (message: string) => void = console.warn,
-): void {
-  const stale = staleTierIds(tiers, modelList);
-  if (!stale) return;
-  for (const { tier, id } of stale) {
+): T {
+  const out = { ...tiers };
+  for (const { tier, id, replacement } of staleTierIds(tiers, modelList)) {
+    out[tier] = replacement as T[Tier];
     if (warnedStaleTiers.has(tier)) continue;
     warnedStaleTiers.add(tier);
     warn(
-      `[claude-router] config: tier "${tier}" is set to "${id}", which the current model ` +
-        `list does not carry — it may be a previous generation. Routing and pricing are ` +
-        `unaffected (resolved by family), but check this against the current model ids.`,
+      `[claude-router] config: tier "${tier}" is set to "${id}", a former default; routing to "${replacement}" instead. ` +
+        `Run "claude-router install" to rewrite the config, or pin a different id on purpose.`,
     );
   }
+  return out;
 }
 
+/**
+ * Remote list, else the last-good local cache, else the build-time snapshot
+ * `DEFAULT_PRICING` table — in that order, each one only tried after the
+ * previous one failed. This is the "local cache and built-in fallback" the
+ * ticket asks for; there is no `schema_version` to gate on (the list
+ * deliberately has none, see {@link MODEL_LIST_URL}'s doc comment), so an
+ * incompatible future shape is caught by {@link isModelList} instead.
+ */
 export async function loadModelListPricing(options: {
   url?: string;
   cachePath?: string;

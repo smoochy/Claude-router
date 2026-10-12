@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import { createProxyApp } from './server.js';
 import { createProviderClient, DEFAULT_UPSTREAM, type Provider } from './handler.js';
 import { DEFAULT_MODELS, BEDROCK_MODELS, VERTEX_MODELS, DISPLAY_TIERS, DEFAULT_PRICING, counterfactualCents } from '../models.js';
-import { loadModelListPricing, defaultModelListCachePath, staleTierIds, warnStaleTierIds } from '../model-list.js';
+import { loadModelListPricing, defaultModelListCachePath, staleTierIds, applyStaleTierReplacements, rewriteStaleTiers } from '../model-list.js';
 import { readDelegationDriftState, STALE_PATTERN_STREAK } from './delegation.js';
 import { DEFAULT_ROLE_TIERS, ROLES } from '../roles.js';
 import { installPolicyPlugin, uninstallPolicyPlugin, policyPluginStatus } from './policy.js';
@@ -224,7 +224,6 @@ async function cmdStart(args: string[], paths: RouterPaths): Promise<CommandResu
   }
 
   applyRegionEnv(options);
-  const models = { ...modelsForProvider(options.provider), ...(options.tiers ?? {}) };
 
   let providerClient;
   try {
@@ -240,9 +239,9 @@ async function cmdStart(args: string[], paths: RouterPaths): Promise<CommandResu
   // dead network just means `source: 'snapshot'` and nothing else changes.
   const modelList = await loadModelListPricing();
   const pricing = { ...modelList.pricing, ...options.pricing };
-  // Reuses the list just loaded for pricing — no second fetch, and nothing to
-  // validate against when that load fell through to the build-time snapshot table.
-  warnStaleTierIds(models, modelList);
+  // A tier id that is a former built-in default is swapped for the newest model
+  // of its family in memory only (warning once per tier); `install` rewrites the file.
+  const models = { ...modelsForProvider(options.provider), ...applyStaleTierReplacements(options.tiers ?? {}, modelList) };
 
   const app = createProxyApp({
     classifier: options.classifier,
@@ -617,6 +616,11 @@ async function cmdInstall(args: string[], paths: RouterPaths): Promise<CommandRe
   {
     const { config: existing } = loadFileConfig(paths.configFile);
     const merged = { ...configFromOptions(options), ...(existing ?? {}) };
+    // Stale former-default tier ids become the newest model of their family; a
+    // `pricing` override keyed by a replaced id goes with it.
+    for (const { tier, id, replacement } of rewriteStaleTiers(merged, await loadModelListPricing())) {
+      lines.push(out(term.dim(`  tier ${tier}: ${id} -> ${replacement}`)));
+    }
     try {
       fs.mkdirSync(paths.configDir, { recursive: true, mode: 0o700 });
       fs.writeFileSync(paths.configFile, JSON.stringify(merged, null, 2) + '\n', { encoding: 'utf8', mode: 0o600 });
@@ -820,8 +824,7 @@ function liveProbes(paths: RouterPaths, options: ServeOptions): DoctorProbes {
       }
     },
     staleTierIds: async () => {
-      const models = { ...modelsForProvider(options.provider), ...(options.tiers ?? {}) };
-      return staleTierIds(models, await loadModelListPricing());
+      return staleTierIds(options.tiers ?? {}, await loadModelListPricing());
     },
     // undefined when restoreDelegation is off — there is no streak to have an
     // opinion about, same reasoning as staleTierIds' built-in-only case.
