@@ -1,3 +1,4 @@
+<!-- managed centrally - do not edit manually -->
 # Vulnerability Categories — Deep Reference
 
 This file contains detailed detection guidance for every vulnerability category.
