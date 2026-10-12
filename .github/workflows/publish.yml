@@ -58,7 +58,7 @@ jobs:
           if npm view "${NAME}@${VERSION}" version >/dev/null 2>&1; then
             echo "${NAME}@${VERSION} already on the registry - skipping publish"
           else
-            npm publish "./claude-router-${VERSION}.tgz" --access public --provenance
+            npm publish "./claude-router-${VERSION}.tgz" --access public --provenance --tag smoo
           fi
 
       # Mutable pointers; the immutable pin is the exact version. Needs the trusted publisher to be allowed to publish, and is idempotent.
