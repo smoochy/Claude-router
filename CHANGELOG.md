@@ -7,11 +7,7 @@ This fork's own sections use the upstream version plus a `-smoo.<n>` prerelease 
 
 ## [Unreleased]
 
-### Fixed
-
-- `claude-router install` no longer prints Node's DEP0190 warning, and the Windows `.cmd` command line is hardened. The two Windows `.cmd` spawns (`claude` in `policy.ts`, `claude-router` in the SessionStart hook) hand the shell one command string built by `winCmdLine`, which quotes each word, rejects `"%^&|<>!` and line breaks (`!` expands inside quotes under delayed expansion), and doubles backslashes before the closing quote so `C:\My Dir\` arrives intact. The hook now quotes `CLAUDE_ROUTER_BIN` too, so a path with spaces starts the proxy. POSIX spawns are unchanged. (An earlier merge had dropped the DEP0190 code while keeping its changelog line; this restores it.)
-
-- `sync-upstream.yml` bumped only `package.json` and `package-lock.json`, so `npm test` failed on the plugin-version check (`plugin/.claude-plugin/plugin.json` still carried the old base) and every sync PR died before it opened. The bump step now writes the same version into `plugin.json` and commits it.
+## [0.4.0-smoo.5] - 2026-10-12
 
 ### Security
 
@@ -20,7 +16,8 @@ This fork's own sections use the upstream version plus a `-smoo.<n>` prerelease 
 ### Fixed
 
 - `claude-router install` and `policy install` added the upstream repository as the plugin marketplace, so the orchestration plugin came from upstream instead of this fork. The marketplace source is now `smoochy/Claude-router`. Detection no longer needs that exact id: `policy status`, `policy uninstall` and `doctor` find the plugin under any `claude-router@<marketplace>` key in Claude Code's registry (so an install from another marketplace is no longer reported as "not installed") and report the marketplace. `doctor` also warns when the installed plugin version differs from the package version and suggests `claude plugin marketplace update <marketplace>`.
-- `claude-router install` no longer prints Node's DEP0190 warning. The two Windows `.cmd` spawns (`claude` in `policy.ts`, `claude-router` in the SessionStart hook) passed an args array with `shell: true`, which Node concatenates unescaped. They now hand the shell one command string (`winCmdLine` quotes each arg and rejects cmd metacharacters); POSIX spawns are unchanged.
+- `claude-router install` no longer prints Node's DEP0190 warning, and the Windows `.cmd` command line is hardened. The two Windows `.cmd` spawns (`claude` in `policy.ts`, `claude-router` in the SessionStart hook) hand the shell one command string built by `winCmdLine`, which quotes each word, rejects `"%^&|<>!` and line breaks (`!` expands inside quotes under delayed expansion), and doubles backslashes before the closing quote so `C:\My Dir\` arrives intact. The hook now quotes `CLAUDE_ROUTER_BIN` too, so a path with spaces starts the proxy. POSIX spawns are unchanged.
+- `sync-upstream.yml` bumped only `package.json` and `package-lock.json`, so `npm test` failed on the plugin-version check (`plugin/.claude-plugin/plugin.json` still carried the old base) and every sync PR died before it opened. The bump step now writes the same version into `plugin.json` and commits it.
 - `security-gate.yml` was invalid YAML (an unquoted `default:` inside the `ref` input description), so GitHub ran it on every push with no jobs and refused `workflow_dispatch`. The description is quoted.
 - `claude-router restart` no longer resurrects flags removed from `config.json` (e.g. `--session-model` pinning the coordinator): inherited `daemon.json` flags are dropped when their key is absent, null or an empty string in an existing `config.json`.
 
