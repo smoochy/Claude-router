@@ -298,6 +298,19 @@ describe('dashboard version footer', () => {
   });
 });
 
+describe('dashboard footer layout', () => {
+  const html = renderDashboard([e()], undefined, {}, undefined, '1.2.3');
+  it('is a single line with one item per fact', () => {
+    assert.equal((html.match(/<div class="footer"/g) ?? []).length, 1);
+    const body = html.match(/<div class="footer">([\s\S]*?)<\/div>/)![1];
+    assert.equal((body.match(/<span/g) ?? []).length, 4);
+  });
+  it('separates items with a visible border and wraps instead of overflowing', () => {
+    assert.match(html, /\.footer > span \+ span \{[^}]*border-left: 1px solid var\(--ink-dim\)/);
+    assert.match(html, /\.footer \{[^}]*display: flex;[^}]*flex-wrap: wrap;[^}]*overflow-wrap: anywhere/);
+  });
+});
+
 describe('dashboard Neon glass theme', () => {
   const html = renderDashboard([e()]);
   it('defines the decoupled tier tokens and uses them for bars and badges', () => {

@@ -879,12 +879,16 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
     .positive { color: var(--green); }
     .negative { color: var(--red); text-shadow: 0 0 12px rgba(246, 70, 93, 0.35); }
     .empty { text-align: center; padding: 30px; color: var(--ink-dim); font-family: var(--sans); font-size: 13px; }
-    .footer .version { opacity: 0.7; margin-left: 8px; }
     .gh { color: var(--ink-dim); display: flex; }
     .gh:hover { color: var(--gold); }
-    .footer.credit { margin-top: 6px; }
-    .footer.credit a { color: inherit; }
+    .footer a { color: inherit; }
+    .footer .version { opacity: 0.7; }
+    .footer > span + span { border-left: 1px solid var(--ink-dim); padding-left: 10px; }
     .footer {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px 10px;
+      overflow-wrap: anywhere;
       margin-top: 18px;
       font-family: var(--mono);
       font-size: 10.5px;
@@ -963,8 +967,7 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
     </div>
   </div>
 
-  <div class="footer">${auto ? `Auto-refreshes every ${interval} seconds` : 'Auto-refresh is off'}. Showing last ${Math.min(50, filtered.length)} of ${filtered.length} requests.${version ? ` <span class="version">v${esc(version)}</span>` : ''}</div>
-  <div class="footer credit">Theme: Neon glass &middot; palette from <a href="https://github.com/RayVelez27/instalanding.ai/tree/main/pages/neon-glass-app-landing-page">instalanding.ai/neon-glass-app-landing-page</a> (MIT, Ray Velez)</div>
+  <div class="footer"><span>${auto ? `Auto-refreshes every ${interval} seconds` : 'Auto-refresh is off'}.</span><span>Showing last ${Math.min(50, filtered.length)} of ${filtered.length} requests.</span>${version ? `<span class="version">v${esc(version)}</span>` : ''}<span>Theme: Neon glass &middot; palette from <a href="https://github.com/RayVelez27/instalanding.ai/tree/main/pages/neon-glass-app-landing-page">instalanding.ai/neon-glass-app-landing-page</a> (MIT, Ray Velez)</span></div>
   ${refreshScript}
   ${DATA_TIP_SCRIPT}
 </body>
