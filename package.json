@@ -54,7 +54,7 @@
     "url": "https://github.com/smoochy/Claude-router/issues"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.39.0",
+    "@anthropic-ai/sdk": "^0.133.0",
     "@hono/node-server": "^2.0.1",
     "hono": "^4.13.13"
   },
