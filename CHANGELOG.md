@@ -9,6 +9,8 @@ This fork's own sections use the upstream version plus a `-smoo.<n>` prerelease 
 
 ### Changed
 
+- Bedrock and Vertex default model IDs now follow the 5.5 generation like the first-party defaults (`us.anthropic.claude-{haiku,sonnet,opus}-5-5` and `claude-{haiku,sonnet,opus}-5-5`), taken from the Anthropic models overview and the AWS Bedrock model cards. The `fable` tier now resolves to the real Fable 5.1 ID (`us.anthropic.claude-fable-5-1` / `claude-fable-5-1`) instead of falling back to Opus; `docs/providers.md` lists the IDs and caveats. The IDs are documented, not checked against a live console.
+
 - Dashboard By Role (and Tier Distribution) rows now left-align their entries with a fixed gap instead of pushing a few entries to opposite edges; many entries still wrap.
 
 - README and `docs/` audited against the code: the fork section now describes the `routingMode` aliases and surfaces, the stale-tier-id handling (replace, warn once, rewrite on `install`, report in `doctor`), the long-context price tier and the full set of dashboard filters; the price table, config example, cache-read rates and `--force-route` references follow the 5.5 defaults, and the CLI reference lists the missing install and routing options.
