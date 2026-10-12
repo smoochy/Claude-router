@@ -265,7 +265,7 @@ describe('ClaudeRouter.send auto-retry', () => {
         return fakeMessage({
           model: params.model,
           stop_reason: 'max_tokens',
-          usage: { input_tokens: 100, output_tokens: 50, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+          usage: { input_tokens: 100, output_tokens: 50, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 } as Anthropic.Usage,
         });
       }
       return fakeMessage({ model: params.model });
@@ -319,7 +319,7 @@ describe('ClaudeRouter.send auto-retry', () => {
       return fakeMessage({
         model: params.model,
         stop_reason: 'max_tokens',
-        usage: { input_tokens: 100, output_tokens: 50, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+        usage: { input_tokens: 100, output_tokens: 50, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 } as Anthropic.Usage,
       });
     });
     (router as unknown as { _client: { messages: { create: typeof mockCreate } } })._client.messages.create = mockCreate;

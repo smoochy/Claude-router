@@ -232,7 +232,7 @@ export class ClaudeRouter {
       this.config.tiers,
     );
 
-    const meta = stream.finalMessage().then((finalMessage) => {
+    const meta = stream.finalMessage().then((finalMessage: Anthropic.Message) => {
       const m = this.buildMeta(tier, model, finalMessage.usage, classifyResult, false);
       this.tracker.record(m);
       this.log(m, classifyResult);
