@@ -14,6 +14,7 @@ This fork's own sections use the upstream version plus a `-smoo.<n>` prerelease 
 ### Changed
 
 - Every dollar amount renders with 4 decimals (dashboard, statusline, proxy log line, `stats` output) through one shared `usd()` formatter in `src/proxy/format.ts`; `savedCentsDisplay` now defaults to 4 decimals.
+- `RELEASING.md` now says the security gate detects a release PR by the `version` in `package.json` rising against the base branch, not by a `release/*` head branch name. The gate files are managed centrally; no hand-maintained copy remains.
 
 ### Fixed
 
