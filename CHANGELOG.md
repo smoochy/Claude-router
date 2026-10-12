@@ -7,6 +7,10 @@ This fork's own sections use the upstream version plus a `-smoo.<n>` prerelease 
 
 ## [Unreleased]
 
+### Added
+
+- `research/2026-10-13-end-to-end-savings-smoo.md`: a reproducible end-to-end savings run of the fork as it ships (`0.4.0-smoo.5`, 5.5 pricing), 330 synthetic turns through the real CLI against a stub upstream under a scratch `HOME`. By the router's own `savedCents`: 25.0 percent against all-Opus with the coordinator pinned to opus, 47.9 percent unpinned, 0 in observe mode. The harness is inlined in the document.
+
 ### Changed
 
 - README "What this fork adds" now shows four dashboard screenshots (overview, observe mode filter, role plus window filter, and a hover tooltip), kept in `docs/images/` and captured from a local build over synthetic history.
