@@ -18,7 +18,7 @@ import type { StepResult } from './platform.js';
 export const PLUGIN_NAME = 'claude-router';
 export const MARKETPLACE_NAME = 'claude-router';
 export const PLUGIN_ID = `${PLUGIN_NAME}@${MARKETPLACE_NAME}`;
-export const MARKETPLACE_SOURCE = 'serhiileniv/claude-router';
+export const MARKETPLACE_SOURCE = 'smoochy/Claude-router';
 
 export interface ExecResult {
   ok: boolean;
@@ -65,22 +65,28 @@ export function installPolicyPlugin(exec: Exec = defaultExec): StepResult {
   return { ok: true, detail: `Orchestration plugin installed (${PLUGIN_ID}) — restart Claude Code to load it` };
 }
 
-export function uninstallPolicyPlugin(exec: Exec = defaultExec): StepResult {
+export function uninstallPolicyPlugin(exec: Exec = defaultExec, status: PolicyPluginStatus = policyPluginStatus()): StepResult {
   if (!claudeAvailable(exec)) {
     return { ok: false, skipped: true, detail: `Orchestration plugin left in place: \`claude\` is not on PATH` };
   }
-  const result = exec(['plugin', 'uninstall', '--scope', 'user', PLUGIN_ID]);
+  const id = status.id ?? PLUGIN_ID;
+  const result = exec(['plugin', 'uninstall', '--scope', 'user', id]);
   if (!result.ok && !/not installed|not found/i.test(result.output)) {
-    return { ok: false, detail: `Could not uninstall ${PLUGIN_ID}: ${firstLine(result.output)}` };
+    return { ok: false, detail: `Could not uninstall ${id}: ${firstLine(result.output)}` };
   }
-  return { ok: true, detail: `Orchestration plugin removed (${PLUGIN_ID})` };
+  return { ok: true, detail: `Orchestration plugin removed (${id})` };
 }
 
 export interface PolicyPluginStatus {
   installed: boolean;
+  /** Full `claude-router@<marketplace>` id as registered, or null. */
+  id: string | null;
+  marketplace: string | null;
   version: string | null;
   installPath: string | null;
 }
+
+const NOT_INSTALLED: PolicyPluginStatus = { installed: false, id: null, marketplace: null, version: null, installPath: null };
 
 /** Read Claude Code's plugin registry directly — no CLI needed for `status`/`doctor`. */
 export function policyPluginStatus(
@@ -89,12 +95,17 @@ export function policyPluginStatus(
   try {
     const raw = fs.readFileSync(path.join(pluginsDir, 'installed_plugins.json'), 'utf8');
     const registry = JSON.parse(raw) as { plugins?: Record<string, Array<{ version?: string; installPath?: string }>> };
-    const entries = registry.plugins?.[PLUGIN_ID];
-    const entry = Array.isArray(entries) ? entries[0] : undefined;
-    if (!entry) return { installed: false, version: null, installPath: null };
-    return { installed: true, version: entry.version ?? null, installPath: entry.installPath ?? null };
+    // Match the plugin name across marketplaces: it may have been added from
+    // another marketplace than the one this package installs from.
+    const plugins = registry.plugins ?? {};
+    const id = [PLUGIN_ID, ...Object.keys(plugins)].find(
+      (k) => (k === PLUGIN_ID || k.startsWith(`${PLUGIN_NAME}@`)) && Array.isArray(plugins[k]) && plugins[k]![0],
+    );
+    const entry = id ? plugins[id]![0] : undefined;
+    if (!id || !entry) return NOT_INSTALLED;
+    return { installed: true, id, marketplace: id.slice(PLUGIN_NAME.length + 1), version: entry.version ?? null, installPath: entry.installPath ?? null };
   } catch {
-    return { installed: false, version: null, installPath: null };
+    return NOT_INSTALLED;
   }
 }
 

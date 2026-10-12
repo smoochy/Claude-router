@@ -9,7 +9,7 @@ import { DEFAULT_MODELS, BEDROCK_MODELS, VERTEX_MODELS, DISPLAY_TIERS, DEFAULT_P
 import { loadModelListPricing, defaultModelListCachePath, staleTierIds, warnStaleTierIds } from '../model-list.js';
 import { readDelegationDriftState, STALE_PATTERN_STREAK } from './delegation.js';
 import { DEFAULT_ROLE_TIERS, ROLES } from '../roles.js';
-import { installPolicyPlugin, uninstallPolicyPlugin, policyPluginStatus, PLUGIN_ID } from './policy.js';
+import { installPolicyPlugin, uninstallPolicyPlugin, policyPluginStatus } from './policy.js';
 import type { Tier } from '../types.js';
 import { term } from './term.js';
 import { formatSavedCents, usd } from './format.js';
@@ -761,7 +761,7 @@ function cmdPolicy(args: string[]): CommandResult {
       const roles = ROLES.map((r) => `${r}→${term.tier(DEFAULT_ROLE_TIERS[r])}`).join(term.dim(' · '));
       return ok([
         out(status.installed
-          ? `${term.ok()} Orchestration plugin installed: ${PLUGIN_ID} v${status.version ?? '?'}`
+          ? `${term.ok()} Orchestration plugin installed: ${status.id} v${status.version ?? '?'} (marketplace: ${status.marketplace})`
           : `${term.warn()} Orchestration plugin not installed — add it: ${term.accent('claude-router policy install')}`),
         out(term.dim(`  roles: ${roles}`)),
       ]);
@@ -808,6 +808,11 @@ function liveProbes(paths: RouterPaths, options: ServeOptions): DoctorProbes {
     isAutostartRegistered: () => isAutostartRegistered(paths),
     isStatuslineConfigured: () => isStatuslineConfigured(paths),
     policyPluginInstalled: () => policyPluginStatus().installed,
+    policyPluginInfo: () => {
+      const s = policyPluginStatus();
+      return s.installed ? { marketplace: s.marketplace ?? '?', version: s.version } : null;
+    },
+    packageVersion: () => getVersion(),
     modelListCacheAgeDays: () => {
       try {
         const ms = Date.now() - fs.statSync(defaultModelListCachePath()).mtimeMs;

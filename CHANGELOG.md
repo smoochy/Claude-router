@@ -11,32 +11,28 @@ This fork's own sections use the upstream version plus a `-smoo.<n>` prerelease 
 
 - The proxy refuses browser-origin abuse. Absent CORS only stopped a web page from reading a response; a cross-site `text/plain` POST to `/v1/messages` was still sent and, with the Bedrock or Vertex provider, spent the operator's cloud credentials without any authentication, and DNS rebinding made the dashboard, `/health` and `/api/last-route` readable by a web page. New `localGuard` middleware: the `Host` header must be a loopback name (skipped when the operator deliberately binds a network address), a request carrying an `Origin` that differs from its `Host` is refused (including `null`), and so is `Sec-Fetch-Site: cross-site` or `same-site`. Claude Code, Node fetch, curl and the plugin hooks send none of these. `POST /v1/messages` and `POST /api/agents` now also require `Content-Type: application/json` (415 otherwise).
 
-### Changed
-
-- Every dollar amount renders with 4 decimals (dashboard, statusline, proxy log line, `stats` output) through one shared `usd()` formatter in `src/proxy/format.ts`; `savedCentsDisplay` now defaults to 4 decimals.
-- `RELEASING.md` now says the security gate detects a release PR by the `version` in `package.json` rising against the base branch, not by a `release/*` head branch name. The gate files are managed centrally; no hand-maintained copy remains.
-
 ### Fixed
 
+- `claude-router install` and `policy install` added the upstream repository as the plugin marketplace, so the orchestration plugin came from upstream instead of this fork. The marketplace source is now `smoochy/Claude-router`. Detection no longer needs that exact id: `policy status`, `policy uninstall` and `doctor` find the plugin under any `claude-router@<marketplace>` key in Claude Code's registry (so an install from another marketplace is no longer reported as "not installed") and report the marketplace. `doctor` also warns when the installed plugin version differs from the package version and suggests `claude plugin marketplace update <marketplace>`.
+- `claude-router install` no longer prints Node's DEP0190 warning. The two Windows `.cmd` spawns (`claude` in `policy.ts`, `claude-router` in the SessionStart hook) passed an args array with `shell: true`, which Node concatenates unescaped. They now hand the shell one command string (`winCmdLine` quotes each arg and rejects cmd metacharacters); POSIX spawns are unchanged.
 - `security-gate.yml` was invalid YAML (an unquoted `default:` inside the `ref` input description), so GitHub ran it on every push with no jobs and refused `workflow_dispatch`. The description is quoted.
+- `claude-router restart` no longer resurrects flags removed from `config.json` (e.g. `--session-model` pinning the coordinator): inherited `daemon.json` flags are dropped when their key is absent, null or an empty string in an existing `config.json`.
 
 ### Added
 
+- `GET /` redirects (302, relative) to `/dashboard` with the query string kept, so opening the bare host:port no longer 404s; it used to fall through to the origin passthrough.
 - `sync-upstream` workflow (daily and manual): fast-forwards `master` to upstream, and when upstream tags a newer release opens a `sync/<tag>` PR that merges it into `smoo/main`, with conflicts resolved by claude-code-action and per-hunk reasoning in the PR body. The version bump changes only the upstream base and keeps the `-smoo.<n>` counter. A non-fast-forward, an unresolvable conflict or red tests open a `sync-failure` issue and send a push notification. Helper: `scripts/sync-upstream.mjs`.
 - Release security gate workflow (`security-gate.yml`): on release PRs (`release/*`) and on demand, one claude-code-action run executes the vendored `/appsec` and `/security-review` commands (`.claude/commands/`, no private marketplace reference) over the diff since the last release tag and returns one JSON verdict; HIGH or CRITICAL blocks. Failing findings get at most 2 fix commits pushed with `GATE_PUSH_TOKEN`, then a labelled issue and an optional `NTFY_URL` notification. The job summary records `total_cost_usd`. It only runs once merged to the default branch.
 - Route feed `Saved` header has a hover/focus explanation (net saving, negative when the served model cost more), and the Session/Lifetime Saved popovers and the Pin header now say what the requested model is (the `model` field the client sent before routing).
 - Dashboard Retry filter (`?retry=`): values are the retry reasons actually present in the history (`truncation`, `refusal`), plus a "No retry" slice, ANDed with the other filters and kept across auto-refresh.
 - Every dashboard filter label has a hover/focus explanation, in the same popover style as the stat cards.
 
-### Fixed
-
-- `claude-router restart` no longer resurrects flags removed from `config.json` (e.g. `--session-model` pinning the coordinator): inherited `daemon.json` flags are dropped when their key is absent, null or an empty string in an existing `config.json`.
-
 ### Changed
 
+- Every dollar amount renders with 4 decimals (dashboard, statusline, proxy log line, `stats` output) through one shared `usd()` formatter in `src/proxy/format.ts`; `savedCentsDisplay` now defaults to 4 decimals.
+- `RELEASING.md` now says the security gate detects a release PR by the `version` in `package.json` rising against the base branch, not by a `release/*` head branch name. The gate files are managed centrally; no hand-maintained copy remains.
 - The package is now `@smoochy/claude-router`, and `publish.yml` publishes it to npm by OIDC trusted publishing with provenance (skipped when the version exists), sets dist-tags `latest` and `smoo`, and creates or updates the GitHub Release tarball idempotently. RELEASING.md rewritten: 4229 superseded, both install paths, trusted-publisher expiry.
 - README and the docs page name the package `@smoochy/claude-router` (install, `npx`, badges, links), and the README install section points at the npm and release-tarball paths.
-
 - The Route Feed Saved header uses the shared fixed-position popover like the other feed headers, so its help is no longer clipped by the table wrapper.
 - Dashboard Tier Distribution and By Role are one wrapping line of entries each (`name n (p%) $cost (p%)`) instead of bars and rows. Tiers keep `DISPLAY_TIERS` order with a colour dot and now show their cost (passthrough only above 0); roles are alphabetical in mono with a final `no role` remainder, so both rows add up to Session Requests and Session Cost. Every entry has a hover that says what lands there or where the role comes from; unknown roles appear on their own as "Custom role". Percentages are dimmed `#a9b3c6` and the passthrough name `#8b95a7`, both above 4.5:1 (pinned in the tests).
 - Session Requests and Session Cost have a hover that breaks the figure down by tier and by role, and Auto-retried has one too. Every hover in the dashboard is now one popover style: the Route Feed cells, badges and `th.help` headers use `data-tip` through a single shared fixed-position popover (clamped to the viewport, flipped above near the bottom) instead of the native `title` attribute, which the page no longer contains. The header link, GitHub link, live LED and Reset filters button carry no hover.

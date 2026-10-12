@@ -81,6 +81,22 @@ describe('runDiagnostics', () => {
     assert.match(find(neither, /Nothing points at the proxy/).hint ?? '', /claude-router install/);
   });
 
+  it('warns when the installed plugin version differs from the package', async () => {
+    const stale = await runDiagnostics(OPTIONS, probes({
+      policyPluginInfo: () => ({ marketplace: 'smoochy-marketplace', version: '0.3.0' }),
+      packageVersion: () => '0.4.0',
+    }));
+    const d = find(stale, /differs from package 0\.4\.0/);
+    assert.equal(d.warnOnly, true);
+    assert.match(d.label, /smoochy-marketplace/);
+    assert.match(d.hint ?? '', /claude plugin marketplace update smoochy-marketplace/);
+    const same = await runDiagnostics(OPTIONS, probes({
+      policyPluginInfo: () => ({ marketplace: 'm', version: '0.4.0' }),
+      packageVersion: () => '0.4.0',
+    }));
+    assert.equal(same.some((x) => /differs from package/.test(x.label)), false);
+  });
+
   it('counts only hard failures toward the exit code', async () => {
     // The exit code is doctor's contract for CI. A missing proxy and a missing
     // env var are failures; an unregistered autostart is a warning.
