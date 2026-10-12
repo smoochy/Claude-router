@@ -28,10 +28,7 @@ async function ensureProxy(port) {
   try {
     const win = process.platform === 'win32';
     const bin = process.env.CLAUDE_ROUTER_BIN || (win ? 'claude-router.cmd' : 'claude-router');
-    // Windows: one command string, not shell:true + args array (DEP0190). Args are constant.
-    const child = win
-      ? spawn(`${bin} start -d`, { stdio: 'ignore', shell: true, windowsHide: true })
-      : spawn(bin, ['start', '-d'], { detached: true, stdio: 'ignore', windowsHide: true });
+    const child = spawn(bin, ['start', '-d'], { detached: !win, stdio: 'ignore', shell: win, windowsHide: true });
     child.on('error', () => {});
     child.unref();
   } catch {

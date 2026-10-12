@@ -13,6 +13,7 @@ import {
 import { CostTracker } from './tracker.js';
 import { executeRoute, startRouteStream, type MessageStream } from './route.js';
 import { warnDeadRoutingKeys } from './routing.js';
+import { usd } from './proxy/format.js';
 import type {
   ClassifyInput,
   ClassifyResult,
@@ -163,10 +164,10 @@ export class ClaudeRouter {
     const money =
       meta.priced === false
         ? `cost: unknown (no pricing for ${meta.model})`
-        : `cost: $${(meta.costCents / 100).toFixed(4)} | ${
+        : `cost: ${usd(meta.costCents)} | ${
             meta.savedCents >= 0
-              ? `saved: $${(meta.savedCents / 100).toFixed(4)}`
-              : `extra: $${(Math.abs(meta.savedCents) / 100).toFixed(4)}`
+              ? `saved: ${usd(meta.savedCents)}`
+              : `extra: ${usd(Math.abs(meta.savedCents))}`
           } vs ${this.config.defaultModel}`;
 
     console.log(
