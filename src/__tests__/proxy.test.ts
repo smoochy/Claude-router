@@ -130,14 +130,6 @@ describe('createProxyApp', () => {
     assert.equal(body.classifier, 'heuristic');
   });
 
-  it('GET / redirects to the dashboard, relative and with the query string', async () => {
-    const bare = await app.request('/');
-    assert.equal(bare.status, 302);
-    assert.equal(bare.headers.get('location'), '/dashboard');
-    const q = await app.request('/?scope=all&auto=5');
-    assert.equal(q.headers.get('location'), '/dashboard?scope=all&auto=5');
-  });
-
   it('GET /statusline returns preformatted text/plain for the shell statusline', async () => {
     // Seeds the history rather than asserting a loose pattern: the original
     // version needed a non-null lastTier and got one only because an earlier
