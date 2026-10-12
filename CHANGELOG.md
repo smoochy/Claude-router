@@ -7,6 +7,10 @@ This fork's own sections use the upstream version plus a `-smoo.<n>` prerelease 
 
 ## [Unreleased]
 
+### Fixed
+
+- `sync-upstream.yml` bumped only `package.json` and `package-lock.json`, so `npm test` failed on the plugin-version check (`plugin/.claude-plugin/plugin.json` still carried the old base) and every sync PR died before it opened. The bump step now writes the same version into `plugin.json` and commits it.
+
 ### Security
 
 - The proxy refuses browser-origin abuse. Absent CORS only stopped a web page from reading a response; a cross-site `text/plain` POST to `/v1/messages` was still sent and, with the Bedrock or Vertex provider, spent the operator's cloud credentials without any authentication, and DNS rebinding made the dashboard, `/health` and `/api/last-route` readable by a web page. New `localGuard` middleware: the `Host` header must be a loopback name (skipped when the operator deliberately binds a network address), a request carrying an `Origin` that differs from its `Host` is refused (including `null`), and so is `Sec-Fetch-Site: cross-site` or `same-site`. Claude Code, Node fetch, curl and the plugin hooks send none of these. `POST /v1/messages` and `POST /api/agents` now also require `Content-Type: application/json` (415 otherwise).
