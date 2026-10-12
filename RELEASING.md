@@ -12,7 +12,7 @@ Tags use the upstream base plus a `-smoo.<n>` prerelease suffix, e.g. `0.4.0-smo
 2. In `CHANGELOG.md`, rename `## [Unreleased]` to `## [x.y.z-smoo.n] - YYYY-MM-DD` and open a fresh empty `## [Unreleased]` above it. Pre-1.0: minor = features, patch = fixes.
 3. `npm version x.y.z-smoo.n --no-git-tag-version` (updates `package.json` and the lockfile).
 4. `npm test`, then `npm pack --dry-run` and compare the file list with the previous release.
-5. Open a PR titled `chore(release): x.y.z-smoo.n` with those two changes. The security gate (appsec + security-review) runs on it; fix its findings before merging. Merge with a merge commit.
+5. Open a PR titled `chore(release): x.y.z-smoo.n` with those two changes. The security gate (appsec + security-review) runs on it as a required check; it recognises a release PR by the `version` in `package.json` rising against the base branch, not by the head branch name, so the branch can be called anything. Fix its findings before merging. Merge with a merge commit.
 6. Tag the merge commit and push the tag:
    ```sh
    git checkout smoo/main && git pull
