@@ -12,7 +12,7 @@ import { DEFAULT_ROLE_TIERS, ROLES } from '../roles.js';
 import { installPolicyPlugin, uninstallPolicyPlugin, policyPluginStatus, PLUGIN_ID } from './policy.js';
 import type { Tier } from '../types.js';
 import { term } from './term.js';
-import { formatSavedCents } from './format.js';
+import { formatSavedCents, usd } from './format.js';
 import {
   err,
   failLine,
@@ -437,14 +437,13 @@ function cmdStats(args: string[], paths: RouterPaths): CommandResult {
 
   const rows: Array<[string, string]> = [
     ['Requests', String(stats.requests)],
-    ['Total cost', `$${(stats.costCents / 100).toFixed(2)}`],
+    ['Total cost', usd(stats.costCents)],
     ['Total saved', formatSavedCents(stats.savedCents)],
     ['Auto-retried', String(stats.retried)],
     ['Tiers', tierLine || term.dim('none')],
   ];
 
   if (stats.extra.events > 0) {
-    const usd = (c: number): string => `$${(c / 100).toFixed(2)}`;
     const unknown = stats.extra.unknownEvents > 0 ? `; ${stats.extra.unknownEvents} without requestedModel, ${usd(stats.extra.unknownCents)}` : '';
     rows.push(['Extra cost', `${term.red(usd(stats.extra.cents))} ${term.dim(`(${stats.extra.events} events above the baseline${unknown}; gross saved ${usd(stats.savedCents + stats.extra.cents)})`)}`]);
   }
@@ -467,13 +466,13 @@ function cmdStats(args: string[], paths: RouterPaths): CommandResult {
   }
   const roles = Object.entries(stats.byRole).sort((a, b) => b[1].costCents - a[1].costCents);
   if (roles.length > 0) {
-    rows.push(['By role', roles.map(([name, r]) => `${name} ${r.requests} ${term.dim(`($${(r.costCents / 100).toFixed(2)})`)}`).join(term.dim('  ·  '))]);
+    rows.push(['By role', roles.map(([name, r]) => `${name} ${r.requests} ${term.dim(`(${usd(r.costCents)})`)}`).join(term.dim('  ·  '))]);
   }
   const tokens = stats.tokens;
   if (tokens.input + tokens.output > 0) {
     const opusModel = effectiveModels.opus;
     const allOpus = counterfactualCents(tokens, opusModel, DEFAULT_PRICING);
-    rows.push(['vs all-opus', `$${(allOpus / 100).toFixed(2)} ${term.dim(`(same tokens on ${opusModel}; an upper bound)`)}`]);
+    rows.push(['vs all-opus', `${usd(allOpus)} ${term.dim(`(same tokens on ${opusModel}; an upper bound)`)}`]);
   }
 
   // The totals above exclude every unpriced call. Saying so is the difference

@@ -1,5 +1,11 @@
 import { term } from './term.js';
 
+/** Every dollar amount renders with this many decimals. */
+export const USD_DECIMALS = 4;
+
+/** Format cents as dollars at the shared precision. */
+export const usd = (cents: number): string => `$${(cents / 100).toFixed(USD_DECIMALS)}`;
+
 export type SavedTone = 'positive' | 'negative' | 'neutral';
 
 export interface SavedDisplay {
@@ -18,15 +24,14 @@ export interface SavedDisplay {
  * to a neutral, unlabelled `$0.00` (#38) instead of reading as one.
  *
  * The neutral collapse keys on the CHOSEN precision: an amount is neutral iff
- * it rounds away to zero at that many decimals. The default of 2 keeps every
- * existing caller byte-identical; the dashboard's Session Saved card passes 4
- * so a sub-cent figure stays visible and signed there (#47).
+ * it rounds away to zero at that many decimals. The default is USD_DECIMALS (4) everywhere, so a
+ * sub-cent figure stays visible and signed (#47).
  *
  * @param cents   signed amount in cents (may be fractional)
  * @param withLabel when true, prefix the amount with `saved`/`extra`
- * @param precision number of decimals to render (default 2)
+ * @param precision number of decimals to render (default 4)
  */
-export function savedCentsDisplay(cents: number, withLabel = false, precision = 2): SavedDisplay {
+export function savedCentsDisplay(cents: number, withLabel = false, precision = USD_DECIMALS): SavedDisplay {
   const dollars = cents / 100;
   if (Math.abs(dollars).toFixed(precision) === (0).toFixed(precision)) {
     // A sub-cent loss is not a saving: neutral, never labelled.

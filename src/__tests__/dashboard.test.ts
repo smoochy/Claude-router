@@ -151,10 +151,10 @@ describe('renderDashboard - net saved, extra cost and the All-Opus card', () => 
 
   it('explains the net headline with gross saved, extra cost and the unknown slice', () => {
     const html = renderDashboard(history, lifetime);
-    assert.match(html, /<span class="negative">\$0\.05 extra cost<\/span>/);
-    assert.match(html, /Gross saved <b>\$0\.04<\/b>/);
+    assert.match(html, /<span class="negative">\$0\.0500 extra cost<\/span>/);
+    assert.match(html, /Gross saved <b>\$0\.0400<\/b>/);
     assert.match(html, /2 events on a model above the baseline/);
-    assert.match(html, /1 without requestedModel <b>\$0\.02<\/b> &middot; baseline unknown/);
+    assert.match(html, /1 without requestedModel <b>\$0\.0200<\/b> &middot; baseline unknown/);
   });
 
   it('sends auto exactly once, from a single hidden input', () => {
