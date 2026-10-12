@@ -1,3 +1,4 @@
+<!-- managed centrally - do not edit manually -->
 # Phase 1: Understand What's Being Built
 
 Before writing or reviewing any code, build a threat model. This doesn't need to be a formal document — it's a mental map you use to decide which patterns from [SECURE-PATTERNS.md](SECURE-PATTERNS.md) apply and how much attention each deserves.
