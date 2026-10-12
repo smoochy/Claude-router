@@ -1,6 +1,6 @@
 import { emptyTotals, foldOutcome } from '../totals.js';
 import { DISPLAY_TIERS, DEFAULT_MODELS, DEFAULT_PRICING, counterfactualCents, type DisplayTier } from '../models.js';
-import { savedCentsDisplay } from './format.js';
+import { savedCentsDisplay, usd } from './format.js';
 import { lookupSessionTitle } from './session-names.js';
 import type { RouteEvent } from './route-event.js';
 import { HISTORY_TAIL_LINES, type LifetimeStats } from './history.js';
@@ -42,7 +42,6 @@ const NO_ROLE = 'no role';
 export const DIM_INK = '#a9b3c6';
 export const PASSTHROUGH_INK = '#8b95a7';
 const pct1 = (n: number, d: number): string => (d > 0 ? `${((n / d) * 100).toFixed(1)}%` : '-');
-const usd4 = (c: number): string => `$${(c / 100).toFixed(4)}`;
 
 /**
  * One shared fixed-position popover for every [data-tip] target. The feed sits in
@@ -84,7 +83,7 @@ function roleTip(name: string): string[] {
 
 /** One entry of the Tier / Role rows: `name n (p%) $cost (p%)` with a hover popover. */
 function entry(x: Share, dot: boolean, totals: ReturnType<typeof emptyTotals>, help: string[]): string {
-  return `<span class="ent has-tip" tabindex="0">${dot ? `<span class="dot t-${x.cls}"></span>` : ''}<b class="${dot ? '' : 'mono'}">${esc(x.name)}</b> ${x.n} <i>(${pct1(x.n, totals.requests)})</i> <u>${usd4(x.c)}</u> <i>(${pct1(x.c, totals.costCents)})</i><span class="tip-body" role="tooltip">${help.map((l) => `<div>${l}</div>`).join('')}</span></span>`;
+  return `<span class="ent has-tip" tabindex="0">${dot ? `<span class="dot t-${x.cls}"></span>` : ''}<b class="${dot ? '' : 'mono'}">${esc(x.name)}</b> ${x.n} <i>(${pct1(x.n, totals.requests)})</i> <u>${usd(x.c)}</u> <i>(${pct1(x.c, totals.costCents)})</i><span class="tip-body" role="tooltip">${help.map((l) => `<div>${l}</div>`).join('')}</span></span>`;
 }
 
 /** Hover lines for Session Requests / Session Cost: what is counted, then the composition by tier and by role. */
@@ -92,7 +91,7 @@ function sessionTips(b: { tiers: Share[]; roles: Share[] }, totals: ReturnType<t
   const list = (xs: Share[], f: (x: Share) => string): string =>
     xs.filter((x) => x.n > 0).map((x) => `<b class="tn${x.cls ? ` tt-${x.cls}` : ''}">${esc(x.name)}</b> ${f(x)}`).join(' &middot; ');
   const rq = (x: Share): string => `${x.n} <i>(${pct1(x.n, totals.requests)})</i>`;
-  const co = (x: Share): string => `${usd4(x.c)} <i>(${pct1(x.c, totals.costCents)})</i>`;
+  const co = (x: Share): string => `${usd(x.c)} <i>(${pct1(x.c, totals.costCents)})</i>`;
   return {
     requests: ['Routed requests in the current view; failed streams are not counted.', `By tier: ${list(b.tiers, rq)}`, `By role: ${list(b.roles, rq)}`],
     cost: ['What these requests cost on the billed models at list price, in dollars.', `By tier: ${list(b.tiers, co)}`, `By role: ${list(b.roles, co)}`],
@@ -378,7 +377,6 @@ function statCard(label: string, value: string, valueClass: string, sub: string,
     </div>`;
 }
 
-const usd2 = (c: number): string => `$${(c / 100).toFixed(2)}`;
 
 /**
  * Short marker under a net saved figure that has a negative side; empty when
@@ -386,7 +384,7 @@ const usd2 = (c: number): string => `$${(c / 100).toFixed(2)}`;
  */
 export function extraCostNote(t: LifetimeStats): string {
   if (t.extra.events === 0) return '';
-  return `<span class="negative">${usd2(t.extra.cents)} extra cost</span>`;
+  return `<span class="negative">${usd(t.extra.cents)} extra cost</span>`;
 }
 
 /**
@@ -397,10 +395,10 @@ export function extraCostNote(t: LifetimeStats): string {
 export function savedTipLines(t: LifetimeStats): string[] {
   const lines = ['Net: what the requested model would have cost, minus what was paid.', REQUESTED_MODEL_HELP];
   if (t.extra.events === 0) return lines;
-  lines.push(`Gross saved <b>${usd2(t.savedCents + t.extra.cents)}</b>`);
-  lines.push(`Extra cost <b class="negative">${usd2(t.extra.cents)}</b> &middot; ${t.extra.events} event${t.extra.events === 1 ? '' : 's'} on a model above the baseline`);
+  lines.push(`Gross saved <b>${usd(t.savedCents + t.extra.cents)}</b>`);
+  lines.push(`Extra cost <b class="negative">${usd(t.extra.cents)}</b> &middot; ${t.extra.events} event${t.extra.events === 1 ? '' : 's'} on a model above the baseline`);
   if (t.extra.unknownEvents > 0) {
-    lines.push(`${t.extra.unknownEvents} without requestedModel <b>${usd2(t.extra.unknownCents)}</b> &middot; baseline unknown`);
+    lines.push(`${t.extra.unknownEvents} without requestedModel <b>${usd(t.extra.unknownCents)}</b> &middot; baseline unknown`);
   }
   return lines;
 }
@@ -430,7 +428,7 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
     : 0;
   const counterfactualCard = statCard(
     'vs All-Opus',
-    allOpus > 0 ? `$${(allOpus / 100).toFixed(4)}` : '-',
+    allOpus > 0 ? usd(allOpus) : '-',
     allOpus > 0 ? 'orange' : '',
     allOpus > 0 ? 'upper bound' : '',
     [`Same tokens priced on ${esc(opusModel)}. An upper bound, not a measurement.`],
@@ -567,8 +565,8 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
         <td class="pin">${pinLabel(e)}</td>
         <td class="reason" data-tip="${esc(reasonHelp(e.reason))}">${e.reason ? esc(e.reason) : '<span class="none">-</span>'}</td>
         <td class="role" data-tip="${esc(roleHelp(e))}">${e.role ? esc(e.role) : e.coordinator ? 'coordinator' : '<span class="none">-</span>'}${e.dispatched ? ' <span class="badge badge-retry" data-tip="This coordinator turn called the Agent tool.">dispatched</span>' : ''}</td>
-        <td>${e.priced === false ? '<span class="unknown" data-tip="no pricing for this model">—</span>' : `$${(e.costCents / 100).toFixed(4)}`}</td>
-        <td class="${e.priced === false ? 'unknown' : e.savedCents >= 0 ? 'positive' : 'negative'}">${e.priced === false ? '—' : `$${(e.savedCents / 100).toFixed(4)}`}</td>
+        <td>${e.priced === false ? '<span class="unknown" data-tip="no pricing for this model">—</span>' : usd(e.costCents)}</td>
+        <td class="${e.priced === false ? 'unknown' : e.savedCents >= 0 ? 'positive' : 'negative'}">${e.priced === false ? '—' : usd(e.savedCents)}</td>
         <td data-tip="${esc(confidenceHelp(e))}">${e.confidence.toFixed(2)}</td>
         <td>${e.inputTokens}</td>
         <td>${e.outputTokens}</td>
@@ -910,7 +908,7 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
 
   <div class="stats">
     ${statCard('Session Requests', String(totalRequests), 'blue', '', sessionTipLines.requests)}
-    ${statCard('Session Cost', `$${(totalCost / 100).toFixed(4)}`, 'orange', '', sessionTipLines.cost)}
+    ${statCard('Session Cost', usd(totalCost), 'orange', '', sessionTipLines.cost)}
     ${savedCard('Session Saved', totals, 4, unpricedNote(totals.unpricedModels))}
     ${statCard('Auto-retried', String(retried), '', '', ['Requests the router re-sent to a stronger model after a truncated or refused answer.', `${retried} of ${totalRequests} requests in the current view.`])}
     ${dispatchCard}

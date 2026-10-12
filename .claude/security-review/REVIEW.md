@@ -1,3 +1,4 @@
+<!-- managed centrally - do not edit manually -->
 # Phase 3: Code Review
 
 This phase runs after code has been written. Use the threat model from Phase 1 to focus the review — only check the sections of [SECURE-PATTERNS.md](SECURE-PATTERNS.md) that apply to what's being built.

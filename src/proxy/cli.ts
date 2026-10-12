@@ -12,7 +12,7 @@ import { DEFAULT_ROLE_TIERS, ROLES } from '../roles.js';
 import { installPolicyPlugin, uninstallPolicyPlugin, policyPluginStatus } from './policy.js';
 import type { Tier } from '../types.js';
 import { term } from './term.js';
-import { formatSavedCents } from './format.js';
+import { formatSavedCents, usd } from './format.js';
 import {
   err,
   failLine,
@@ -31,7 +31,7 @@ import {
   applyRegionEnv,
   configFromOptions,
   getVersion,
-  loadFileConfig,
+  loadFileConfig, OPTIONS,
   parseServeArgs,
   routerPaths,
   serveArgsFrom,
@@ -343,8 +343,22 @@ async function cmdStop(_args: string[], paths: RouterPaths): Promise<CommandResu
  * previous daemon recorded, else defaults. Pure, because "does a restart carry
  * `--force-route` over" is the whole point of the command.
  */
-export function restartArgs(args: string[], previous: string[] | undefined): string[] {
-  return args.length > 0 ? args : previous ?? [];
+export function restartArgs(args: string[], previous: string[] | undefined, config?: FileConfig): string[] {
+  if (args.length > 0) return args;
+  if (!previous) return [];
+  if (!config) return previous;
+  // config.json is the source of truth: an inherited flag whose key it no longer
+  // holds was removed on purpose, and CLI flags beat the file, so keeping it
+  // would resurrect it.
+  const kept: string[] = [];
+  for (let i = 0; i < previous.length; i++) {
+    const spec = OPTIONS.find((o) => o.flags.includes(previous[i]));
+    const width = spec && spec.kind.type !== 'boolean' ? 2 : 1;
+    const held = spec && (config as Record<string, unknown>)[spec.key];
+    if (!spec || (held !== undefined && held !== null && held !== '')) kept.push(...previous.slice(i, i + width));
+    i += width - 1;
+  }
+  return kept;
 }
 
 async function cmdRestart(args: string[], paths: RouterPaths): Promise<CommandResult> {
@@ -361,7 +375,7 @@ async function cmdRestart(args: string[], paths: RouterPaths): Promise<CommandRe
     );
   }
 
-  const { options, warnings } = resolveOptions(restartArgs(args, state?.args), paths);
+  const { options, warnings } = resolveOptions(restartArgs(args, state?.args, (() => { const l = loadFileConfig(paths.configFile); return l.loaded ? l.config : undefined; })()), paths);
   lines.push(...warnings);
 
   const result = await startDaemon(serveArgsFrom(options), options.port, paths);
@@ -437,14 +451,13 @@ function cmdStats(args: string[], paths: RouterPaths): CommandResult {
 
   const rows: Array<[string, string]> = [
     ['Requests', String(stats.requests)],
-    ['Total cost', `$${(stats.costCents / 100).toFixed(2)}`],
+    ['Total cost', usd(stats.costCents)],
     ['Total saved', formatSavedCents(stats.savedCents)],
     ['Auto-retried', String(stats.retried)],
     ['Tiers', tierLine || term.dim('none')],
   ];
 
   if (stats.extra.events > 0) {
-    const usd = (c: number): string => `$${(c / 100).toFixed(2)}`;
     const unknown = stats.extra.unknownEvents > 0 ? `; ${stats.extra.unknownEvents} without requestedModel, ${usd(stats.extra.unknownCents)}` : '';
     rows.push(['Extra cost', `${term.red(usd(stats.extra.cents))} ${term.dim(`(${stats.extra.events} events above the baseline${unknown}; gross saved ${usd(stats.savedCents + stats.extra.cents)})`)}`]);
   }
@@ -467,13 +480,13 @@ function cmdStats(args: string[], paths: RouterPaths): CommandResult {
   }
   const roles = Object.entries(stats.byRole).sort((a, b) => b[1].costCents - a[1].costCents);
   if (roles.length > 0) {
-    rows.push(['By role', roles.map(([name, r]) => `${name} ${r.requests} ${term.dim(`($${(r.costCents / 100).toFixed(2)})`)}`).join(term.dim('  ·  '))]);
+    rows.push(['By role', roles.map(([name, r]) => `${name} ${r.requests} ${term.dim(`(${usd(r.costCents)})`)}`).join(term.dim('  ·  '))]);
   }
   const tokens = stats.tokens;
   if (tokens.input + tokens.output > 0) {
     const opusModel = effectiveModels.opus;
     const allOpus = counterfactualCents(tokens, opusModel, DEFAULT_PRICING);
-    rows.push(['vs all-opus', `$${(allOpus / 100).toFixed(2)} ${term.dim(`(same tokens on ${opusModel}; an upper bound)`)}`]);
+    rows.push(['vs all-opus', `${usd(allOpus)} ${term.dim(`(same tokens on ${opusModel}; an upper bound)`)}`]);
   }
 
   // The totals above exclude every unpriced call. Saying so is the difference

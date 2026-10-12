@@ -14,6 +14,7 @@ import {
 } from '../models.js';
 import { executeRoute, startRouteStream, type MessageStream } from '../route.js';
 import { term } from './term.js';
+import { usd } from './format.js';
 import { appendEvent } from './history.js';
 import { buildRouteEvent, errorRouteEvent, passthroughRouteEvent, type RouteContext, type RouteEvent } from './route-event.js';
 import { resolveRole } from '../roles.js';
@@ -304,10 +305,10 @@ function log(tier: Tier, model: string, classifyResult: ClassifyResult, costCent
   // a free call rather than an unmeasured one.
   const money = !priced
     ? term.yellow(`cost: unknown (no pricing for ${model})`)
-    : `cost: $${(costCents / 100).toFixed(4)} | ${
+    : `cost: ${usd(costCents)} | ${
         savedCents >= 0
-          ? term.green(`saved: $${(savedCents / 100).toFixed(4)}`)
-          : term.red(`extra: $${(Math.abs(savedCents) / 100).toFixed(4)}`)
+          ? term.green(`saved: ${usd(savedCents)}`)
+          : term.red(`extra: ${usd(Math.abs(savedCents))}`)
       } ${term.dim(`vs ${defaultModel}`)}`;
 
   const retryNote = retried ? term.yellow(` [retried: ${retryReason}]`) : '';

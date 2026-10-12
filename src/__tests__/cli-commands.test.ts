@@ -107,7 +107,7 @@ describe('stats', () => {
 
     const shown = text(await main(['stats'], paths));
     assert.match(shown, /same tokens on claude-opus-9-9/);
-    assert.match(shown, /Extra cost\s+\$0\.01 \(1 events above the baseline; 1 without requestedModel, \$0\.01; gross saved \$0\.02\)/);
+    assert.match(shown, /Extra cost\s+\$0\.0100 \(1 events above the baseline; 1 without requestedModel, \$0\.0100; gross saved \$0\.0200\)/);
   });
 
   it('shows dispatch rate, by-role cost and the all-opus counterfactual once orchestration rows exist', async () => {
@@ -125,8 +125,8 @@ describe('stats', () => {
     const shown = text(await main(['stats'], paths));
     assert.match(shown, /Dispatch rate\s+50% \(1 of 2 coordinator turns called an agent\)/);
     assert.match(shown, /Nested dispatch\s+1/);
-    assert.match(shown, /By role\s+coordinator 2 \(\$0\.06\)\s+·\s+recon 2 \(\$0\.00\)/);
-    assert.match(shown, /vs all-opus\s+\$\d+\.\d{2} \(same tokens on claude-opus-5-5; an upper bound\)/);
+    assert.match(shown, /By role\s+coordinator 2 \(\$0\.0600\)\s+·\s+recon 2 \(\$0\.0020\)/);
+    assert.match(shown, /vs all-opus\s+\$\d+\.\d{4} \(same tokens on claude-opus-5-5; an upper bound\)/);
 
     const json = JSON.parse(text(await main(['stats', '--json'], paths))) as { dispatch: { turns: number }; byRole: Record<string, unknown> };
     assert.equal(json.dispatch.turns, 2);
@@ -200,6 +200,16 @@ describe('parseLogsArgs', () => {
 describe('restartArgs', () => {
   it('inherits the previous daemon args when none are given', () => {
     assert.deepEqual(restartArgs([], ['--force-route', '--port', '4500']), ['--force-route', '--port', '4500']);
+  });
+
+  it('drops inherited flags that config.json no longer holds', () => {
+    const prev = ['--port', '4500', '--force-route', '--session-model', 'opus'];
+    assert.deepEqual(restartArgs([], prev, { port: 4500, forceRoute: true }), ['--port', '4500', '--force-route']);
+  });
+
+  it('treats an empty-string config value as not set', () => {
+    const prev = ['--port', '4000', '--session-model', 'opus'];
+    assert.deepEqual(restartArgs([], prev, { port: 4000, sessionModel: '' } as never), ['--port', '4000']);
   });
 
   it('prefers the args just given', () => {

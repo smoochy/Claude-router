@@ -1,3 +1,4 @@
+<!-- managed centrally - do not edit manually -->
 # Secure Patterns
 
 Reference patterns organized by threat category. Read the relevant sections based on the threat model from Phase 1. Each section follows the same structure: the threat, what to avoid, what to do instead, and the key invariants to preserve.

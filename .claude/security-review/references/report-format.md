@@ -1,3 +1,4 @@
+<!-- managed centrally - do not edit manually -->
 # Security Report Format
 
 Use this template for all `/security-review` output. Generated during Step 7.

@@ -1,3 +1,4 @@
+<!-- managed centrally - do not edit manually -->
 # Secret & Credential Detection Patterns
 
 Load this file during Step 3 (Secrets & Exposure Scan).

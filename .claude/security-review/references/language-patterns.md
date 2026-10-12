@@ -1,3 +1,4 @@
+<!-- managed centrally - do not edit manually -->
 # Language-Specific Vulnerability Patterns
 
 Load the relevant section during Step 1 (Scope Resolution) after identifying languages.
