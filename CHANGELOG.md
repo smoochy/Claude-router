@@ -19,6 +19,8 @@ This fork's own sections use the upstream version plus a `-smoo.<n>` prerelease 
 
 ### Fixed
 
+- Dashboard auto-refresh no longer jumps to the top of the page: the inline refresh script stores `scrollY` in `sessionStorage` before navigating and restores it on load (`auto=0` still runs no script).
+
 - `publish.yml` never moved `latest` from CI: trusted publishing (OIDC) authorizes only `npm publish`, so the separate `npm dist-tag add` step failed with E401 (0.4.0-smoo.5 shipped on `smoo` only and without a GitHub Release). The version is now published straight to `latest` with `npm publish --tag latest`, and the `smoo` dist-tag is no longer set. RELEASING.md follows.
 
 ## [0.4.0-smoo.5] - 2026-10-12
