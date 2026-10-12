@@ -45,6 +45,10 @@
 
 ![Dashboard filtered to overridden pins on Sonnet, with the hover tooltip on an Overridden badge explaining that the client asked for Opus but the router billed Sonnet.](https://raw.githubusercontent.com/smoochy/Claude-router/smoo/main/docs/images/dashboard-pin-tooltip.png)
 
+![Dashboard with auto-refresh on at 30 seconds, the refresh-interval dropdown open and listing off, 10s, 20s, 30s, 45s and 60s, and the footer reading Auto-refreshes every 30 seconds.](https://raw.githubusercontent.com/smoochy/Claude-router/smoo/main/docs/images/dashboard-auto-refresh.png)
+
+![Dashboard with the session filter dropdown open, listing All and three invented session names, with the Write release notes session selected and the four requests of that session shown.](https://raw.githubusercontent.com/smoochy/Claude-router/smoo/main/docs/images/dashboard-session-filter.png)
+
 **Cut your Anthropic API bill by routing every request to the cheapest Claude model that can handle it — Haiku, Sonnet, or Opus.** `claude-router` is a self-hosted, drop-in proxy: point any Anthropic-compatible app (Claude Code, Cursor, Cline, or your own SDK code) at it with one environment variable and get automatic, complexity-aware model routing — **zero code changes, no SaaS in your request path, no per-token markup**. Every response reports exactly what you saved.
 
 ```text

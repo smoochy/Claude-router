@@ -13,6 +13,8 @@ This fork's own sections use the upstream version plus a `-smoo.<n>` prerelease 
 
 - README "What this fork adds" now shows four dashboard screenshots (overview, observe mode filter, role plus window filter, and a hover tooltip), kept in `docs/images/` and captured from a local build over synthetic history.
 
+- README "What this fork adds" gained two more dashboard screenshots with a native dropdown open: the refresh-interval select with auto-refresh on, and the session filter with an active session. Both are real headed Chrome window captures (the OS-drawn popup is absent from CDP screenshots) over a scratch HOME with synthetic history and invented session names.
+
 - Bedrock and Vertex default model IDs now follow the 5.5 generation like the first-party defaults (`us.anthropic.claude-{haiku,sonnet,opus}-5-5` and `claude-{haiku,sonnet,opus}-5-5`), taken from the Anthropic models overview and the AWS Bedrock model cards. The `fable` tier now resolves to the real Fable 5.1 ID (`us.anthropic.claude-fable-5-1` / `claude-fable-5-1`) instead of falling back to Opus; `docs/providers.md` lists the IDs and caveats. The IDs are documented, not checked against a live console.
 
 - Dashboard By Role (and Tier Distribution) rows now left-align their entries with a fixed gap instead of pushing a few entries to opposite edges; many entries still wrap.
