@@ -269,6 +269,27 @@ describe('refresh pill and reset button', () => {
     assert.ok(scripts[0].endsWith(',30000)</script>'));
     assert.match(html, /<div class="live"/);
   });
+  it('refresh script keeps the scroll position across the reload', () => {
+    const html = renderDashboard([e()], undefined, { auto: 30 });
+    const src = (html.match(/<script>([\s\S]*?)<\/script>/) ?? [])[1];
+    const store: Record<string, string> = { dashY: '420' };
+    const calls: unknown[][] = [];
+    let tick: (() => void) | undefined;
+    const loc = { href: '' };
+    const doc = { addEventListener() {}, querySelector: () => null };
+    new Function('scrollTo', 'sessionStorage', 'scrollY', 'document', 'setTimeout', 'location', src)(
+      (...a: unknown[]) => calls.push(a),
+      { getItem: (k: string) => store[k] ?? null, setItem: (k: string, v: unknown) => (store[k] = String(v)) },
+      777,
+      doc,
+      (f: () => void) => (tick = f),
+      loc,
+    );
+    assert.deepEqual(calls, [[0, 420]], 'restores the saved offset on load');
+    tick?.();
+    assert.equal(store.dashY, '777', 'saves the offset before navigating');
+    assert.equal(loc.href, '/dashboard?auto=30');
+  });
   it('footer names the active interval or off', () => {
     assert.match(renderDashboard([e()], undefined, { auto: 30 }), /Auto-refreshes every 30 seconds\./);
     assert.match(renderDashboard([e()], undefined, {}), /Auto-refreshes every 10 seconds\./);
