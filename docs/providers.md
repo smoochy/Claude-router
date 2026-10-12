@@ -2,7 +2,16 @@
 
 The proxy binds to `127.0.0.1` by default - only your own machine can reach it.
 
-> ⚠️ **Fable on Bedrock / Vertex is not wired up.** Fable 5.1's inference-profile ID on those platforms is unverified, so the `fable` tier resolves to **Opus** there rather than risking a 404 - a request routed to fable on Bedrock or Vertex silently runs on Opus instead. This is inert while `routing.allowFable` is off (the default). If you enable fable on Bedrock or Vertex, set the real ID yourself via `tiers.fable` in `~/.claude-router/config.json` and verify it against your console first. On the first-party Anthropic API, fable routes to `claude-fable-5-1` as expected.
+The tier IDs follow the 5.5 generation, matching the first-party defaults. They come from the [Anthropic models overview](https://platform.claude.com/docs/en/about-claude/models/overview) and the AWS Bedrock model cards, not from a live console:
+
+| Tier | Bedrock (US geo profile) | Vertex AI |
+|---|---|---|
+| haiku | `us.anthropic.claude-haiku-5-5` | `claude-haiku-5-5` |
+| sonnet | `us.anthropic.claude-sonnet-5-5` | `claude-sonnet-5-5` |
+| opus | `us.anthropic.claude-opus-5-5` | `claude-opus-5-5` |
+| fable | `us.anthropic.claude-fable-5-1` | `claude-fable-5-1` |
+
+Two things to know. Bedrock also offers `global.`, `eu.` and `au.` profiles (Haiku and Opus add `jp.`); to use one, override the tier via `tiers.<tier>` in `~/.claude-router/config.json`. Fable 5.1 on Bedrock only has a US geo and a global profile and needs the `aws_review` data-retention opt-in, so enable `routing.allowFable` there only after you have checked your account. If a profile 400s, confirm it in your console.
 
 ## AWS Bedrock
 

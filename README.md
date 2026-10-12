@@ -334,7 +334,7 @@ Every number this project reports is downstream of a few measurements and a few 
 | 35% on agentic coding traffic | **Upper bound**, replay on a stub upstream, tokens held constant | [end-to-end savings](research/2026-07-21-end-to-end-savings.md) |
 | The single-turn haiku gate (short mechanical transforms) | **Unmeasured**, deliberately conservative | [failed experiment](research/2026-07-21-single-turn-failed.md) |
 | Fable promotion signals (depth + long horizon) | **Assumed** — nothing measured predicts "super hard" from text | off by default |
-| Bedrock / Vertex inference-profile IDs | **Unverified** against a console | `src/models.ts` |
+| Bedrock / Vertex 5.5 inference-profile IDs | **Documented**, not checked against a live console | [providers](docs/providers.md) |
 | Orchestration mode saves money over classifying subagents | **Unmeasured** — that is what `--role-routing off` and `stats` exist to compare | [sandbox](sandbox/README.md) |
 
 The standing caveats are in [research/README.md](research/README.md#standing-caveats).

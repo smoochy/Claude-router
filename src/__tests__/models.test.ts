@@ -8,6 +8,8 @@ import {
   priceForModel,
   familyForModel,
   DEFAULT_MODELS,
+  BEDROCK_MODELS,
+  VERTEX_MODELS,
   DEFAULT_PRICING,
   pricingTableFromList,
 } from '../models.js';
@@ -212,6 +214,13 @@ describe('familyForModel', () => {
   it('maps Bedrock and Vertex IDs to families', () => {
     assert.equal(familyForModel('us.anthropic.claude-opus-4-8-v1:0'), 'opus');
     assert.equal(familyForModel('anthropic.claude-haiku-4-5'), 'haiku');
+  });
+
+  it('Bedrock and Vertex defaults carry the same generation as the first-party defaults', () => {
+    for (const tier of Object.keys(DEFAULT_MODELS) as Array<keyof typeof DEFAULT_MODELS>) {
+      assert.equal(BEDROCK_MODELS[tier], `us.anthropic.${DEFAULT_MODELS[tier]}`);
+      assert.equal(VERTEX_MODELS[tier], DEFAULT_MODELS[tier]);
+    }
   });
 
   it('returns undefined for non-Claude IDs', () => {

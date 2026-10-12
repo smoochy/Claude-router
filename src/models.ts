@@ -13,25 +13,25 @@ export const DEFAULT_MODELS: Record<Tier, string> = {
   fable: 'claude-fable-5-1',
 };
 
-// NOTE: Bedrock inference-profile IDs vary by account/region and Anthropic's
-// snapshot naming — verify these against your Bedrock console if routing 400s.
-// Pricing is unaffected (resolved by family in priceForModel).
+// Bedrock US geo inference-profile IDs, taken from the per-model cards in the
+// AWS Bedrock user guide (Programmatic Access table). The 5.5 generation has no
+// date or `-v1:0` suffix. Account access and regions vary - if routing 400s,
+// check the profile in your Bedrock console. Pricing is unaffected (resolved by
+// family in priceForModel).
 export const BEDROCK_MODELS: Record<Tier, string> = {
-  haiku:  'us.anthropic.claude-haiku-4-5-20251001-v1:0',
-  sonnet: 'us.anthropic.claude-sonnet-5-v1:0',
-  opus:   'us.anthropic.claude-opus-5-v1:0',
-  // Fable's availability and inference-profile ID on Bedrock are unverified, so
-  // the fable tier resolves to Opus here rather than risking a 404. Fable
-  // routing is opt-in and off by default, so this is inert unless enabled.
-  fable:  'us.anthropic.claude-opus-5-v1:0',
+  haiku:  'us.anthropic.claude-haiku-5-5',
+  sonnet: 'us.anthropic.claude-sonnet-5-5',
+  opus:   'us.anthropic.claude-opus-5-5',
+  fable:  'us.anthropic.claude-fable-5-1',
 };
 
+// Vertex AI ("Google Cloud ID" row of the Anthropic models overview): the same
+// dateless IDs as the first-party API.
 export const VERTEX_MODELS: Record<Tier, string> = {
-  haiku:  'claude-haiku-4-5',
-  sonnet: 'claude-sonnet-5',
-  opus:   'claude-opus-5',
-  // Same reasoning as Bedrock above.
-  fable:  'claude-opus-5',
+  haiku:  'claude-haiku-5-5',
+  sonnet: 'claude-sonnet-5-5',
+  opus:   'claude-opus-5-5',
+  fable:  'claude-fable-5-1',
 };
 
 /**
