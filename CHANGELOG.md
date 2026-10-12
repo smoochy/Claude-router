@@ -9,6 +9,8 @@ This fork's own sections use the upstream version plus a `-smoo.<n>` prerelease 
 
 ### Changed
 
+- Dashboard By Role (and Tier Distribution) rows now left-align their entries with a fixed gap instead of pushing a few entries to opposite edges; many entries still wrap.
+
 - Dashboard stat cards now sit in one row grouped by theme: cost on the left (Session Cost, Session Saved, vs All-Opus, Lifetime Saved), a thin gradient divider, requests on the right (Session Requests, Lifetime Requests, Dispatch Rate, Auto-retried). Below 900px the groups stack with a horizontal divider.
 
 - Dashboard footer is now a single line with visible dividers between refresh interval, shown count, version and theme credit; it wraps instead of overflowing at narrow widths.
