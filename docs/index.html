@@ -119,11 +119,11 @@
   </div>
 
   <div class="term">
-    <div class="term-bar"><i style="background:#f85149"></i><i style="background:#d29922"></i><i style="background:#3fb950"></i>&nbsp;claude-router start --force-route --verbose</div>
-    <pre><span class="c-dim">[claude-router]</span> → <span class="c-cyan">haiku</span>  <span class="c-dim">(heuristic, 0ms)</span>  | cost: $0.0010 | <span class="c-green">saved: $0.0030</span> <span class="c-dim">vs claude-sonnet-5</span>
-<span class="c-dim">[claude-router]</span> → <span class="c-yellow">sonnet</span> <span class="c-dim">(heuristic, 0ms)</span>  | cost: $0.0180 | <span class="c-green">saved: $0.0000</span> <span class="c-dim">vs claude-sonnet-5</span>
-<span class="c-dim">[claude-router]</span> → <span class="c-purple">opus</span>   <span class="c-dim">(hybrid, 48ms)</span>   | cost: $0.0890 | <span class="c-red">extra: $0.0740</span> <span class="c-dim">vs claude-sonnet-5</span>
-<span class="c-dim">[claude-router]</span> → <span class="c-cyan">haiku</span>  <span class="c-dim">(ai, 0ms, cached)</span> | cost: $0.0008 | <span class="c-green">saved: $0.0034</span> <span class="c-dim">vs claude-sonnet-5</span></pre>
+    <div class="term-bar"><i style="background:#f85149"></i><i style="background:#d29922"></i><i style="background:#3fb950"></i>&nbsp;claude-router start --verbose</div>
+    <pre><span class="c-dim">[claude-router]</span> → <span class="c-cyan">haiku</span>  <span class="c-dim">(heuristic, 0ms)</span>  | cost: $0.0010 | <span class="c-green">saved: $0.0030</span> <span class="c-dim">vs claude-sonnet-5-5</span>
+<span class="c-dim">[claude-router]</span> → <span class="c-yellow">sonnet</span> <span class="c-dim">(heuristic, 0ms)</span>  | cost: $0.0180 | <span class="c-green">saved: $0.0000</span> <span class="c-dim">vs claude-sonnet-5-5</span>
+<span class="c-dim">[claude-router]</span> → <span class="c-purple">opus</span>   <span class="c-dim">(hybrid, 48ms)</span>   | cost: $0.0890 | <span class="c-red">extra: $0.0740</span> <span class="c-dim">vs claude-sonnet-5-5</span>
+<span class="c-dim">[claude-router]</span> → <span class="c-cyan">haiku</span>  <span class="c-dim">(ai, 0ms, cached)</span> | cost: $0.0008 | <span class="c-green">saved: $0.0034</span> <span class="c-dim">vs claude-sonnet-5-5</span></pre>
   </div>
 </header>
 
@@ -150,21 +150,21 @@
     <tr><td>Single turn, mechanical</td><td>short, one message, a transform verb, no code, no images</td><td>Haiku</td><td>unmeasured — deliberately narrow</td></tr>
     <tr><td>Anything else</td><td>no gate fired</td><td>Sonnet, or Haiku's 1–3 verdict in hybrid mode</td><td>default</td></tr>
   </table>
-  <p style="margin-top:22px;font-size:14px;color:var(--muted)">Every response carries <code>x-router-reason</code> — the gate that decided — so a routing decision is auditable after the fact. What is measured and what is assumed is listed plainly in the <a href="https://github.com/serhiileniv/claude-router#what-is-measured-vs-assumed">README</a>.</p>
+  <p style="margin-top:22px;font-size:14px;color:var(--muted)">Every response carries <code>x-router-reason</code> — the gate that decided — so a routing decision is auditable after the fact. What is measured and what is assumed is listed plainly in the <a href="https://github.com/smoochy/Claude-router#what-is-measured-vs-assumed">README</a>.</p>
 </section>
 
 <section class="wrap steps" id="start">
   <h2>Get started in 60 seconds</h2>
   <p style="margin-top:18px"><span class="n">1</span>Install and set up (starts the proxy, wires up autostart + <code>ANTHROPIC_BASE_URL</code>):</p>
-  <div class="codebox"><button class="copy" data-c="npm install -g @smoochy/claude-router&#10;claude-router install --force-route">copy</button><pre><code>npm install -g @smoochy/claude-router
-claude-router install --force-route</code></pre></div>
+  <div class="codebox"><button class="copy" data-c="npm install -g @smoochy/claude-router&#10;claude-router install">copy</button><pre><code>npm install -g @smoochy/claude-router
+claude-router install</code></pre></div>
   <p><span class="n">2</span>Open a new terminal and use Claude Code normally:</p>
   <div class="codebox"><button class="copy" data-c="claude">copy</button><pre><code>claude</code></pre></div>
   <p><span class="n">3</span>Watch the savings:</p>
   <div class="codebox"><button class="copy" data-c="claude-router stats">copy</button><pre><code>claude-router stats        <span class="c-dim"># lifetime savings + per-day breakdown</span>
 claude-router status       <span class="c-dim"># health and routing state</span>
 claude-router doctor       <span class="c-dim"># diagnose setup problems</span></code></pre></div>
-  <p class="note"><strong>--force-route</strong> routes every request by difficulty even when the client pins a model (Claude Code always does). The proxy adapts model-specific parameters to the routed tier, so nothing breaks.</p>
+  <p class="note"><strong>routingMode: route</strong> (the default; <code>--routing-mode observe</code> passes models through but still records, <code>off</code> neither routes nor records) routes every request by difficulty even when the client pins a model (Claude Code always does). The proxy adapts model-specific parameters to the routed tier, so nothing breaks.</p>
 </section>
 
 <section class="wrap" id="economics">
@@ -173,12 +173,12 @@ claude-router doctor       <span class="c-dim"># diagnose setup problems</span><
     <table>
       <thead><tr><th>Model</th><th>Input $/1M</th><th>Output $/1M</th></tr></thead>
       <tbody>
-        <tr><td style="color:var(--cyan)">Claude Haiku 4.5</td><td>$1.00</td><td>$5.00</td></tr>
-        <tr><td style="color:var(--yellow)">Claude Sonnet 5</td><td>$3.00</td><td>$15.00</td></tr>
-        <tr><td style="color:var(--purple)">Claude Opus 5</td><td>$5.00</td><td>$25.00</td></tr>
+        <tr><td style="color:var(--cyan)">Claude Haiku 5.5</td><td>$0.10</td><td>$0.50</td></tr>
+        <tr><td style="color:var(--yellow)">Claude Sonnet 5.5</td><td>$2.00</td><td>$10.00</td></tr>
+        <tr><td style="color:var(--purple)">Claude Opus 5.5</td><td>$4.00</td><td>$20.00</td></tr>
       </tbody>
     </table>
-    <p style="font-size:14px;color:var(--muted)">Most coding-session turns are simple — file edits, short questions, formatting. Haiku output costs <b style="color:var(--green)">3× less</b> than Sonnet and <b style="color:var(--green)">5× less</b> than Opus. Routing the easy majority down while keeping Opus for the genuinely hard questions is where the savings come from — and every response header tells you exactly what you saved.</p>
+    <p style="font-size:14px;color:var(--muted)">Most coding-session turns are simple — file edits, short questions, formatting. Haiku output costs <b style="color:var(--green)">20× less</b> than Sonnet and <b style="color:var(--green)">40× less</b> than Opus. Routing the easy majority down while keeping Opus for the genuinely hard questions is where the savings come from — and every response header tells you exactly what you saved.</p>
   </div>
 </section>
 

@@ -2,7 +2,7 @@
 
 The proxy binds to `127.0.0.1` by default - only your own machine can reach it.
 
-> ⚠️ **Fable on Bedrock / Vertex is not wired up.** Fable 5's inference-profile ID on those platforms is unverified, so the `fable` tier resolves to **Opus** there rather than risking a 404 - a request routed to fable on Bedrock or Vertex silently runs on Opus instead. This is inert while `routing.allowFable` is off (the default). If you enable fable on Bedrock or Vertex, set the real ID yourself via `tiers.fable` in `~/.claude-router/config.json` and verify it against your console first. On the first-party Anthropic API, fable routes to `claude-fable-5` as expected.
+> ⚠️ **Fable on Bedrock / Vertex is not wired up.** Fable 5.1's inference-profile ID on those platforms is unverified, so the `fable` tier resolves to **Opus** there rather than risking a 404 - a request routed to fable on Bedrock or Vertex silently runs on Opus instead. This is inert while `routing.allowFable` is off (the default). If you enable fable on Bedrock or Vertex, set the real ID yourself via `tiers.fable` in `~/.claude-router/config.json` and verify it against your console first. On the first-party Anthropic API, fable routes to `claude-fable-5-1` as expected.
 
 ## AWS Bedrock
 
