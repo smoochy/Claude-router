@@ -806,7 +806,7 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
     }
 
     /* Tier / Role rows: one wrapping flex row per card. The hovered card stacks above the next one so its popovers are not overdrawn. */
-    .ents { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 18px; margin-bottom: 26px; padding: 10px 14px; font-size: 12px; font-variant-numeric: tabular-nums; }
+    .ents { display: flex; flex-wrap: wrap; justify-content: flex-start; gap: 6px 18px; margin-bottom: 26px; padding: 10px 14px; font-size: 12px; font-variant-numeric: tabular-nums; }
     .ents:hover, .ents:focus-within { z-index: 40; }
     .ent { position: relative; white-space: nowrap; cursor: help; }
     .ent b { font-weight: 600; }

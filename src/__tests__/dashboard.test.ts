@@ -395,3 +395,15 @@ describe('tier and role colour contrast (AA)', () => {
     for (const fg of ['#2ee6a8', '#22d3ee', '#4f8bff', '#a78bfa']) assert.ok(ratio(fg, '#0b0f19') >= 4.5, fg);
   });
 });
+
+describe('By Role row layout', () => {
+  it('packs entries to the left with a fixed gap, never space-between', () => {
+    const html = renderDashboard([e({ role: 'recon' }), e({ role: 'builder' })]);
+    assert.match(html, /By Role/);
+    const rule = html.match(/\.ents \{[^}]*\}/)?.[0] ?? '';
+    assert.match(rule, /flex-wrap: wrap/);
+    assert.match(rule, /justify-content: flex-start/);
+    assert.match(rule, /gap: 6px 18px/);
+    assert.doesNotMatch(rule, /space-between/);
+  });
+});
