@@ -7,6 +7,22 @@ This fork's own sections use the upstream version plus a `-smoo.<n>` prerelease 
 
 ## [Unreleased]
 
+### Changed
+- Merged upstream `feat/opus-5-tier` (0.3.2-0.3.3). This fork keeps its own newer implementations of the Opus 5 tier, `--restore-delegation` (refreshed patterns, drift alarm), the route-outcome/CLI refactor and the model-list pricing. Upstream's `countedSavings` clamp (savings floored at 0 per event) is **not** adopted: this fork reports net savings with an explicit "Extra cost" figure, so over-routing stays visible.
+
+## [0.3.3] — 2026-07-26
+
+### Fixed
+- **`--restore-delegation` reported "not present" while it was working.** The one-per-process report fired on whichever request came first, and against live Claude Code 2.1.220 that is a tool-less meta-call with a ~1.3K system prompt which legitimately carries no payload — the real coordinator turn (31 tools, ~10.3K prompt, both lines present) arrives second. So the first and only line an operator saw was `the known injected lines were not present`, while the strip was in fact removing both lines from every coordinator turn. The no-match report is now gated on the request carrying tools, the same structural agentic/meta split the session pin already makes; a match is still reported the moment it happens. Verified on real traffic through the proxy, before and after. Behaviour of the strip itself is unchanged — only what gets printed.
+
+## [0.3.2] — 2026-07-26
+
+### Added
+- **`--restore-delegation` — put subagents back within reach** ([#55](https://github.com/Serhii-Leniv/claude-router/issues/55), thanks @smoochy). Claude Code 2.1.219+ injects a system-prompt section telling the model not to spawn subagents unless explicitly asked. Verified against the shipped 2.1.220 binary, it is gated on a **model capability** rather than user config — `opus_5_prompt_bundle`, which of every `capabilities:[…]` array in that binary exactly one model carries: `claude-opus-5` — with a killswitch that defaults off and no settings key, CLI flag or env var to override it ([anthropics/claude-code#80988](https://github.com/anthropics/claude-code/issues/80988)). That silently breaks `sessionModel`: the pin exists so *subagents* carry the volume on cheaper tiers, and with delegation suppressed the pinned tier does every turn itself, costing more than not pinning. The new flag removes those lines from the system prompt on routed requests. **Off by default** — this is the one place the proxy edits a prompt — and never silent: the banner shows it, and one log line per process reports whether the payload was actually found, so a vendor rewrite surfaces instead of looking like success. The match is whole-line and exact, inside `system` only: a substring or regex rule would strip text out of a user's own documentation that merely quotes the line, which is the failure mode `latestUserText` already documents. Removal is deterministic, so the edited prefix pays one cache write and is warm from the second request on.
+
+### Changed
+- **Savings are counted, never subtracted** (`countedSavings()`). `baseline − actual` goes negative whenever routing lands *above* the baseline, and reporting that signed delta made the ledger read as if the router had spent the user's money — one opus call cancelled out dozens of haiku wins and the dashboard's "saved" card went red. A route at or above the baseline now contributes **0**. The clamp is per event, never on a total, and lives at both seams (`computeRouteCost` and `foldOutcome`) so a `history.jsonl` written before the rule folds to the same lifetime figure as a fresh one. Consequence to know: over-routing no longer shows up as negative savings — read the tier distribution and the cost card for that.
+
 ### Fixed
 
 - `sync-upstream.yml` bumped only `package.json` and `package-lock.json`, so `npm test` failed on the plugin-version check (`plugin/.claude-plugin/plugin.json` still carried the old base) and every sync PR died before it opened. The bump step now writes the same version into `plugin.json` and commits it.
