@@ -26,6 +26,10 @@ describe('installPolicyPlugin', () => {
     assert.match(r.detail, new RegExp(`claude plugin install --scope user ${PLUGIN_ID}`));
   });
 
+  it('installs from this fork, not the upstream repository', () => {
+    assert.equal(MARKETPLACE_SOURCE, 'smoochy/Claude-router');
+  });
+
   it('adds the marketplace then installs, both at user scope', () => {
     const { exec, calls } = scripted([{ ok: true, output: '2.1.300' }, { ok: true }, { ok: true }]);
     const r = installPolicyPlugin(exec);

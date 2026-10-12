@@ -18,7 +18,7 @@ import type { StepResult } from './platform.js';
 export const PLUGIN_NAME = 'claude-router';
 export const MARKETPLACE_NAME = 'claude-router';
 export const PLUGIN_ID = `${PLUGIN_NAME}@${MARKETPLACE_NAME}`;
-export const MARKETPLACE_SOURCE = 'serhiileniv/claude-router';
+export const MARKETPLACE_SOURCE = 'smoochy/Claude-router';
 
 export interface ExecResult {
   ok: boolean;

@@ -13,6 +13,7 @@ This fork's own sections use the upstream version plus a `-smoo.<n>` prerelease 
 
 ### Fixed
 
+- `claude-router install` and `policy install` added the upstream repository as the plugin marketplace, so the orchestration plugin came from upstream instead of this fork. The marketplace source is now `smoochy/Claude-router`; `doctor` and `policy status` read the same plugin id from the local registry and need no change.
 - `claude-router install` no longer prints Node's DEP0190 warning. The two Windows `.cmd` spawns (`claude` in `policy.ts`, `claude-router` in the SessionStart hook) passed an args array with `shell: true`, which Node concatenates unescaped. They now hand the shell one command string (`winCmdLine` quotes each arg and rejects cmd metacharacters); POSIX spawns are unchanged.
 - `security-gate.yml` was invalid YAML (an unquoted `default:` inside the `ref` input description), so GitHub ran it on every push with no jobs and refused `workflow_dispatch`. The description is quoted.
 
