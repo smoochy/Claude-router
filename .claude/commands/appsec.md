@@ -2,6 +2,7 @@
 name: appsec
 description: Secure development guidance — helps you build features, APIs, auth flows, and data handlers securely from the start. Activates when implementing new functionality, reviewing code before committing, or when security-sensitive patterns (auth, file handling, crypto, DB queries, permissions, API keys, file uploads) are in scope. Focuses on concrete, implementable secure patterns — not theoretical warnings.
 ---
+<!-- managed centrally - do not edit manually -->
 
 # Secure Development
 
