@@ -46,6 +46,9 @@ export interface DoctorProbes {
   isAutostartRegistered(): boolean;
   isStatuslineConfigured(): boolean;
   policyPluginInstalled(): boolean;
+  /** Where the installed plugin came from and its version; null when not installed. */
+  policyPluginInfo?(): { marketplace: string; version: string | null } | null;
+  packageVersion?(): string;
   /** Age in whole days of the local model-list cache (`model-list.ts`), or
    * `undefined` when no cache file exists yet (first run, or remote has never
    * failed). Not "how stale is the live list" — that has no date to read
@@ -224,6 +227,17 @@ export async function runDiagnostics(
     hint: 'Add it: claude-router policy install',
     warnOnly: true,
   });
+
+  const info = plugin ? probes.policyPluginInfo?.() : null;
+  const pkg = probes.packageVersion?.();
+  if (info?.version && pkg && info.version !== pkg) {
+    diagnostics.push({
+      ok: false,
+      label: `Orchestration plugin ${info.version} (from ${info.marketplace}) differs from package ${pkg}`,
+      hint: `Update it: claude plugin marketplace update ${info.marketplace}`,
+      warnOnly: true,
+    });
+  }
 
   return diagnostics;
 }

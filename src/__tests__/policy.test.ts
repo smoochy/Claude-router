@@ -67,7 +67,22 @@ describe('policyPluginStatus', () => {
       version: 2,
       plugins: { [PLUGIN_ID]: [{ scope: 'user', installPath: '/x', version: '0.3.3' }] },
     }));
-    assert.deepEqual(policyPluginStatus(dir), { installed: true, version: '0.3.3', installPath: '/x' });
+    assert.deepEqual(policyPluginStatus(dir), { installed: true, id: PLUGIN_ID, marketplace: 'claude-router', version: '0.3.3', installPath: '/x' });
+  });
+
+  it('finds the plugin under any marketplace and uninstalls that id', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cr-plugins-'));
+    fs.writeFileSync(path.join(dir, 'installed_plugins.json'), JSON.stringify({
+      version: 2,
+      plugins: { 'other@m': [{ version: '1' }], 'claude-router@smoochy-marketplace': [{ version: '0.4.0', installPath: '/y' }] },
+    }));
+    const status = policyPluginStatus(dir);
+    assert.equal(status.installed, true);
+    assert.equal(status.id, 'claude-router@smoochy-marketplace');
+    assert.equal(status.marketplace, 'smoochy-marketplace');
+    const { exec, calls } = scripted([{ ok: true, output: '2.1.300' }, { ok: true }]);
+    assert.equal(uninstallPolicyPlugin(exec, status).ok, true);
+    assert.deepEqual(calls[1], ['plugin', 'uninstall', '--scope', 'user', 'claude-router@smoochy-marketplace']);
   });
 
   it('reports not installed for a missing or foreign registry', () => {
