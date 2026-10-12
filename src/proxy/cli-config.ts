@@ -1,5 +1,6 @@
 import { warnDeadRoutingKeys } from '../routing.js';
-import { invalidRoleMappings } from '../roles.js';
+import { ROLES, invalidRoleMappings } from '../roles.js';
+import { TIER_ORDER } from '../models.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
@@ -416,11 +417,56 @@ export function suggestCommand(input: string, commands: string[]): string | null
   let best: string | null = null;
   let bestDist = 3;
   for (const cmd of commands) {
-    const d = levenshtein(input.toLowerCase(), cmd);
+    const d = levenshtein(input.toLowerCase(), cmd.toLowerCase());
     if (d < bestDist) {
       bestDist = d;
       best = cmd;
     }
   }
   return best;
+}
+
+// ── Unknown config keys ────────────────────────────────────────────────────
+
+type OptionKey = (typeof OPTIONS)[number]['key'];
+
+// Keys of FileConfig that are not CLI options. Typed against FileConfig so a
+// new field fails to compile until it is listed here.
+const OBJECT_KEYS: Record<Exclude<keyof FileConfig, OptionKey>, true> = {
+  roles: true, agents: true, tiers: true, pricing: true, routing: true,
+};
+
+// Same exhaustiveness trick for the one nested object with no runtime key list.
+const ROUTING_KEYS: Record<keyof RoutingTuning, true> = {
+  haikuMax: true, opusMin: true, hybridBand: true, aiTimeoutMs: true,
+  classifyCacheSize: true, allowHaikuInAgentic: true, allowFable: true,
+};
+
+export interface UnknownConfigKey {
+  /** Dotted path, e.g. `restoreDekegation` or `routing.aiTimeout`. */
+  path: string;
+  /** The likely intended key (full path), when one is within edit distance 2. */
+  suggestion: string | null;
+}
+
+/**
+ * Keys in a parsed config.json the schema does not know. `agents` and `pricing`
+ * are keyed by user-chosen names, so only their top-level presence is checked.
+ */
+export function unknownConfigKeys(raw: unknown): UnknownConfigKey[] {
+  const result: UnknownConfigKey[] = [];
+  const check = (obj: unknown, known: string[], prefix: string): void => {
+    if (typeof obj !== 'object' || obj === null || Array.isArray(obj)) return;
+    for (const key of Object.keys(obj)) {
+      if (known.includes(key)) continue;
+      const near = suggestCommand(key, known);
+      result.push({ path: prefix + key, suggestion: near ? prefix + near : null });
+    }
+  };
+  check(raw, [...OPTIONS.map((o) => o.key as string), ...Object.keys(OBJECT_KEYS)], '');
+  const cfg = (raw ?? {}) as Record<string, unknown>;
+  check(cfg.roles, [...ROLES], 'roles.');
+  check(cfg.tiers, [...TIER_ORDER], 'tiers.');
+  check(cfg.routing, Object.keys(ROUTING_KEYS), 'routing.');
+  return result;
 }

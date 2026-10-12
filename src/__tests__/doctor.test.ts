@@ -258,3 +258,42 @@ describe('runDiagnostics', () => {
     });
   });
 });
+
+describe('doctor unknown config keys', () => {
+  const warnings = async (config: unknown) =>
+    (await runDiagnostics(OPTIONS, probes({ loadConfig: () => ({ loaded: true, config }) })))
+      .filter((d) => /Unknown config key/.test(d.label));
+
+  it('names the likely intended key for a near miss', async () => {
+    const [w] = await warnings({ restoreDekegation: true });
+    assert.match(w!.label, /"restoreDekegation" \(did you mean "restoreDelegation"\?\)/);
+    assert.equal(w!.warnOnly, true);
+  });
+
+  it('flags a key with no near match without a suggestion', async () => {
+    const [w] = await warnings({ zzzzzzzzzz: 1 });
+    assert.doesNotMatch(w!.label, /did you mean/);
+  });
+
+  it('checks nested roles, tiers and routing against their own keys', async () => {
+    const found = (await warnings({
+      roles: { buidler: 'opus' },
+      tiers: { sonet: 'x' },
+      routing: { aiTimeout: 1, allowFable: true },
+    })).map((d) => d.label);
+    assert.equal(found.length, 3);
+    assert.match(found[0]!, /"roles.buidler" \(did you mean "roles.builder"\?\)/);
+    assert.match(found[1]!, /"tiers.sonet" \(did you mean "tiers.sonnet"\?\)/);
+    assert.match(found[2]!, /"routing.aiTimeout" \(did you mean "routing.aiTimeoutMs"\?\)/);
+  });
+
+  it('is silent for known keys, free-form maps and an absent config', async () => {
+    assert.deepEqual(await warnings({ port: 1, restoreDelegation: true, agents: { 'x:y': 'opus' }, pricing: { m: {} } }), []);
+    assert.deepEqual(await warnings(undefined), []);
+  });
+
+  it('never moves the exit code', async () => {
+    const d = await runDiagnostics(OPTIONS, probes({ loadConfig: () => ({ loaded: true, config: { bogus: 1 } }) }));
+    assert.equal(failureCount(d), 0);
+  });
+});
