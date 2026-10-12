@@ -197,6 +197,19 @@ describe('pin and reason filters', () => {
   });
 });
 
+describe('stat card order', () => {
+  const html = renderDashboard([e({})], { requests: 5, savedCents: 1, extra: { cents: 0, events: 0, unknownCents: 0, unknownEvents: 0 }, unpricedModels: {} } as never);
+  const labels = (chunk: string) => [...chunk.matchAll(/<div class="label">([^<]+)<\/div>/g)].map((m) => m[1]);
+  it('puts cost cards left of the divider and request cards right of it', () => {
+    const [cost, requests] = html.split('class="stat-divider"');
+    assert.deepEqual(labels(cost.slice(cost.indexOf('data-group="cost"'))), ['Session Cost', 'Session Saved', 'vs All-Opus', 'Lifetime Saved']);
+    assert.deepEqual(labels(requests.slice(0, requests.indexOf('By Role') > 0 ? requests.indexOf('By Role') : undefined)).slice(0, 4), ['Session Requests', 'Lifetime Requests', 'Dispatch Rate', 'Auto-retried']);
+  });
+  it('stacks with a horizontal divider on narrow screens', () => {
+    assert.match(html, /@media \(max-width: 900px\)[^}]*\.stats \{ flex-direction: column/);
+  });
+});
+
 describe('filter row and retry help', () => {
   const html = renderDashboard([e({ retried: true, retryReason: 'truncation' })]);
   it('lists the selects in route-feed order, one row', () => {

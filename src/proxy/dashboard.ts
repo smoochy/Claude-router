@@ -740,7 +740,15 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
     }
 
     /* One grid for every scope: cards never change height or count, so the row does not jump */
-    .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 26px; }
+    /* Cost group left, thin gradient divider, requests group right; stacks with a horizontal divider when narrow */
+    .stats { display: flex; align-items: stretch; gap: 14px; margin-bottom: 26px; }
+    .stat-group { flex: 1 1 0; min-width: 0; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 10px; }
+    .stat-divider { flex: none; width: 1px; background: linear-gradient(to bottom, transparent, var(--edge), transparent); }
+    @media (max-width: 900px) {
+      .stats { flex-direction: column; }
+      .stat-group { grid-auto-flow: row; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+      .stat-divider { width: auto; height: 1px; background: linear-gradient(to right, transparent, var(--edge), transparent); }
+    }
     .stat-card { position: relative; min-width: 0; padding: 11px 14px 12px; }
     .stat-card .sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .stat-card.has-tip .value { text-decoration: underline dotted; text-decoration-color: var(--ink-dim); text-underline-offset: 5px; cursor: help; }
@@ -907,14 +915,19 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
   </form>
 
   <div class="stats">
-    ${statCard('Session Requests', String(totalRequests), 'blue', '', sessionTipLines.requests)}
-    ${statCard('Session Cost', usd(totalCost), 'orange', '', sessionTipLines.cost)}
-    ${savedCard('Session Saved', totals, 4, unpricedNote(totals.unpricedModels))}
-    ${statCard('Auto-retried', String(retried), '', '', ['Requests the router re-sent to a stronger model after a truncated or refused answer.', `${retried} of ${totalRequests} requests in the current view.`])}
-    ${dispatchCard}
-    ${counterfactualCard}
-    ${lifetime ? savedCard('Lifetime Saved', lifetime, undefined, unpricedNote(lifetime.unpricedModels)) : ''}
-    ${lifetime ? statCard('Lifetime Requests', String(lifetime.requests), 'blue', '', []) : ''}
+    <div class="stat-group" data-group="cost">
+      ${statCard('Session Cost', usd(totalCost), 'orange', '', sessionTipLines.cost)}
+      ${savedCard('Session Saved', totals, 4, unpricedNote(totals.unpricedModels))}
+      ${counterfactualCard}
+      ${lifetime ? savedCard('Lifetime Saved', lifetime, undefined, unpricedNote(lifetime.unpricedModels)) : ''}
+    </div>
+    <div class="stat-divider" role="separator" aria-orientation="vertical"></div>
+    <div class="stat-group" data-group="requests">
+      ${statCard('Session Requests', String(totalRequests), 'blue', '', sessionTipLines.requests)}
+      ${lifetime ? statCard('Lifetime Requests', String(lifetime.requests), 'blue', '', []) : ''}
+      ${dispatchCard}
+      ${statCard('Auto-retried', String(retried), '', '', ['Requests the router re-sent to a stronger model after a truncated or refused answer.', `${retried} of ${totalRequests} requests in the current view.`])}
+    </div>
   </div>
 
   ${roleEntries ? `<div class="section-label">By Role</div>
