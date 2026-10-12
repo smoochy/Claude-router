@@ -3,6 +3,7 @@ import { out, type OutputLine } from './command.js';
 import type { HealthInfo } from './health.js';
 import type { DaemonState } from './daemon.js';
 import type { Tier } from '../types.js';
+import { unknownConfigKeys } from './cli-config.js';
 
 /**
  * `doctor`'s diagnostics as data.
@@ -35,7 +36,7 @@ export interface Diagnostic {
 export interface DoctorProbes {
   nodeVersion: string;
   platform: string;
-  loadConfig(): { loaded: boolean; error?: string };
+  loadConfig(): { loaded: boolean; error?: string; config?: unknown };
   checkHealth(port: number): Promise<HealthInfo | null>;
   isEnvVarSet(port: number): boolean;
   /** Claude Code's own settings.json env points at the proxy (the install default). */
@@ -140,6 +141,19 @@ export async function runDiagnostics(
             : 'No config file (defaults in use)',
         },
   );
+
+  // Warn only: install merges the existing file untouched, so a misspelt key
+  // would otherwise survive every reinstall unnoticed.
+  if (config.loaded) {
+    for (const u of unknownConfigKeys(config.config)) {
+      diagnostics.push({
+        ok: false,
+        label: `Unknown config key "${u.path}"${u.suggestion ? ` (did you mean "${u.suggestion}"?)` : ''}`,
+        hint: `It is ignored; fix or remove it in ${options.configFile}`,
+        warnOnly: true,
+      });
+    }
+  }
 
   const health = await probes.checkHealth(options.port);
   diagnostics.push({
