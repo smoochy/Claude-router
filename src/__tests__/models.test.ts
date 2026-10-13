@@ -132,6 +132,46 @@ describe('computeCostCents', () => {
 });
 
 
+describe('savings are signed (net), not clamped', () => {
+  const usage = { input_tokens: 1000, output_tokens: 500 } as never;
+
+  it('a cheaper route reports what it saved', () => {
+    const { savedCents } = computeRouteCost(
+      DEFAULT_MODELS.haiku,
+      usage,
+      DEFAULT_MODELS.sonnet,
+      DEFAULT_PRICING,
+    );
+    assert.ok(savedCents > 0);
+  });
+
+  it('a route above the baseline reports its overspend as a negative saving', () => {
+    // Opus against a sonnet baseline: `baseline − actual` is negative. This fork
+    // keeps the signed figure so the overspend stays visible (stats/dashboard
+    // render it as "extra cost" next to the gross saving).
+    for (const model of [DEFAULT_MODELS.opus, DEFAULT_MODELS.fable]) {
+      const { savedCents, costCents } = computeRouteCost(
+        model,
+        usage,
+        DEFAULT_MODELS.sonnet,
+        DEFAULT_PRICING,
+      );
+      assert.ok(savedCents < 0, model);
+      assert.ok(costCents > 0, `${model} still reports its real cost`);
+    }
+  });
+
+  it('the baseline routed against itself saves nothing', () => {
+    const { savedCents } = computeRouteCost(
+      DEFAULT_MODELS.sonnet,
+      usage,
+      DEFAULT_MODELS.sonnet,
+      DEFAULT_PRICING,
+    );
+    assert.equal(savedCents, 0);
+  });
+});
+
 describe('unpriced models are loud, not free', () => {
   // The regression guard the suite was missing: asserting a specific price only
   // ever catches the model you already thought of. These assert that ANY model
