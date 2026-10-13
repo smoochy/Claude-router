@@ -7,6 +7,8 @@ This fork's own sections use the upstream version plus a `-smoo.<n>` prerelease 
 
 ## [Unreleased]
 
+## [0.4.0-smoo.6] - 2026-10-13
+
 ### Added
 
 - `research/2026-10-13-end-to-end-savings-smoo.md`: a reproducible end-to-end savings run of the fork as it ships (`0.4.0-smoo.5`, 5.5 pricing), 330 synthetic turns through the real CLI against a stub upstream under a scratch `HOME`. By the router's own `savedCents`: 25.0 percent against all-Opus with the coordinator pinned to opus, 47.9 percent unpinned, 0 in observe mode. The harness is inlined in the document.
@@ -35,6 +37,8 @@ This fork's own sections use the upstream version plus a `-smoo.<n>` prerelease 
 - Dashboard stat cards now sit in one row grouped by theme: cost on the left (Session Cost, Session Saved, vs All-Opus, Lifetime Saved), a thin gradient divider, requests on the right (Session Requests, Lifetime Requests, Dispatch Rate, Auto-retried). Below 900px the groups stack with a horizontal divider.
 
 - Dashboard footer is now a single line with visible dividers between refresh interval, shown count, version and theme credit; it wraps instead of overflowing at narrow widths.
+
+- RELEASING.md step 3 now also names the `version` bump in `plugin/.claude-plugin/plugin.json`, which `plugin.test.ts` pins to `package.json`.
 
 ### Fixed
 
