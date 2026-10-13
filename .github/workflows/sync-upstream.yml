@@ -142,7 +142,14 @@ jobs:
           show_full_output: true
           prompt: |
             A `git merge --no-ff --no-commit` of the upstream release into this branch (smoo/main) stopped on conflicts and is still in progress in the working tree. Resolve every conflicted file: trace each side of every hunk back to why that change was made, keep both intents, and pick one side only where they are incompatible (this fork's own work lives on smoo/main; upstream's work is the incoming side). Do not abort the merge and do not touch the version in package.json or package-lock.json (a later step bumps it). Run `npm ci`, then `npm test` (two separate commands) and fix what the merge broke. Then `git add -A` and run `git commit --no-edit` (the merge message is already prepared). Finally write `${{ runner.temp }}/resolution.md`: one bullet per conflicted hunk as `file:lines - kept <ours|theirs|both> because <reason>`. Plain ASCII hyphens, one line per bullet.
-          claude_args: '--allowedTools "Read,Edit,Write,Glob,Grep,Bash(git add:*),Bash(git commit:*),Bash(git status:*),Bash(git log:*),Bash(git show:*),Bash(git ls-files:*),Bash(git checkout --merge:*),Bash(git diff:*),Bash(npm ci),Bash(npm test)"'
+          claude_args: '--allowedTools "Read,Edit,Write,Glob,Grep,Bash(git add:*),Bash(git commit:*),Bash(git status:*),Bash(git log:*),Bash(git show:*),Bash(git ls-files:*),Bash(git checkout --merge:*),Bash(git diff:*),Bash(npm ci),Bash(npm test)" --disallowedTools "Read(./.git/**),Edit(./.git/**),Write(./.git/**)"'
+
+      # The action writes github.token into the origin remote URL (.git/config) even with persist-credentials: false.
+      - name: Scrub the token from the origin remote
+        if: always() && steps.merge.outputs.conflicts == 'true'
+        env:
+          REPO: ${{ github.repository }}
+        run: git remote set-url origin "https://github.com/$REPO"
 
       - name: Bump the upstream base and verify
         if: steps.due.outputs.due == 'true'
