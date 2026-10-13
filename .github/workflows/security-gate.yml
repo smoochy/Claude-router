@@ -88,6 +88,9 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
 
+      - name: Forced gate failure probe
+        run: exit 1
+
       - name: Diff base (last release tag)
         id: base
         run: |
