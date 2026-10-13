@@ -1,3 +1,4 @@
+# managed centrally - do not edit manually
 name: sync-upstream
 
 # Upstream sync. Daily: fast-forward `master` to upstream's tip
