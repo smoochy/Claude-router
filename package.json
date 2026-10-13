@@ -1,6 +1,6 @@
 {
   "name": "@smoochy/claude-router",
-  "version": "0.4.0-smoo.6",
+  "version": "0.4.0-smoo.99",
   "description": "Claude API cost router for Claude Code: routes each call to Haiku, Sonnet, Opus or Fable, with a route/observe/off switch, a CI-generated model and price list, and a security-gated release per version",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
