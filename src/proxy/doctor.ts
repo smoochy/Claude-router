@@ -189,7 +189,6 @@ export async function runDiagnostics(
     hint: 'Run: claude-router install',
   });
 
-
   // The key is only required for the anthropic provider, so the verdict has two
   // ways to pass — and the label has to say which one applied, or a green tick
   // sits next to a sentence reporting a problem.
