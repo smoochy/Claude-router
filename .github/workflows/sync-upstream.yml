@@ -139,6 +139,7 @@ jobs:
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ github.token }}
+          show_full_output: true
           prompt: |
             A `git merge --no-ff --no-commit` of the upstream release into this branch (smoo/main) stopped on conflicts and is still in progress in the working tree. Resolve every conflicted file: trace each side of every hunk back to why that change was made, keep both intents, and pick one side only where they are incompatible (this fork's own work lives on smoo/main; upstream's work is the incoming side). Do not abort the merge and do not touch the version in package.json or package-lock.json (a later step bumps it). Run `npm ci`, then `npm test` (two separate commands) and fix what the merge broke. Then `git add -A` and run `git commit --no-edit` (the merge message is already prepared). Finally write `${{ runner.temp }}/resolution.md`: one bullet per conflicted hunk as `file:lines - kept <ours|theirs|both> because <reason>`. Plain ASCII hyphens, one line per bullet.
           claude_args: '--allowedTools "Read,Edit,Write,Glob,Grep,Bash(git add:*),Bash(git commit:*),Bash(git status:*),Bash(git diff:*),Bash(npm ci),Bash(npm test)"'
