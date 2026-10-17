@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { DIM_INK, PASSTHROUGH_INK, extraCostNote, filterByMode, filterHistory, parseRefresh, renderDashboard, sessionLabel } from '../proxy/dashboard.js';
+import { DIM_INK, HIDE_PASSTHROUGH, PASSTHROUGH_INK, extraCostNote, filterByMode, filterHistory, parseRefresh, renderDashboard, sessionLabel } from '../proxy/dashboard.js';
 import { emptyTotals, foldOutcome } from '../totals.js';
 import type { RouteEvent } from '../proxy/route-event.js';
 
@@ -486,5 +486,24 @@ describe('stat cards follow the active scope and filters', () => {
     assert.match(on, /the active filters do not apply to this figure/);
     const off = renderDashboard(history, lifetime, { scope: 'all' });
     assert.doesNotMatch(off, /stat-card card[^"]* dim"/);
+  });
+});
+
+describe('tier filter - hide passthrough', () => {
+  const history = [
+    e({ tier: 'sonnet', timestamp: '2026-09-04T10:00:01.000Z' }),
+    e({ tier: 'passthrough', model: 'claude-haiku-5', timestamp: '2026-09-04T10:00:02.000Z' }),
+    e({ tier: 'opus', timestamp: '2026-09-04T10:00:03.000Z' }),
+  ];
+
+  it('keeps every tier except passthrough, so the route feed and cards drop those rows', () => {
+    const out = filterHistory(history, { tier: HIDE_PASSTHROUGH });
+    assert.deepEqual(out.map((x) => x.tier), ['sonnet', 'opus']);
+    assert.equal(filterHistory(history, { tier: 'passthrough' }).length, 1, 'the plain passthrough filter still isolates them');
+  });
+
+  it('offers a "Hide passthrough" option in the tier control and marks it selected', () => {
+    assert.match(renderDashboard(history, undefined, {}), new RegExp(`<option value="${HIDE_PASSTHROUGH}">Hide passthrough</option>`));
+    assert.match(renderDashboard(history, undefined, { tier: HIDE_PASSTHROUGH }), new RegExp(`<option value="${HIDE_PASSTHROUGH}" selected>Hide passthrough</option>`));
   });
 });

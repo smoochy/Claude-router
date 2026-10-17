@@ -14,6 +14,7 @@ This fork's own sections use the upstream version plus a `-smoo.<n>` prerelease 
 
 ### Added
 
+- **Hide passthrough in the dashboard.** The Tier filter has a "Hide passthrough" entry that drops passthrough rows from the route feed and the filtered cards, so a haiku passthrough no longer buries the routed traffic.
 - **`routing.passthroughHaiku`.** Under `forceRoute`, requests that explicitly ask for a haiku model are forwarded unchanged and recorded as `passthrough` (saving 0) instead of being floored at sonnet, which booked every haiku background call as extra cost. Default off. It is also noted in CONTEXT.md and CLAUDE.md. The dashboard descriptions for the `passthrough` tier and the `passthrough:explicit-model` reason now cover this case.
 - Tests asserting every event-derived card equals the value folded from the filtered events (role, tier, window, scope), and the new labels and dimming.
 

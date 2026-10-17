@@ -8,6 +8,8 @@ import { HISTORY_TAIL_LINES, type LifetimeStats } from './history.js';
 /** Sentinel option value for "events with no value on this field" - its own
  * slice rather than silently excluded, the precedent set for routingMode. */
 const NONE = '__none__';
+/** Tier-filter value that keeps every tier except passthrough - the only exclusion the tier control offers. */
+export const HIDE_PASSTHROUGH = '__not_passthrough__';
 
 /** Typed Record<DisplayTier, ...>: a new tier fails the build until it has a name and a help text. */
 const TIER_NAME: Record<DisplayTier, string> = {
@@ -159,7 +161,7 @@ const FILTER_HELP = {
   scope: 'Session counts requests since this router started; All reads the tail of the history file, across restarts.',
   window: 'Only requests inside this time window: all time, today, or the last hour.',
   session: 'Only requests from one Claude Code session. The label is the session title when known, else its start time, length and request count.',
-  tier: 'The model class the router picked: haiku, sonnet, opus or fable.',
+  tier: 'The model class the router picked: haiku, sonnet, opus or fable, or pass for a request forwarded untouched. Hide passthrough keeps every tier except pass.',
   model: 'The exact model id that was billed for the request.',
   pin: 'Whether the model the client asked for (pilotfish pin) is the one that was billed: honored or overridden. No pin means the client sent no model.',
   reason: 'The routing rule that picked the tier, such as agentic:default or role:recon.',
@@ -305,7 +307,8 @@ export function filterHistory(history: RouteEvent[], filters: DashboardFilters):
   let out = filterByMode(history, filters.mode ?? 'all');
   if (filters.role) out = out.filter((e) => (filters.role === NONE ? roleLabel(e) === undefined : roleLabel(e) === filters.role));
   if (filters.model) out = out.filter((e) => e.model === filters.model);
-  if (filters.tier) out = out.filter((e) => String(e.tier) === filters.tier);
+  if (filters.tier === HIDE_PASSTHROUGH) out = out.filter((e) => e.tier !== 'passthrough');
+  else if (filters.tier) out = out.filter((e) => String(e.tier) === filters.tier);
   if (filters.pin) out = out.filter((e) => (filters.pin === NONE ? pinState(e) === undefined : pinState(e) === filters.pin));
   if (filters.reason) out = out.filter((e) => (filters.reason === NONE ? e.reason === undefined : e.reason === filters.reason));
   if (filters.retry) out = out.filter((e) => (filters.retry === NONE ? retryState(e) === undefined : retryState(e) === filters.retry));
@@ -512,7 +515,10 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
 
   const roleOptions = simpleOptions(roleValues.values, roleValues.hasNone, 'No role', filters.role);
   const modelOptions = simpleOptions(modelValues.values, false, '', filters.model);
-  const tierOptions = simpleOptions(tierValues.values, false, '', filters.tier);
+  const tierOptions = simpleOptions(tierValues.values, false, '', filters.tier).replace(
+    '</option>',
+    `</option><option value="${HIDE_PASSTHROUGH}"${filters.tier === HIDE_PASSTHROUGH ? ' selected' : ''}>Hide passthrough</option>`,
+  );
   const pinOptions = simpleOptions(PIN_VALUES, true, 'No pin', filters.pin);
   const reasonValues = distinct(history, (e) => e.reason);
   const reasonOptions = simpleOptions(reasonValues.values, reasonValues.hasNone, 'No reason', filters.reason);
