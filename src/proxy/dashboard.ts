@@ -294,6 +294,11 @@ function retryState(e: RouteEvent): string | undefined {
   return e.retried ? e.retryReason || 'retried' : undefined;
 }
 
+/** True when any control narrows the event set; scope only picks the source, so it is not a filter. */
+export function hasActiveFilter(f: DashboardFilters): boolean {
+  return Boolean((f.mode && f.mode !== 'all') || f.role || f.model || f.tier || f.pin || f.reason || f.retry || f.session || (f.window && f.window !== 'all'));
+}
+
 /** Applies every active control as one AND, recomputed from the full history — exported for the filter/recomputation tests. */
 export function filterHistory(history: RouteEvent[], filters: DashboardFilters): RouteEvent[] {
   let out = filterByMode(history, filters.mode ?? 'all');
@@ -365,11 +370,11 @@ function deriveSessionLabel(events: RouteEvent[]): string {
  * prose under the figure, so every card keeps the same height and the row does
  * not reflow when a scope or filter changes which notes apply.
  */
-function statCard(label: string, value: string, valueClass: string, sub: string, tipLines: string[]): string {
+function statCard(label: string, value: string, valueClass: string, sub: string, tipLines: string[], dim = false): string {
   const tip = tipLines.length > 0
     ? `<div class="tip-body" role="tooltip">${tipLines.map((l) => `<div>${l}</div>`).join('')}</div>`
     : '';
-  return `<div class="stat-card card${tip ? ' has-tip' : ''}"${tip ? ' tabindex="0"' : ''}>
+  return `<div class="stat-card card${tip ? ' has-tip' : ''}${dim ? ' dim' : ''}"${tip ? ' tabindex="0"' : ''}>
       <div class="label">${label}</div>
       <div class="value${valueClass ? ` ${valueClass}` : ''}">${value}</div>
       <div class="sub">${sub || '&nbsp;'}</div>
@@ -413,6 +418,11 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
   const totalRequests = totals.requests;
   const totalCost = totals.costCents;
   const retried = totals.retried;
+  // Labels say what the figure covers: the in-memory session, or the ledger tail under scope=all; "(filtered)" when a control narrows it.
+  const flt = hasActiveFilter(filters);
+  const cardLabel = (name: string): string => `${filters.scope === 'all' ? 'History' : 'Session'} ${name}${flt ? ' (filtered)' : ''}`;
+  // Lifetime comes from the whole ledger as a running sum, not events, so no filter can apply to it: dim it and say why.
+  const lifetimeTip = flt ? ['Not filtered: the lifetime total is summed over the whole ledger, so the active filters do not apply to this figure.'] : [];
   // Every card is always rendered ("-" when there is nothing to count) so the
   // row keeps one shape across scopes and filters.
   const { turns, dispatched, nested } = totals.dispatch;
@@ -453,10 +463,10 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
       tip: [`${calls} call${calls === 1 ? '' : 's'} unpriced: ${esc(names)}`],
     };
   };
-  const savedCard = (label: string, t: LifetimeStats, digits: number | undefined, unpriced: { sub: string; tip: string[] }): string => {
+  const savedCard = (label: string, t: LifetimeStats, digits: number | undefined, unpriced: { sub: string; tip: string[] }, extraTip: string[] = []): string => {
     const d = savedCentsDisplay(t.savedCents, false, digits);
     const sub = [extraCostNote(t), unpriced.sub].filter(Boolean).join(' &middot; ');
-    return statCard(label, d.text, d.tone === 'neutral' ? '' : d.tone, sub, [...savedTipLines(t), ...unpriced.tip]);
+    return statCard(label, d.text, d.tone === 'neutral' ? '' : d.tone, sub, [...extraTip, ...savedTipLines(t), ...unpriced.tip], extraTip.length > 0);
   };
 
   const recent = filtered.slice(-50).reverse();
@@ -750,6 +760,7 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
       .stat-divider { width: auto; height: 1px; background: linear-gradient(to right, transparent, var(--edge), transparent); }
     }
     .stat-card { position: relative; min-width: 0; padding: 11px 14px 12px; }
+    .stat-card.dim .value, .stat-card.dim .sub { opacity: 0.22; }
     .stat-card .sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .stat-card.has-tip .value { text-decoration: underline dotted; text-decoration-color: var(--ink-dim); text-underline-offset: 5px; cursor: help; }
     /* Hover or keyboard focus opens the explanation, same pattern as the cryo-dash schema tab */
@@ -920,15 +931,15 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
 
   <div class="stats">
     <div class="stat-group" data-group="cost">
-      ${statCard('Session Cost', usd(totalCost), 'orange', '', sessionTipLines.cost)}
-      ${savedCard('Session Saved', totals, 4, unpricedNote(totals.unpricedModels))}
+      ${statCard(cardLabel('Cost'), usd(totalCost), 'orange', '', sessionTipLines.cost)}
+      ${savedCard(cardLabel('Saved'), totals, 4, unpricedNote(totals.unpricedModels))}
       ${counterfactualCard}
-      ${lifetime ? savedCard('Lifetime Saved', lifetime, undefined, unpricedNote(lifetime.unpricedModels)) : ''}
+      ${lifetime ? savedCard('Lifetime Saved', lifetime, undefined, unpricedNote(lifetime.unpricedModels), lifetimeTip) : ''}
     </div>
     <div class="stat-divider" role="separator" aria-orientation="vertical"></div>
     <div class="stat-group" data-group="requests">
-      ${statCard('Session Requests', String(totalRequests), 'blue', '', sessionTipLines.requests)}
-      ${lifetime ? statCard('Lifetime Requests', String(lifetime.requests), 'blue', '', []) : ''}
+      ${statCard(cardLabel('Requests'), String(totalRequests), 'blue', '', sessionTipLines.requests)}
+      ${lifetime ? statCard('Lifetime Requests', String(lifetime.requests), 'blue', '', lifetimeTip, flt) : ''}
       ${dispatchCard}
       ${statCard('Auto-retried', String(retried), '', '', ['Requests the router re-sent to a stronger model after a truncated or refused answer.', `${retried} of ${totalRequests} requests in the current view.`])}
     </div>

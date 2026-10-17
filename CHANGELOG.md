@@ -7,6 +7,15 @@ This fork's own sections use the upstream version plus a `-smoo.<n>` prerelease 
 
 ## [Unreleased]
 
+### Changed
+
+- Dashboard stat cards say what they cover: `Session` becomes `History` under scope All, and a `(filtered)` suffix appears while any filter is active.
+- Lifetime Saved and Lifetime Requests are dimmed while a filter is active, with a hover note that the lifetime total is summed over the whole ledger and ignores filters.
+
+### Added
+
+- Tests asserting every event-derived card equals the value folded from the filtered events (role, tier, window, scope), and the new labels and dimming.
+
 ## [0.4.0-smoo.6] - 2026-10-13
 
 ### Added

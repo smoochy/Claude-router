@@ -428,3 +428,63 @@ describe('By Role row layout', () => {
     assert.doesNotMatch(rule, /space-between/);
   });
 });
+
+describe('stat cards follow the active scope and filters (#4477)', () => {
+  const now = new Date();
+  const old = '2020-01-01T10:00:00.000Z';
+  const history = [
+    e({ tier: 'haiku', role: 'recon', costCents: 1, savedCents: 2, inputTokens: 100, outputTokens: 10, timestamp: now.toISOString() }),
+    e({ tier: 'opus', role: 'gate', costCents: 9, savedCents: -1, inputTokens: 300, outputTokens: 30, retried: true, retryReason: 'truncation', timestamp: now.toISOString() }),
+    e({ tier: 'sonnet', costCents: 4, savedCents: 3, inputTokens: 50, outputTokens: 5, dispatchable: true, dispatched: true, timestamp: old }),
+    e({ tier: 'sonnet', role: 'recon', costCents: 2, savedCents: 1, inputTokens: 70, outputTokens: 7, timestamp: old }),
+  ];
+  const lifetime = emptyTotals();
+  for (const ev of history) foldOutcome(lifetime, ev);
+
+  // value of every card that is computed from the event set, keyed by its label minus the scope/filter decoration
+  const SESSION_CARDS = ['Cost', 'Saved', 'Requests'];
+  const cards = (html: string): Record<string, string> => {
+    const out: Record<string, string> = {};
+    for (const m of html.matchAll(/<div class="label">([^<]+)<\/div>\s*<div class="value[^"]*">([^<]*)<\/div>/g)) {
+      out[m[1]!.replace(/^(Session|History) /, '').replace(/ \(filtered\)$/, '')] = m[2]!;
+    }
+    return out;
+  };
+  const filters: Array<[string, Parameters<typeof filterHistory>[1]]> = [
+    ['role', { role: 'recon' }],
+    ['tier', { tier: 'sonnet' }],
+    ['window', { window: 'today' }],
+    ['scope+role', { scope: 'all', role: 'gate' }],
+  ];
+
+  for (const [name, f] of filters) {
+    it(`every event-derived card equals the value folded from the filtered events (${name})`, () => {
+      const viaFilters = cards(renderDashboard(history, lifetime, f));
+      const viaPrefiltered = cards(renderDashboard(filterHistory(history, f), lifetime, { scope: f.scope }));
+      for (const k of [...SESSION_CARDS, 'vs All-Opus', 'Dispatch Rate', 'Auto-retried']) {
+        assert.equal(viaFilters[k], viaPrefiltered[k], k);
+      }
+    });
+  }
+
+  it('vs All-Opus changes with the filter and uses the configured opus tier', () => {
+    const all = cards(renderDashboard(history, lifetime, {}))['vs All-Opus'];
+    const gate = cards(renderDashboard(history, lifetime, { role: 'gate' }))['vs All-Opus'];
+    assert.notEqual(all, gate);
+    assert.match(renderDashboard(history, lifetime, { role: 'gate' }, 'claude-opus-9-9'), /Same tokens priced on claude-opus-9-9/);
+  });
+
+  it('labels say what they cover: scope and active filter', () => {
+    assert.match(renderDashboard(history, lifetime, {}), /<div class="label">Session Cost<\/div>/);
+    assert.match(renderDashboard(history, lifetime, { scope: 'all' }), /<div class="label">History Cost<\/div>/);
+    assert.match(renderDashboard(history, lifetime, { role: 'recon' }), /<div class="label">Session Requests \(filtered\)<\/div>/);
+  });
+
+  it('dims the lifetime cards and explains why, only while a filter is active', () => {
+    const on = renderDashboard(history, lifetime, { tier: 'haiku' });
+    assert.equal(on.match(/class="stat-card card has-tip dim"/g)?.length, 2);
+    assert.match(on, /the active filters do not apply to this figure/);
+    const off = renderDashboard(history, lifetime, { scope: 'all' });
+    assert.doesNotMatch(off, /stat-card card[^"]* dim"/);
+  });
+});
