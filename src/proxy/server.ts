@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import Anthropic from '@anthropic-ai/sdk';
 import { handleMessages, handlePassthrough, registerAgent, routeHistory, routeCounters, type HandlerConfig } from './handler.js';
 import { getVersion } from './cli-config.js';
-import { renderDashboard, parseRefresh, DASHBOARD_MODES, TIME_WINDOWS, type DashboardMode, type DashboardFilters } from './dashboard.js';
+import { renderDashboard, parseRefresh, DASHBOARD_MODES, FILTER_NAMES, TIME_WINDOWS, type DashboardMode, type DashboardFilters } from './dashboard.js';
 import { readHistoryTail, readLifetimeStats } from './history.js';
 import { buildHealth, formatStatusLine } from './health.js';
 import { localGuard, requireJson } from './local-guard.js';
@@ -74,13 +74,11 @@ export function createProxyApp(
       : undefined;
     const filters: DashboardFilters = {
       mode,
-      role: c.req.query('role') || undefined,
-      model: c.req.query('model') || undefined,
-      tier: c.req.query('tier') || undefined,
-      pin: c.req.query('pin') || undefined,
-      reason: c.req.query('reason') || undefined,
-      retry: c.req.query('retry') || undefined,
-      session: c.req.query('session') || undefined,
+      // `tier=a&tier=b` shows only those, `tier_ne=x` hides x; a lone `tier=a` is the old single-value link.
+      ...Object.fromEntries(FILTER_NAMES.map((n) => [n, {
+        inc: (c.req.queries(n) ?? []).filter(Boolean),
+        exc: (c.req.queries(`${n}_ne`) ?? []).filter(Boolean),
+      }])),
       window,
       // Last value wins (old checkbox links carried auto=0&auto=1).
       auto: parseRefresh(c.req.queries('auto')?.at(-1)),
