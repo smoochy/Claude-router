@@ -439,7 +439,7 @@ const OBJECT_KEYS: Record<Exclude<keyof FileConfig, OptionKey>, true> = {
 // Same exhaustiveness trick for the one nested object with no runtime key list.
 const ROUTING_KEYS: Record<keyof RoutingTuning, true> = {
   haikuMax: true, opusMin: true, hybridBand: true, aiTimeoutMs: true,
-  classifyCacheSize: true, allowHaikuInAgentic: true, allowFable: true,
+  classifyCacheSize: true, allowHaikuInAgentic: true, passthroughHaiku: true, allowFable: true,
 };
 
 export interface UnknownConfigKey {
