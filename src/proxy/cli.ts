@@ -890,7 +890,7 @@ ${term.bold('Install-only options')}
 
 ${term.bold('Config file')} ${d('(~/.claude-router/config.json — flags always win)')}
   Any option above, plus per-tier model overrides ("tiers"), pricing ("pricing"),
-  and classifier tuning ("routing": allowFable, allowHaikuInAgentic, aiTimeoutMs,
+  and classifier tuning ("routing": allowFable, allowHaikuInAgentic, passthroughHaiku, aiTimeoutMs,
   classifyCacheSize). Scaffold with: ${a('claude-router init')}
 
 ${term.bold('Quick start')}

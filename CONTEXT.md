@@ -23,7 +23,7 @@ The ubiquitous language of **claude-router**. Use these terms exactly in code, c
 ## Proxy
 
 - **Passthrough** — a request that pins an explicit model (not `"auto"`) bypasses routing and forwards verbatim to `api.anthropic.com`. Anthropic provider only.
-- **Force-route** — override passthrough so pinned-model requests still route. Required for Claude Code, which always pins a model.
+- **Force-route** — override passthrough so pinned-model requests still route. Required for Claude Code, which always pins a model. Exception: `routing.passthroughHaiku` (default off) keeps explicitly requested haiku models on passthrough even under force-route, recorded as `passthrough` with a saving of 0.
 - **Parameter normalization** — reconciling model-coupled request params with the routed Tier's model (`normalizeParamsForTier`), so a request built for one model doesn't 400 on another. Applied before every routed call, including escalated retries.
 - **Provider** — where the API call goes: `anthropic` (per-credential client), `bedrock`, `vertex`.
 - **Health contract** — the `/health` payload shape + the `'claude-router-proxy'` identity string, defined once in `health.ts` (`HealthInfo`, `SERVICE_ID`, `buildHealth`). The seam by which the daemon and CLI recognise a running proxy.

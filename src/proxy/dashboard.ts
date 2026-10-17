@@ -23,7 +23,7 @@ const TIER_HELP: Record<DisplayTier, string> = {
   sonnet: 'Default tier. Builders, batch work and any request with no stronger signal.',
   opus: 'Deep reasoning. Gate and audit roles, and prompts that asked for depth.',
   fable: 'Top tier. Prompts asking for depth over a long horizon.',
-  passthrough: 'Routing was off for these requests: the client model went through untouched, only logged.',
+  passthrough: 'The client model went through untouched, only logged: routing was off, or routing.passthroughHaiku kept a haiku request on haiku.',
 };
 
 /** Meaning and origin of each role (see src/roles.ts); unknown names fall back to a custom-role text. */
@@ -134,6 +134,7 @@ export function reasonHelp(reason: string | undefined): string {
     ['single-turn:default', 'Single prompt with no stronger signal: default sonnet.'],
     ['subagent:readonly-tools', 'Subagent with read-only tools, treated as recon: pinned to haiku.'],
     ['subagent:write-tools', 'Subagent with write tools, treated as a builder.'],
+    ['passthrough:explicit-model', 'The client named a model and it was forwarded untouched (routing off, or routing.passthroughHaiku for a haiku request): only logged, saving 0.'],
     ['role:', 'Role named by an explicit marker in the prompt.'],
     ['agent:', 'Role taken from the agent type of the subagent.'],
   ];
