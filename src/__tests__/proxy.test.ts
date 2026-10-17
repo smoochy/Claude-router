@@ -656,6 +656,26 @@ describe('proxy passthrough (hermetic — stubbed upstream)', () => {
     assert.match(captured()!.url, /\/v1\/messages$/, 'forwards to the messages endpoint');
   });
 
+  it('forceRoute + routing.passthroughHaiku forwards a haiku request and still routes the rest', async () => {
+    const forced = createProxyApp({
+      classifier: 'heuristic',
+      defaultModel: 'claude-sonnet-4-6',
+      verbose: false,
+      provider: 'anthropic',
+      models: DEFAULT_MODELS,
+      forceRoute: true,
+      routing: { passthroughHaiku: true },
+    });
+    stubUpstream(200, { id: 'msg', type: 'message', model: 'claude-haiku-4-5', usage: { input_tokens: 1, output_tokens: 1 } });
+    const res = await forced.request('/v1/messages', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-api-key': 'sk-test-fake' },
+      body: JSON.stringify({ model: 'claude-haiku-4-5', messages: [{ role: 'user', content: 'hi' }], max_tokens: 10 }),
+    });
+    assert.equal(res.status, 200);
+    assert.equal(res.headers.get('x-router-tier'), 'passthrough');
+  });
+
   it('explicit-model passthrough relays the anthropic-beta header (regression: G1)', async () => {
     // proxyPassthrough previously built its own header set and dropped
     // anthropic-beta, so a beta-dependent request (context-management) 400s

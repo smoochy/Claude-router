@@ -478,7 +478,8 @@ export async function handleMessages(
   const requestedModel = body.model as string | undefined;
 
   // Passthrough only for Anthropic provider with explicit model (not "auto"), unless --force-route
-  if (!config.forceRoute && config.provider === 'anthropic' && requestedModel && requestedModel !== 'auto') {
+  const haikuPassthrough = config.routing?.passthroughHaiku === true && /haiku/i.test(requestedModel ?? '');
+  if ((!config.forceRoute || haikuPassthrough) && config.provider === 'anthropic' && requestedModel && requestedModel !== 'auto') {
     return proxyPassthrough(c, rawBody, requestedModel, isStreaming, config);
   }
 

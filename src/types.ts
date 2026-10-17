@@ -52,6 +52,13 @@ export interface RoutingTuning {
    */
   allowHaikuInAgentic?: boolean;
   /**
+   * Under `forceRoute`, forward requests that explicitly ask for a haiku model
+   * unchanged (recorded as `passthrough`, saving 0) instead of classifying them,
+   * which floors them at sonnet and books the upgrade as a loss against the haiku
+   * baseline. Default false.
+   */
+  passthroughHaiku?: boolean;
+  /**
    * Allow classification to reach the fable tier. Default false: fable is
    * $10/$50 and no measured signal predicts "super hard" from request text, so
    * promotion needs depth and long-horizon evidence together. Config-file
