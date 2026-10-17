@@ -676,6 +676,33 @@ describe('proxy passthrough (hermetic — stubbed upstream)', () => {
     assert.equal(res.headers.get('x-router-tier'), 'passthrough');
   });
 
+  it('passthroughHaiku: a role-marked haiku agent stays on haiku, a non-haiku request is still routed', async () => {
+    const forced = createProxyApp({
+      classifier: 'heuristic',
+      defaultModel: 'claude-sonnet-4-6',
+      verbose: false,
+      provider: 'anthropic',
+      models: DEFAULT_MODELS,
+      forceRoute: true,
+      routing: { passthroughHaiku: true },
+    });
+    const sent: string[] = [];
+    globalThis.fetch = (async (_input: unknown, init?: { body?: unknown }) => {
+      sent.push(String(init?.body));
+      return new Response(JSON.stringify({ id: 'msg', type: 'message', role: 'assistant', content: [{ type: 'text', text: 'ok' }], model: 'm', stop_reason: 'end_turn', usage: { input_tokens: 1, output_tokens: 1 } }), { status: 200, headers: { 'content-type': 'application/json' } });
+    }) as typeof fetch;
+    const req = (model: string, role: string) => forced.request('/v1/messages', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-api-key': 'sk-test-fake' },
+      body: JSON.stringify({ model, system: `<!-- claude-router:role=${role} -->\nagent`, messages: [{ role: 'user', content: 'hi' }], max_tokens: 10 }),
+    });
+    const recon = await req('claude-haiku-4-5', 'recon');
+    assert.equal(recon.headers.get('x-router-tier'), 'passthrough');
+    assert.match(sent[0], /"model":"claude-haiku-4-5"/, 'upstream still receives haiku');
+    const builder = await req('claude-sonnet-4-6', 'builder');
+    assert.notEqual(builder.headers.get('x-router-tier'), 'passthrough', 'non-haiku requests keep routing');
+  });
+
   it('explicit-model passthrough relays the anthropic-beta header (regression: G1)', async () => {
     // proxyPassthrough previously built its own header set and dropped
     // anthropic-beta, so a beta-dependent request (context-management) 400s

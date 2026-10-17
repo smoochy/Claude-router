@@ -245,6 +245,7 @@ Set defaults once in `~/.claude-router/config.json` instead of passing flags. **
     "aiTimeoutMs": 1500,
     "classifyCacheSize": 500,
     "allowHaikuInAgentic": false,
+    "passthroughHaiku": false,
     "allowFable": false
   }
 }
@@ -255,7 +256,7 @@ Set defaults once in `~/.claude-router/config.json` instead of passing flags. **
 - **`sessionModel`** — pin the Claude Code coordinator session to a tier (subagents still route). See [Pin the coordinator session](#pin-the-coordinator-session).
 - **`tiers`** — override which model ID each tier maps to.
 - **`pricing`** — override `$/1M` token rates used for savings math (handy for enterprise/negotiated rates).
-- **`routing`** — tune the classifier. `allowHaikuInAgentic: true` lets clearly-trivial tool-using turns reach Haiku (off by default — see the [agentic floor](#how-it-works)).
+- **`routing`** — tune the classifier. `allowHaikuInAgentic: true` lets clearly-trivial tool-using turns reach Haiku (off by default — see the [agentic floor](#how-it-works)). `passthroughHaiku: true` forwards requests that explicitly ask for a haiku model unchanged under `forceRoute` and records them as `passthrough` with a saving of 0, so haiku background calls stay on haiku and still show in the dashboard instead of being booked as extra cost (off by default).
 
 ---
 
