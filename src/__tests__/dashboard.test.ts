@@ -429,7 +429,7 @@ describe('By Role row layout', () => {
   });
 });
 
-describe('stat cards follow the active scope and filters (#4477)', () => {
+describe('stat cards follow the active scope and filters', () => {
   const now = new Date();
   const old = '2020-01-01T10:00:00.000Z';
   const history = [
