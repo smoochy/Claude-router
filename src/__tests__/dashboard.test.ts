@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { DIM_INK, PASSTHROUGH_INK, extraCostNote, filterByMode, filterHistory, parseRefresh, renderDashboard, sessionLabel } from '../proxy/dashboard.js';
+import { DIM_INK, hasActiveFilter, PASSTHROUGH_INK, extraCostNote, filterByMode, filterHistory, parseRefresh, renderDashboard, sessionLabel } from '../proxy/dashboard.js';
 import { emptyTotals, foldOutcome } from '../totals.js';
 import type { RouteEvent } from '../proxy/route-event.js';
 
@@ -213,12 +213,12 @@ describe('stat card order', () => {
 describe('filter row and retry help', () => {
   const html = renderDashboard([e({ retried: true, retryReason: 'truncation' })]);
   it('lists the selects in route-feed order, one row', () => {
-    const ids = [...html.matchAll(/<select id="(\w+)"/g)].map((m) => m[1]);
+    const ids = [...html.matchAll(/<select id="(\w+)"|<details class="tri" data-f="(\w+)"/g)].map((m) => m[1] ?? m[2]);
     assert.deepEqual(ids, ['mode', 'scope', 'window', 'session', 'tier', 'model', 'pin', 'reason', 'retry', 'role']);
     assert.match(html, /flex-wrap: nowrap/);
   });
   it('gives every filter label a hover/focus popover', () => {
-    const labels = [...html.matchAll(/<label for="(\w+)" class="has-tip" tabindex="0">(\w+)<span class="tip-body" role="tooltip">[^<]+<\/span><\/label>/g)];
+    const labels = [...html.matchAll(/<label (?:for="\w+" )?class="has-tip" tabindex="0">(\w+)<span class="tip-body" role="tooltip">[^<]+<\/span><\/label>/g)];
     assert.equal(labels.length, 10);
   });
   it('explains Saved in the feed header and the requested model in a popover', () => {
@@ -237,8 +237,8 @@ describe('filter row and retry help', () => {
     assert.equal(filterHistory(h, { retry: '__none__' }).length, 1);
     assert.equal(filterHistory(h, { retry: 'truncation', tier: 'opus' }).length, 1);
     const page = renderDashboard(h, undefined, { retry: 'refusal' });
-    assert.match(page, /<option value="refusal" selected>refusal<\/option>/);
-    assert.match(page, /<option value="__none__">No retry<\/option>/);
+    assert.match(page, /data-v="refusal" data-s="inc"/);
+    assert.match(page, /data-v="__none__" data-s="n"><span class="box"><\/span><span class="tl">No retry</);
     assert.ok(page.includes('retry=refusal'), 'refresh url keeps the retry filter');
   });
   it('explains retry in header and cell', () => {
@@ -486,5 +486,67 @@ describe('stat cards follow the active scope and filters', () => {
     assert.match(on, /the active filters do not apply to this figure/);
     const off = renderDashboard(history, lifetime, { scope: 'all' });
     assert.doesNotMatch(off, /stat-card card[^"]* dim"/);
+  });
+});
+
+describe('tri-state value filters (include / exclude, several values)', () => {
+  const history = [
+    e({ tier: 'sonnet', role: 'builder', sessionId: 's1', timestamp: '2026-09-04T10:00:01.000Z' }),
+    e({ tier: 'passthrough', model: 'claude-haiku-5', sessionId: 's2', timestamp: '2026-09-04T10:00:02.000Z' }),
+    e({ tier: 'opus', sessionId: 's1', timestamp: '2026-09-04T10:00:03.000Z' }),
+    e({ tier: 'haiku', timestamp: '2026-09-04T10:00:04.000Z' }),
+  ];
+  const tiers = (f: Parameters<typeof filterHistory>[1]): string[] => filterHistory(history, f).map((x) => String(x.tier));
+
+  it('exc hides the listed values, inc shows only them, both empty is no constraint', () => {
+    assert.deepEqual(tiers({ tier: { exc: ['passthrough'] } }), ['sonnet', 'opus', 'haiku']);
+    assert.deepEqual(tiers({ tier: { exc: ['passthrough', 'opus'] } }), ['sonnet', 'haiku']);
+    assert.deepEqual(tiers({ tier: { inc: ['opus', 'haiku'] } }), ['opus', 'haiku']);
+    assert.deepEqual(tiers({ tier: { inc: ['opus', 'haiku'], exc: ['haiku'] } }), ['opus']);
+    assert.equal(tiers({ tier: { inc: [], exc: [] } }).length, 4);
+  });
+
+  it('a bare string is the old single-value form', () => {
+    assert.deepEqual(tiers({ tier: 'sonnet' }), ['sonnet']);
+    assert.equal(filterHistory(history, { role: '__none__' }).length, 3, 'NONE still picks the events without that field');
+  });
+
+  it('works on every value filter, session included, and the NONE sentinel can be excluded', () => {
+    assert.equal(filterHistory(history, { session: { inc: ['s1', 's2'] } }).length, 3);
+    assert.equal(filterHistory(history, { session: { exc: ['__none__'] } }).length, 3);
+    assert.equal(filterHistory(history, { role: { exc: ['builder'] } }).length, 3);
+  });
+
+  it('counts as an active filter only when something is selected', () => {
+    assert.equal(hasActiveFilter({ tier: { exc: [] } }), false);
+    assert.equal(hasActiveFilter({ tier: { exc: ['passthrough'] } }), true);
+    assert.equal(hasActiveFilter({ session: 's1' }), true);
+  });
+
+  it('renders every value as a shown row, marks hidden and only rows, and summarises in a fixed-width summary', () => {
+    const none = renderDashboard(history, undefined, {});
+    assert.match(none, /<summary>All<\/summary>/);
+    assert.match(none, /class="tri-row"[^>]*data-v="passthrough" data-s="n"/);
+    const hid = renderDashboard(history, undefined, { tier: { exc: ['passthrough'] } });
+    assert.match(hid, /<summary data-tip="≠ passthrough">≠ passthrough<\/summary>/);
+    assert.match(hid, /data-v="passthrough" data-s="exc"/);
+    assert.match(hid, /<input type="hidden" name="tier_ne" value="passthrough" data-f="tier">/);
+    const only = renderDashboard(history, undefined, { tier: { inc: ['opus', 'sonnet'] } });
+    assert.match(only, /data-v="opus" data-s="inc"/);
+    assert.match(only, /<input type="hidden" name="tier" value="opus" data-f="tier">/);
+  });
+
+  it('keeps the selection in the refresh url as repeated params', () => {
+    const html = renderDashboard(history, undefined, { tier: { inc: ['opus', 'sonnet'], exc: ['haiku'] }, auto: 30 });
+    assert.ok(html.includes('"/dashboard?tier=opus&tier=sonnet&tier_ne=haiku&auto=30"'));
+  });
+
+  it('lists a selected value that is gone from the history so it can be cleared', () => {
+    assert.match(renderDashboard(history, undefined, { tier: { exc: ['fable'] } }), /data-v="fable" data-s="exc"/);
+  });
+
+  it('mode, scope and window stay single selects', () => {
+    const html = renderDashboard(history, undefined, {});
+    for (const id of ['mode', 'scope', 'window']) assert.match(html, new RegExp(`<select id="${id}" name="${id}"`));
   });
 });

@@ -9,6 +9,26 @@ import { HISTORY_TAIL_LINES, type LifetimeStats } from './history.js';
  * slice rather than silently excluded, the precedent set for routingMode. */
 const NONE = '__none__';
 
+/**
+ * One value-set filter. A bare string is the legacy single-value form (`inc` of one).
+ * `inc` non-empty: show only those values. `exc`: hide those values. Both empty: no constraint.
+ */
+export type FilterSel = string | { inc?: string[]; exc?: string[] };
+export const FILTER_NAMES = ['session', 'tier', 'model', 'pin', 'reason', 'retry', 'role'] as const;
+export type FilterName = (typeof FILTER_NAMES)[number];
+
+export function selOf(s: FilterSel | undefined): { inc: string[]; exc: string[] } {
+  if (s === undefined || s === '') return { inc: [], exc: [] };
+  return typeof s === 'string' ? { inc: [s], exc: [] } : { inc: s.inc ?? [], exc: s.exc ?? [] };
+}
+
+/** `value` is the event's value for this filter; undefined (field absent) matches the NONE sentinel. */
+function selMatches(s: FilterSel | undefined, value: string | undefined): boolean {
+  const { inc, exc } = selOf(s);
+  const key = value ?? NONE;
+  return (inc.length === 0 || inc.includes(key)) && !exc.includes(key);
+}
+
 /** Typed Record<DisplayTier, ...>: a new tier fails the build until it has a name and a help text. */
 const TIER_NAME: Record<DisplayTier, string> = {
   haiku: 'Haiku',
@@ -54,7 +74,18 @@ function show(el){t.textContent=el.getAttribute('data-tip');t.style.display='blo
 function hide(){t.style.display='none'}
 document.addEventListener('mouseover',function(e){var el=e.target.closest&&e.target.closest('[data-tip]');el?show(el):hide()});
 document.addEventListener('focusin',function(e){var el=e.target.closest&&e.target.closest('[data-tip]');el?show(el):hide()});
-document.addEventListener('scroll',hide,true)})()</script>`;
+document.addEventListener('scroll',hide,true);
+/* Tri-state filters: a click cycles shown, hidden, only; closing the popover submits the form once with the new state. */
+var N={n:'exc',exc:'inc',inc:'n'};
+function dirty(d){d.dataset.dirty=1}
+document.addEventListener('click',function(e){var r=e.target.closest&&e.target.closest('.tri-row'),x=e.target.closest&&e.target.closest('.tri-reset');
+if(r){r.dataset.s=N[r.dataset.s];dirty(r.closest('details'))}
+if(x){var d=x.closest('details');d.querySelectorAll('.tri-row').forEach(function(q){q.dataset.s='n'});dirty(d)}
+document.querySelectorAll('details.tri[open]').forEach(function(d){if(!d.contains(e.target))d.open=false})});
+document.addEventListener('keydown',function(e){var r=e.target.closest&&e.target.closest('.tri-row');if(r&&(e.key==='Enter'||e.key===' ')){e.preventDefault();r.click()}if(e.key==='Escape')document.querySelectorAll('details.tri[open]').forEach(function(d){d.open=false})});
+document.addEventListener('toggle',function(e){var d=e.target;if(!d.matches||!d.matches('details.tri')||d.open||!d.dataset.dirty)return;var f=d.closest('form'),n=d.dataset.f;
+f.querySelectorAll('input[data-f="'+n+'"]').forEach(function(i){i.remove()});
+d.querySelectorAll('.tri-row').forEach(function(q){if(q.dataset.s==='n')return;var i=document.createElement('input');i.type='hidden';i.name=n+(q.dataset.s==='exc'?'_ne':'');i.value=q.dataset.v;i.dataset.f=n;f.appendChild(i)});f.submit()},true)})()</script>`;
 
 interface Share { name: string; cls: string; n: number; c: number }
 
@@ -159,7 +190,7 @@ const FILTER_HELP = {
   scope: 'Session counts requests since this router started; All reads the tail of the history file, across restarts.',
   window: 'Only requests inside this time window: all time, today, or the last hour.',
   session: 'Only requests from one Claude Code session. The label is the session title when known, else its start time, length and request count.',
-  tier: 'The model class the router picked: haiku, sonnet, opus or fable.',
+  tier: 'The model class the router picked: haiku, sonnet, opus or fable, or passthrough for a request forwarded untouched. Every value starts shown; click to hide it, again to show only it.',
   model: 'The exact model id that was billed for the request.',
   pin: 'Whether the model the client asked for (pilotfish pin) is the one that was billed: honored or overridden. No pin means the client sent no model.',
   reason: 'The routing rule that picked the tier, such as agentic:default or role:recon.',
@@ -239,15 +270,15 @@ const WINDOW_LABEL: Record<TimeWindow, string> = { all: 'All time', today: 'Toda
  */
 export interface DashboardFilters {
   mode?: DashboardMode;
-  role?: string;
-  model?: string;
-  tier?: string;
+  role?: FilterSel;
+  model?: FilterSel;
+  tier?: FilterSel;
   /** `honored` | `overridden` | NONE (no model requested). */
-  pin?: string;
-  reason?: string;
+  pin?: FilterSel;
+  reason?: FilterSel;
   /** The retry reason (`truncation` | `refusal` | ...) of an auto-retried request, or NONE (not retried). */
-  retry?: string;
-  session?: string;
+  retry?: FilterSel;
+  session?: FilterSel;
   window?: TimeWindow;
   /** Refresh interval in seconds; 0 = off. Default 10. */
   auto?: number;
@@ -297,19 +328,20 @@ function retryState(e: RouteEvent): string | undefined {
 
 /** True when any control narrows the event set; scope only picks the source, so it is not a filter. */
 export function hasActiveFilter(f: DashboardFilters): boolean {
-  return Boolean((f.mode && f.mode !== 'all') || f.role || f.model || f.tier || f.pin || f.reason || f.retry || f.session || (f.window && f.window !== 'all'));
+  return Boolean((f.mode && f.mode !== 'all') || FILTER_NAMES.some((n) => { const s = selOf(f[n]); return s.inc.length + s.exc.length > 0; }) || (f.window && f.window !== 'all'));
 }
 
 /** Applies every active control as one AND, recomputed from the full history — exported for the filter/recomputation tests. */
 export function filterHistory(history: RouteEvent[], filters: DashboardFilters): RouteEvent[] {
   let out = filterByMode(history, filters.mode ?? 'all');
-  if (filters.role) out = out.filter((e) => (filters.role === NONE ? roleLabel(e) === undefined : roleLabel(e) === filters.role));
-  if (filters.model) out = out.filter((e) => e.model === filters.model);
-  if (filters.tier) out = out.filter((e) => String(e.tier) === filters.tier);
-  if (filters.pin) out = out.filter((e) => (filters.pin === NONE ? pinState(e) === undefined : pinState(e) === filters.pin));
-  if (filters.reason) out = out.filter((e) => (filters.reason === NONE ? e.reason === undefined : e.reason === filters.reason));
-  if (filters.retry) out = out.filter((e) => (filters.retry === NONE ? retryState(e) === undefined : retryState(e) === filters.retry));
-  if (filters.session) out = out.filter((e) => (filters.session === NONE ? e.sessionId === undefined : e.sessionId === filters.session));
+  out = out.filter((e) =>
+    selMatches(filters.role, roleLabel(e)) &&
+    selMatches(filters.model, e.model) &&
+    selMatches(filters.tier, String(e.tier)) &&
+    selMatches(filters.pin, pinState(e)) &&
+    selMatches(filters.reason, e.reason) &&
+    selMatches(filters.retry, retryState(e)) &&
+    selMatches(filters.session, e.sessionId));
   if (filters.window) out = out.filter((e) => inWindow(e.timestamp, filters.window!));
   return out;
 }
@@ -483,10 +515,34 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
   const tierValues = distinct(history, (e) => String(e.tier));
   const sessionValues = distinct(history, (e) => e.sessionId);
 
-  const simpleOptions = (values: string[], hasNone: boolean, noneLabel: string, selected: string | undefined): string => {
-    const opts = values.map((v) => `<option value="${esc(v)}"${v === selected ? ' selected' : ''}>${esc(v)}</option>`);
-    if (hasNone) opts.push(`<option value="${NONE}"${selected === NONE ? ' selected' : ''}>${esc(noneLabel)}</option>`);
-    return [`<option value=""${selected ? '' : ' selected'}>All</option>`, ...opts].join('');
+  type TriItem = [value: string, label: string];
+  // A value that is selected but no longer in the history (after a scope change) stays listed so it can be cleared.
+  const triItems = (values: string[], hasNone: boolean, noneLabel: string, sel: FilterSel | undefined, label: (v: string) => string = (v) => v): TriItem[] => {
+    const items: TriItem[] = values.map((v) => [v, label(v)]);
+    if (hasNone) items.push([NONE, noneLabel]);
+    const { inc, exc } = selOf(sel);
+    for (const v of [...inc, ...exc]) if (!items.some(([x]) => x === v)) items.push([v, v === NONE ? noneLabel || 'none' : v]);
+    return items;
+  };
+  // Tri-state filter: every value starts shown (checked); a click hides it, the next shows only it, the next shows it again.
+  // The summary keeps the width of a select (ellipsis), the full text is in its title.
+  const triField = (name: FilterName, title: string, help: string, items: TriItem[], sel: FilterSel | undefined): string => {
+    const { inc, exc } = selOf(sel);
+    const text = (vs: string[]): string => vs.map((v) => items.find(([x]) => x === v)?.[1] ?? v).join(', ');
+    const summary = inc.length + exc.length === 0
+      ? 'All'
+      : [inc.length ? `= ${text(inc)}` : '', exc.length ? `≠ ${text(exc)}` : ''].filter(Boolean).join(' ');
+    const hidden = [
+      ...inc.map((v) => `<input type="hidden" name="${name}" value="${esc(v)}" data-f="${name}">`),
+      ...exc.map((v) => `<input type="hidden" name="${name}_ne" value="${esc(v)}" data-f="${name}">`),
+    ].join('');
+    const rows = items
+      .map(([v, l]) => `<div class="tri-row" role="button" tabindex="0" data-v="${esc(v)}" data-s="${inc.includes(v) ? 'inc' : exc.includes(v) ? 'exc' : 'n'}"><span class="box"></span><span class="tl">${esc(l)}</span></div>`)
+      .join('');
+    return `<div class="mode-filter">
+      <label class="has-tip" tabindex="0">${title}<span class="tip-body" role="tooltip">${esc(help)}</span></label>
+      <details class="tri" data-f="${name}"><summary${inc.length + exc.length ? ` data-tip="${esc(summary)}"` : ''}>${esc(summary)}</summary>${hidden}<div class="tri-pop">${rows || '<div class="tri-empty">No values yet</div>'}<div class="tri-foot"><span>click: hide, only, show</span><button type="button" class="tri-reset">Reset</button></div></div></details>
+    </div>`;
   };
 
   // Session options need a readable label, not the raw id - resolved
@@ -497,47 +553,39 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
     if (e.sessionId === undefined) continue;
     (eventsBySession.get(e.sessionId) ?? eventsBySession.set(e.sessionId, []).get(e.sessionId)!).push(e);
   }
-  const sessionOptionsBody = sessionValues.values
-    .map((id) => `<option value="${esc(id)}"${id === filters.session ? ' selected' : ''}>${esc(sessionLabel(id, eventsBySession.get(id) ?? []))}</option>`)
-    .join('');
-  const sessionOptions = [
-    `<option value=""${filters.session ? '' : ' selected'}>All</option>`,
-    sessionOptionsBody,
-    sessionValues.hasNone ? `<option value="${NONE}"${filters.session === NONE ? ' selected' : ''}>No session id</option>` : '',
-  ].join('');
+  const sessionItems = triItems(sessionValues.values, sessionValues.hasNone, 'No session id', filters.session, (id) => sessionLabel(id, eventsBySession.get(id) ?? []));
 
   const windowOptions = TIME_WINDOWS.map(
     (w) => `<option value="${w}"${w === (filters.window ?? 'all') ? ' selected' : ''}>${esc(WINDOW_LABEL[w])}</option>`,
   ).join('');
 
-  const roleOptions = simpleOptions(roleValues.values, roleValues.hasNone, 'No role', filters.role);
-  const modelOptions = simpleOptions(modelValues.values, false, '', filters.model);
-  const tierOptions = simpleOptions(tierValues.values, false, '', filters.tier);
-  const pinOptions = simpleOptions(PIN_VALUES, true, 'No pin', filters.pin);
+  const roleItems = triItems(roleValues.values, roleValues.hasNone, 'No role', filters.role);
+  const modelItems = triItems(modelValues.values, false, '', filters.model);
+  const tierItems = triItems(tierValues.values, false, '', filters.tier);
+  const pinItems = triItems(PIN_VALUES, true, 'No pin', filters.pin);
   const reasonValues = distinct(history, (e) => e.reason);
-  const reasonOptions = simpleOptions(reasonValues.values, reasonValues.hasNone, 'No reason', filters.reason);
+  const reasonItems = triItems(reasonValues.values, reasonValues.hasNone, 'No reason', filters.reason);
 
   const retryValues = distinct(history, retryState);
-  const retryOptions = simpleOptions(retryValues.values, retryValues.hasNone, 'No retry', filters.retry);
+  const retryItems = triItems(retryValues.values, retryValues.hasNone, 'No retry', filters.retry);
 
   const scopeOptions = `<option value="session"${filters.scope === 'all' ? '' : ' selected'}>Session (since start)</option><option value="all"${filters.scope === 'all' ? ' selected' : ''}>All (last ${HISTORY_TAIL_LINES} from history)</option>`;
-  const filterFields = ([
-    ['mode', 'Mode', FILTER_HELP.mode, modeOptions],
-    ['scope', 'Scope', FILTER_HELP.scope, scopeOptions],
-    ['window', 'Window', FILTER_HELP.window, windowOptions],
-    ['session', 'Session', FILTER_HELP.session, sessionOptions],
-    ['tier', 'Tier', FILTER_HELP.tier, tierOptions],
-    ['model', 'Model', FILTER_HELP.model, modelOptions],
-    ['pin', 'Pin', FILTER_HELP.pin, pinOptions],
-    ['reason', 'Reason', FILTER_HELP.reason, reasonOptions],
-    ['retry', 'Retry', FILTER_HELP.retry, retryOptions],
-    ['role', 'Role', FILTER_HELP.role, roleOptions],
-  ] as const)
-    .map(([id, label, help, options]) => `<div class="mode-filter">
+  const selectField = (id: string, label: string, help: string, options: string): string => `<div class="mode-filter">
       <label for="${id}" class="has-tip" tabindex="0">${label}<span class="tip-body" role="tooltip">${esc(help)}</span></label>
       <select id="${id}" name="${id}" onmouseenter="this.title = this.selectedOptions[0].text" onchange="this.form.submit()">${options}</select>
-    </div>`)
-    .join('\n    ');
+    </div>`;
+  const filterFields = [
+    selectField('mode', 'Mode', FILTER_HELP.mode, modeOptions),
+    selectField('scope', 'Scope', FILTER_HELP.scope, scopeOptions),
+    selectField('window', 'Window', FILTER_HELP.window, windowOptions),
+    triField('session', 'Session', FILTER_HELP.session, sessionItems, filters.session),
+    triField('tier', 'Tier', FILTER_HELP.tier, tierItems, filters.tier),
+    triField('model', 'Model', FILTER_HELP.model, modelItems, filters.model),
+    triField('pin', 'Pin', FILTER_HELP.pin, pinItems, filters.pin),
+    triField('reason', 'Reason', FILTER_HELP.reason, reasonItems, filters.reason),
+    triField('retry', 'Retry', FILTER_HELP.retry, retryItems, filters.retry),
+    triField('role', 'Role', FILTER_HELP.role, roleItems, filters.role),
+  ].join('\n    ');
 
   const interval = filters.auto ?? 10;
   const auto = interval > 0;
@@ -545,13 +593,11 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
   // them — otherwise auto-refresh resets every control to "All" every 10s.
   const refreshParams = new URLSearchParams();
   if (filters.mode && filters.mode !== 'all') refreshParams.set('mode', filters.mode);
-  if (filters.role) refreshParams.set('role', filters.role);
-  if (filters.model) refreshParams.set('model', filters.model);
-  if (filters.tier) refreshParams.set('tier', filters.tier);
-  if (filters.pin) refreshParams.set('pin', filters.pin);
-  if (filters.reason) refreshParams.set('reason', filters.reason);
-  if (filters.retry) refreshParams.set('retry', filters.retry);
-  if (filters.session) refreshParams.set('session', filters.session);
+  for (const n of FILTER_NAMES) {
+    const { inc, exc } = selOf(filters[n]);
+    for (const v of inc) refreshParams.append(n, v);
+    for (const v of exc) refreshParams.append(`${n}_ne`, v);
+  }
   if (filters.window && filters.window !== 'all') refreshParams.set('window', filters.window);
   if (filters.scope === 'all') refreshParams.set('scope', 'all');
   refreshParams.set('auto', String(interval));
@@ -563,7 +609,7 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
   // last pointer position seen: on the open select (or its popup) keeps the pause, elsewhere on the page lifts it and the reload
   // closes the dropdown. A click, change, blur or Escape ends "open". Mouse-opened popups only; a keyboard-opened one does not pause.
   const refreshScript = auto
-    ? `<script>var o,i,d=document,k='dashY';try{scrollTo(0,+sessionStorage.getItem(k)||0)}catch(e){}var s=function(e){return e.target.closest&&e.target.closest('select')};d.addEventListener('mousedown',function(e){var x=s(e);o=x&&x!==o?x:null;i=1});d.addEventListener('mousemove',function(e){i=s(e)===o});d.addEventListener('change',function(){o=null});d.addEventListener('focusout',function(e){if(e.target===o)o=null});d.addEventListener('keydown',function(e){if(e.key==='Escape')o=null});setTimeout(function t(){if(d.querySelector('.has-tip:hover,.has-tip:focus-within,[data-tip]:hover')||o&&i)setTimeout(t,500);else{try{sessionStorage.setItem(k,scrollY)}catch(e){}location.href=${JSON.stringify(refreshUrl)}}},${interval * 1000})</script>`
+    ? `<script>var o,i,d=document,k='dashY';try{scrollTo(0,+sessionStorage.getItem(k)||0)}catch(e){}var s=function(e){return e.target.closest&&e.target.closest('select')};d.addEventListener('mousedown',function(e){var x=s(e);o=x&&x!==o?x:null;i=1});d.addEventListener('mousemove',function(e){i=s(e)===o});d.addEventListener('change',function(){o=null});d.addEventListener('focusout',function(e){if(e.target===o)o=null});d.addEventListener('keydown',function(e){if(e.key==='Escape')o=null});setTimeout(function t(){if(d.querySelector('.has-tip:hover,.has-tip:focus-within,[data-tip]:hover,details.tri[open]')||o&&i)setTimeout(t,500);else{try{sessionStorage.setItem(k,scrollY)}catch(e){}location.href=${JSON.stringify(refreshUrl)}}},${interval * 1000})</script>`
     : '';
 
   const rows = recent
@@ -733,6 +779,37 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
       background: var(--void);
       color: var(--ink);
     }
+    /* Tri-state filter: the summary is sized like a select, so a long selection ellipsizes instead of widening the bar */
+    .mode-filter details.tri { position: relative; flex: 1 1 0; min-width: 0; }
+    .mode-filter details.tri > summary {
+      display: block; list-style: none; cursor: pointer; width: 100%;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      background: var(--void); color: var(--ink); border: 1px solid var(--edge-soft); border-radius: 6px;
+      padding: 5px 8px; font-family: var(--mono); font-size: 11px;
+    }
+    .mode-filter details.tri > summary::-webkit-details-marker { display: none; }
+    .mode-filter details.tri[open] > summary { border-color: var(--orange); }
+    .tri-pop {
+      position: absolute; z-index: 30; top: calc(100% + 6px); left: 0; width: 280px; max-height: 340px; overflow-y: auto;
+      background: #0b0f19; border: 1px solid #3a4560; border-radius: 8px; padding: 6px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.67);
+    }
+    .filter-bar .mode-filter:nth-last-child(-n+4) .tri-pop { left: auto; right: 0; }
+    .tri-row { display: flex; align-items: center; gap: 8px; padding: 4px 6px; border-radius: 5px; cursor: pointer; font-family: var(--mono); font-size: 11px; color: var(--ink); }
+    .tri-row:hover, .tri-row:focus-visible { background: rgba(255, 255, 255, 0.06); outline: none; }
+    .tri-row .tl { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .tri-row .box { flex: none; width: 16px; height: 16px; border: 1px solid var(--edge-soft); border-radius: 4px; display: grid; place-items: center; font-size: 11px; line-height: 1; }
+    .tri-row[data-s="n"] .box { border-color: var(--green); color: var(--green); }
+    .tri-row[data-s="n"] .box::before { content: "\\2713"; }
+    .tri-row[data-s="exc"] .box { border-color: var(--red); color: var(--red); }
+    .tri-row[data-s="exc"] .box::before { content: "\\2715"; }
+    .tri-row[data-s="exc"] .tl { text-decoration: line-through; color: var(--ink-dim); }
+    .tri-row[data-s="inc"] .box { border-color: var(--orange); background: var(--orange); color: #fff; }
+    .tri-row[data-s="inc"] .box::before { content: "\\25CF"; font-size: 8px; }
+    .tri-foot { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 6px 6px 2px; margin-top: 4px; border-top: 1px solid var(--edge-soft); font-family: var(--mono); font-size: 10px; color: var(--ink-dim); }
+    .tri-reset { font-family: var(--mono); font-size: 10px; color: var(--ink); background: transparent; border: 1px solid var(--edge-soft); border-radius: 5px; padding: 2px 8px; cursor: pointer; }
+    .tri-reset:hover { border-color: var(--orange); }
+    .tri-empty { padding: 6px; font-family: var(--mono); font-size: 11px; color: var(--ink-dim); }
 
     /* Glass panel: transparency stack + 1px edge + inner top highlight + warm glow */
     .card {

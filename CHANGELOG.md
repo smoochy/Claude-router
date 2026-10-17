@@ -14,6 +14,7 @@ This fork's own sections use the upstream version plus a `-smoo.<n>` prerelease 
 
 ### Added
 
+- **Tri-state dashboard filters** (#99). Session, tier, model, pin, reason, retry and role take several values: every value starts shown, a click hides it, a second click shows only it, and closing the popover applies the selection. The entry in the filter bar keeps its width and ellipsizes a long selection, with the full text on hover. A new value that appears in the history is listed on its own, and a plain `tier=opus` link still works. In the URL, `tier=a&tier=b` shows only those values and `tier_ne=x` hides one. This lets a haiku passthrough be hidden from the route feed and the cards without burying the routed traffic. Mode, scope and window stay single selects.
 - **`routing.passthroughHaiku`.** Under `forceRoute`, requests that explicitly ask for a haiku model are forwarded unchanged and recorded as `passthrough` (saving 0) instead of being floored at sonnet, which booked every haiku background call as extra cost. Default off. It is also noted in CONTEXT.md and CLAUDE.md. The dashboard descriptions for the `passthrough` tier and the `passthrough:explicit-model` reason now cover this case.
 - Tests asserting every event-derived card equals the value folded from the filtered events (role, tier, window, scope), and the new labels and dimming.
 
