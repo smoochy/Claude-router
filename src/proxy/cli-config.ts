@@ -1,6 +1,6 @@
 import { warnDeadRoutingKeys } from '../routing.js';
 import { ROLES, invalidRoleMappings } from '../roles.js';
-import { TIER_ORDER } from '../models.js';
+import { TIER_ORDER, DEFAULT_MODELS, BEDROCK_MODELS, VERTEX_MODELS } from '../models.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
@@ -371,8 +371,21 @@ export function configFromOptions(options: ServeOptions): FileConfig {
     const value = (options as unknown as Record<string, unknown>)[spec.key];
     if (spec.configAlways || value !== spec.default) config[spec.key] = value;
   }
+  // Written out so a fresh machine starts from the same file as a tuned one, and
+  // the tier ids stay pinned if the code defaults move. `install` merges over this.
+  config.sessionModel = options.sessionModel;
+  const models = options.provider === 'bedrock' ? BEDROCK_MODELS : options.provider === 'vertex' ? VERTEX_MODELS : DEFAULT_MODELS;
+  config.tiers = options.tiers ?? { haiku: models.haiku, sonnet: models.sonnet, opus: models.opus };
+  config.routing = options.routing ?? SCAFFOLD_ROUTING;
   return config as FileConfig;
 }
+
+const SCAFFOLD_ROUTING: RoutingTuning = {
+  aiTimeoutMs: 1500,
+  classifyCacheSize: 500,
+  allowHaikuInAgentic: true,
+  passthroughHaiku: true,
+};
 
 // ── Version ────────────────────────────────────────────────────────────────
 

@@ -288,11 +288,20 @@ describe('shared install/start/init defaults', () => {
     assert.equal(parseServeArgs([], { restoreDelegation: false }).restoreDelegation, false);
   });
 
-  it('the scaffolded config carries the same routing defaults and no sessionModel', () => {
+  it('the scaffolded config carries the routing defaults, an empty sessionModel, tiers and routing', () => {
     const config = configFromOptions(parseServeArgs([]));
     assert.equal(config.routingMode, 'route');
     assert.equal(config.restoreDelegation, true);
-    assert.equal('sessionModel' in config, false);
+    assert.equal(config.sessionModel, '');
+    assert.deepEqual(config.tiers, { haiku: 'claude-haiku-5-5', sonnet: 'claude-sonnet-5-5', opus: 'claude-opus-5-5' });
+    assert.deepEqual(config.routing, { aiTimeoutMs: 1500, classifyCacheSize: 500, allowHaikuInAgentic: true, passthroughHaiku: true });
+  });
+
+  it('the scaffold uses the provider tier ids and keeps file tiers/routing', () => {
+    assert.equal(configFromOptions(parseServeArgs(['--provider', 'bedrock'])).tiers?.haiku, 'us.anthropic.claude-haiku-5-5');
+    const kept = configFromOptions(parseServeArgs([], { tiers: { opus: 'x' }, routing: { passthroughHaiku: false } }));
+    assert.deepEqual(kept.tiers, { opus: 'x' });
+    assert.deepEqual(kept.routing, { passthroughHaiku: false });
   });
 
   it('serve args omit the derived and default routing flags', () => {
