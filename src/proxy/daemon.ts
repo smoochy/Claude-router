@@ -123,6 +123,58 @@ export async function checkHealth(port: number, timeoutMs = 1000): Promise<Healt
   }
 }
 
+export interface ReplaceHungOptions {
+  /** /health probes before the daemon counts as hung. */
+  attempts?: number;
+  /** Total time budget for those probes. */
+  totalMs?: number;
+  /** Grace after SIGTERM before SIGKILL. */
+  termWaitMs?: number;
+  /** Guard against pid reuse; defaults to a /proc cmdline check where available. */
+  isRouter?: (pid: number) => boolean;
+}
+
+/** Best effort: where /proc exists the cmdline must look like our CLI; elsewhere the state file alone has to do. */
+function looksLikeRouter(pid: number): boolean {
+  try {
+    const cmd = fs.readFileSync(`/proc/${pid}/cmdline`, 'utf8');
+    return /claude-router|proxy[\\/]cli\.js|cli\.js/.test(cmd);
+  } catch {
+    return true;
+  }
+}
+
+/**
+ * A daemon can hang with its port still bound (event loop stuck), so a new one
+ * dies with "Port in use". When /health stays silent and the pid recorded in
+ * the daemon state file for this port is alive, SIGTERM it, give it a moment,
+ * then SIGKILL. Only that pid is ever signalled. In-flight requests are dropped.
+ */
+export async function replaceHungDaemon(
+  port: number,
+  paths: RouterPaths = routerPaths(),
+  opts: ReplaceHungOptions = {},
+): Promise<{ replaced: boolean; detail?: string }> {
+  const { attempts = 3, totalMs = 5000, termWaitMs = 3000, isRouter = looksLikeRouter } = opts;
+  const state = readDaemonState(paths);
+  if (!state || state.port !== port || state.pid === process.pid || !isProcessAlive(state.pid)) return { replaced: false };
+
+  for (let i = 0; i < attempts; i++) {
+    if (await checkHealth(port, Math.floor(totalMs / attempts))) return { replaced: false };
+  }
+  if (!isRouter(state.pid)) return { replaced: false, detail: `pid ${state.pid} does not look like a claude-router process, not touching it` };
+
+  for (const signal of ['SIGTERM', 'SIGKILL'] as const) {
+    try { process.kill(state.pid, signal); } catch { break; }
+    const deadline = Date.now() + (signal === 'SIGTERM' ? termWaitMs : 2000);
+    while (isProcessAlive(state.pid) && Date.now() < deadline) await new Promise((r) => setTimeout(r, 100));
+    if (!isProcessAlive(state.pid)) break;
+  }
+  if (isProcessAlive(state.pid)) return { replaced: false, detail: `Hung proxy (pid ${state.pid}) did not exit` };
+  clearDaemonState(paths);
+  return { replaced: true, detail: `Replaced hung proxy (pid ${state.pid})` };
+}
+
 export interface StartDaemonResult {
   ok: boolean;
   pid?: number;
@@ -142,6 +194,8 @@ export async function startDaemon(
   if (existing) {
     return { ok: false, detail: `A proxy is already running on port ${port}` };
   }
+  const replaced = await replaceHungDaemon(port, paths);
+  if (replaced.detail && !replaced.replaced) return { ok: false, detail: replaced.detail };
 
   fs.mkdirSync(paths.configDir, { recursive: true, mode: 0o700 });
   // Keep proxy.log from growing without bound: roll it over to proxy.log.1

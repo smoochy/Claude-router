@@ -14,6 +14,8 @@ This fork's own sections use the upstream version plus a `-smoo.<n>` prerelease 
 - Request bodies are capped at 32 MiB (the Messages API request limit), declared or streamed, on `/v1/messages` and the catch-all passthrough; over it the router answers 413 `request_too_large` instead of buffering and parsing it. Configurable via `HandlerConfig.maxRequestBodyBytes`.
 - The daemon no longer dies when an upstream connection errors out. An `error` event on a pooled upstream stream (`UND_ERR_SOCKET`, other side closed) with no listener is an uncaught exception that `unhandledRejection` never saw; a new `uncaughtException` guard logs transport-level upstream errors and keeps serving, and still exits on any other uncaught exception.
 
+- `claude-router start -d` replaces a hung daemon instead of failing with "Port 4000 is already in use". When `/health` stays silent for 5 s (3 probes) and the pid in `daemon.json` for that port is alive, that pid gets SIGTERM, 3 s later SIGKILL, then a fresh daemon starts. In-flight requests of the old daemon are dropped. Only the pid named in the state file is signalled, and where `/proc` exists its command line must look like claude-router. The plugin sessionstart hook already runs `start -d` when `/health` does not answer, so it takes this path with no separate watchdog; its wait for health is now long enough to cover a replacement.
+
 ### Changed
 
 - Dashboard stat cards say what they cover: `Session` becomes `History` under scope All, and a `(filtered)` suffix appears while any filter is active.

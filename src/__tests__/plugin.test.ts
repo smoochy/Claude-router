@@ -198,6 +198,26 @@ describe('plugin bundle — hooks', () => {
     assert.match(stdout, /claude-router: enforcing — session pinned to opus.*started just now/);
   });
 
+  it('sessionstart runs `start -d` when a hung server holds the port (the replace path)', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cr-hung-'));
+    const marker = path.join(dir, 'invoked');
+    const stub = path.join(dir, 'stub.js');
+    fs.writeFileSync(stub, `require('node:fs').writeFileSync(${JSON.stringify(marker)}, process.argv.slice(2).join(' '));`);
+    const launcher = path.join(dir, process.platform === 'win32' ? 'claude-router.cmd' : 'claude-router');
+    fs.writeFileSync(launcher, process.platform === 'win32'
+      ? `@echo off\r\n"${process.execPath}" "${stub}" %*\r\n`
+      : `#!/bin/sh\nexec "${process.execPath}" "${stub}" "$@"\n`, { mode: 0o755 });
+    // Accepts connections, never answers: /health times out instead of refusing.
+    const hung = net.createServer((s) => s.on('error', () => {}));
+    await new Promise<void>((r) => hung.listen(0, '127.0.0.1', r));
+    after(() => hung.close());
+    const port = (hung.address() as AddressInfo).port;
+    const { stdout, status } = await runHook('sessionstart.js', { CLAUDE_ROUTER_PORT: String(port), CLAUDE_ROUTER_BIN: launcher });
+    assert.equal(status, 0);
+    assert.equal(fs.readFileSync(marker, 'utf8'), 'start -d');
+    assert.match(stdout, /proxy not reachable/);
+  });
+
   it('sessionstart honours CLAUDE_ROUTER_NO_AUTOSTART', async () => {
     const { stdout } = await runHook('sessionstart.js', { ANTHROPIC_BASE_URL: 'http://127.0.0.1:1', CLAUDE_ROUTER_NO_AUTOSTART: '1', CLAUDE_ROUTER_BIN: '/nonexistent/claude-router' });
     assert.match(stdout, /proxy not reachable/);
