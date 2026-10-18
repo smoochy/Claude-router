@@ -7,6 +7,12 @@ This fork's own sections use the upstream version plus a `-smoo.<n>` prerelease 
 
 ## [Unreleased]
 
+### Fixed
+
+- The first `GET /dashboard` no longer blocks the event loop: lifetime stats are read from `history.jsonl` in async 4 MiB chunks (`readLifetimeStatsAsync`), concurrent loads share one pass. The `stats` CLI keeps the sync reader.
+- Streaming passthrough no longer keeps the whole response in memory: usage is parsed incrementally (`SseUsageParser`), holding only the current partial line (capped at 1 MiB).
+- Request bodies are capped at 32 MiB (the Messages API request limit), declared or streamed, on `/v1/messages` and the catch-all passthrough; over it the router answers 413 `request_too_large` instead of buffering and parsing it. Configurable via `HandlerConfig.maxRequestBodyBytes`.
+
 ### Changed
 
 - Dashboard stat cards say what they cover: `Session` becomes `History` under scope All, and a `(filtered)` suffix appears while any filter is active.

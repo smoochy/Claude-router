@@ -3,7 +3,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { handleMessages, handlePassthrough, registerAgent, routeHistory, routeCounters, type HandlerConfig } from './handler.js';
 import { getVersion } from './cli-config.js';
 import { renderDashboard, parseRefresh, DASHBOARD_MODES, FILTER_NAMES, TIME_WINDOWS, type DashboardMode, type DashboardFilters } from './dashboard.js';
-import { readHistoryTail, readLifetimeStats } from './history.js';
+import { readHistoryTail, readLifetimeStatsAsync } from './history.js';
 import { buildHealth, formatStatusLine } from './health.js';
 import { localGuard, requireJson } from './local-guard.js';
 
@@ -62,8 +62,9 @@ export function createProxyApp(
     return c.body(null, 204);
   });
 
-  app.get('/dashboard', (c) => {
-    const lifetime = config.historyFile ? readLifetimeStats(config.historyFile) : undefined;
+  app.get('/dashboard', async (c) => {
+    // Async + chunked: the first read folds the whole ledger and must not block /v1/messages.
+    const lifetime = config.historyFile ? await readLifetimeStatsAsync(config.historyFile) : undefined;
     const requestedMode = c.req.query('mode');
     const mode: DashboardMode = (DASHBOARD_MODES as readonly string[]).includes(requestedMode ?? '')
       ? (requestedMode as DashboardMode)
