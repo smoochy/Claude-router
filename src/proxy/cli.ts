@@ -301,8 +301,27 @@ async function cmdStart(args: string[], paths: RouterPaths): Promise<CommandResu
   };
   process.on('SIGINT', () => shutdown('SIGINT'));
   process.on('SIGTERM', () => shutdown('SIGTERM'));
+  installExitLogging();
 
   return ok([...warnings, ...startBanner(options, models, loaded, paths)]);
+}
+
+/**
+ * Make silent deaths visible in proxy.log: SIGHUP (console/terminal closed) and
+ * SIGBREAK (Windows Ctrl+Break / console close) are logged then exit, and the
+ * process `exit` event logs its code. TerminateProcess/SIGKILL stay invisible by
+ * nature; their absence next to an `exit` line is itself the signal.
+ */
+export function installExitLogging(
+  proc: Pick<NodeJS.Process, 'on'> = process,
+  log: (line: string) => void = (l) => console.error(l),
+  exit: (code: number) => void = (code) => process.exit(code),
+): void {
+  const stamp = (m: string) => `[claude-router] ${new Date().toISOString()} ${m} (pid ${process.pid})`;
+  for (const [sig, num] of [['SIGHUP', 1], ['SIGBREAK', 21]] as const) {
+    proc.on(sig as NodeJS.Signals, () => { log(stamp(`received ${sig}, exiting`)); exit(128 + num); });
+  }
+  proc.on('exit', (code: number, signal?: string | null) => log(stamp(`process exit code=${code}${signal ? ` signal=${signal}` : ''}`)));
 }
 
 /** Transport-level failures of a pooled upstream connection (undici, node:http2, node:net). */

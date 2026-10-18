@@ -164,8 +164,15 @@ export async function replaceHungDaemon(
   }
   if (!isRouter(state.pid)) return { replaced: false, detail: `pid ${state.pid} does not look like a claude-router process, not touching it` };
 
+  // The daemon writes [diag] every few seconds, so the log mtime is how long it has been silent.
+  let silentS = -1;
+  try { silentS = Math.round((Date.now() - fs.statSync(paths.logFile).mtimeMs) / 1000); } catch { /* no log yet */ }
+  const note = (msg: string) => {
+    try { fs.appendFileSync(paths.logFile, `[claude-router] ${new Date().toISOString()} ${msg}\n`); } catch { /* best effort */ }
+  };
+  note(`start -d: replacing pid ${state.pid}: /health silent, log silent ${silentS} s`);
   for (const signal of ['SIGTERM', 'SIGKILL'] as const) {
-    try { process.kill(state.pid, signal); } catch { break; }
+    try { process.kill(state.pid, signal); note(`start -d: sent ${signal} to pid ${state.pid}`); } catch { break; }
     const deadline = Date.now() + (signal === 'SIGTERM' ? termWaitMs : 2000);
     while (isProcessAlive(state.pid) && Date.now() < deadline) await new Promise((r) => setTimeout(r, 100));
     if (!isProcessAlive(state.pid)) break;
