@@ -62,6 +62,11 @@ export function createProxyApp(
     return c.body(null, 204);
   });
 
+  // Relative, so a custom --port or bind address needs no reconstruction. 302, not
+  // 308: a permanent redirect would be cached by the browser. The query string
+  // rides along, so `/?scope=all` lands on the same dashboard view.
+  app.get('/', (c) => c.redirect('/dashboard' + new URL(c.req.url).search, 302));
+
   app.get('/dashboard', async (c) => {
     // Async + chunked: the first read folds the whole ledger and must not block /v1/messages.
     const lifetime = config.historyFile ? await readLifetimeStatsAsync(config.historyFile) : undefined;
