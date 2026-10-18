@@ -172,7 +172,6 @@ export async function replaceHungDaemon(
   }
   if (isProcessAlive(state.pid)) return { replaced: false, detail: `Hung proxy (pid ${state.pid}) did not exit` };
   clearDaemonState(paths);
-  try { fs.appendFileSync(paths.logFile, `[replace] ${new Date().toISOString()} killed silent pid ${state.pid} on port ${port}\n`); } catch { /* logging must not block the replace */ }
   return { replaced: true, detail: `Replaced hung proxy (pid ${state.pid})` };
 }
 

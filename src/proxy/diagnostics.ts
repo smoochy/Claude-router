@@ -123,28 +123,3 @@ export function installCrashReports(dir: string, proc: NodeJS.Process = process)
     // diagnostics must never block startup
   }
 }
-
-/**
- * A daemon killed by a signal or a console close used to vanish from proxy.log
- * without a line. Handling SIGHUP/SIGBREAK replaces Node's silent default exit,
- * so the handler exits itself (128+signal number). A Windows TerminateProcess
- * runs no handler at all; the absence of an `exit` line is then the evidence.
- */
-export function installExitLog(
-  log: (line: string) => void = console.log,
-  proc: NodeJS.Process = process,
-  exit: (code: number) => void = (c) => proc.exit(c),
-): void {
-  const codes: Record<string, number> = { SIGHUP: 129, SIGBREAK: 149 };
-  for (const sig of ['SIGHUP', 'SIGBREAK'] as const) {
-    try {
-      proc.on(sig, () => {
-        log(`[exit] ${new Date().toISOString()} received ${sig}`);
-        exit(codes[sig]!);
-      });
-    } catch {
-      // signal not supported on this platform
-    }
-  }
-  proc.on('exit', (code) => log(`[exit] ${new Date().toISOString()} exit code=${code}`));
-}
