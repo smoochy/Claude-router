@@ -14,9 +14,8 @@ This fork's own sections use the upstream version plus a `-smoo.<n>` prerelease 
 - README screenshots (2026-10-18): all dashboard images in `docs/images` are recaptured from a synthetic scratch HOME (viewport 1600, device scale 2) so they show the tri-state filters instead of the old selects. `dashboard-session-filter.png` now shows the open tri-state popup with one session hidden and one only, and the new `dashboard-filter-summary.png` shows the closed bar with ellipsized summaries. Since Mode, Scope, Window and the refresh interval are now DOM popovers, the open refresh popover (`dashboard-auto-refresh.png`), the open Mode popup (new `dashboard-mode-filter.png`) and the open Window popover (new `dashboard-window-filter.png`) are real captures too, and `dashboard-observe-mode.png` shows the multi-select Mode as `≠ Route`. README alt text and filter paragraph updated.
 - The Mode filter is now a tri-state multi-value filter like Tier and Model (several modes at once, hide a mode, lines without a routingMode as "Unknown"); old `mode=all` and `mode=unknown` links still work. The single-select dashboard dropdowns (Scope, Window and the refresh interval) are now popovers in the look of the tri-state filters instead of native selects: same panel, rows, hover and spacing, the current row marked with a filled dot. Picking a row replaces the value, submits the form and closes the menu; Enter and Space work on a focused row. `auto=0` still renders no refresh script.
 - `RELEASING.md`: the Mac install section is confirmed accurate (no `file:` dependency, no shadowing binary), replacing the "unverified" note.
-
-### Changed
-
+- Dashboard stat cards say what they cover: `Session` becomes `History` under scope All, and a `(filtered)` suffix appears while any filter is active.
+- Lifetime Saved and Lifetime Requests are dimmed while a filter is active, with a hover note that the lifetime total is summed over the whole ledger and ignores filters.
 - `claude-router init` and `install` now scaffold `sessionModel`, `tiers` (ids for the chosen provider) and `routing` (`aiTimeoutMs: 1500`, `classifyCacheSize: 500`, `allowHaikuInAgentic: true`, `passthroughHaiku: true`) into config.json, matching a hand-tuned config. Keys already in the file still win on `install`. README and `help` updated.
 
 ### Fixed
@@ -27,11 +26,6 @@ This fork's own sections use the upstream version plus a `-smoo.<n>` prerelease 
 - The daemon no longer dies when an upstream connection errors out. An `error` event on a pooled upstream stream (`UND_ERR_SOCKET`, other side closed) with no listener is an uncaught exception that `unhandledRejection` never saw; a new `uncaughtException` guard logs transport-level upstream errors and keeps serving, and still exits on any other uncaught exception.
 
 - `claude-router start -d` replaces a hung daemon instead of failing with "Port 4000 is already in use". When `/health` stays silent for 5 s (3 probes) and the pid in `daemon.json` for that port is alive, that pid gets SIGTERM, 3 s later SIGKILL, then a fresh daemon starts. In-flight requests of the old daemon are dropped. Only the pid named in the state file is signalled, and where `/proc` exists its command line must look like claude-router. The plugin sessionstart hook already runs `start -d` when `/health` does not answer, so it takes this path with no separate watchdog; its wait for health is now long enough to cover a replacement.
-
-### Changed
-
-- Dashboard stat cards say what they cover: `Session` becomes `History` under scope All, and a `(filtered)` suffix appears while any filter is active.
-- Lifetime Saved and Lifetime Requests are dimmed while a filter is active, with a hover note that the lifetime total is summed over the whole ledger and ignores filters.
 
 ### Added
 
