@@ -267,14 +267,16 @@ describe('startBanner', () => {
 });
 
 describe('init routing defaults', () => {
-  it('scaffolds route and restoreDelegation without a session pin', async () => {
+  it('scaffolds route, restoreDelegation, tiers and routing with an empty session pin', async () => {
     const paths = tempHome();
     const result = await main(['init'], paths);
     assert.equal(result.exitCode, 0);
     const written = JSON.parse(fs.readFileSync(paths.configFile, 'utf8'));
     assert.equal(written.routingMode, 'route');
     assert.equal(written.restoreDelegation, true);
-    assert.equal('sessionModel' in written, false);
+    assert.equal(written.sessionModel, '');
+    assert.equal(written.tiers.opus, 'claude-opus-5-5');
+    assert.equal(written.routing.passthroughHaiku, true);
   });
 });
 

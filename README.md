@@ -100,7 +100,7 @@ claude-router install
 
 - starts the proxy in the background and registers it to start on login (Windows Run key, macOS LaunchAgent, Linux systemd user unit);
 - points Claude Code at the proxy through its own `~/.claude/settings.json` `env` block — no shell rc edit, no `setx`, no new terminal;
-- saves the defaults to `~/.claude-router/config.json`: `routingMode: "route"` (Claude Code pins a model on every request, so nothing routes otherwise) and `restoreDelegation: true`, with no session pin unless you pass `--session-model`; `start` and `init` use the same defaults;
+- saves the defaults to `~/.claude-router/config.json`: `routingMode: "route"` (Claude Code pins a model on every request, so nothing routes otherwise) and `restoreDelegation: true`, an empty `sessionModel` (no pin unless you pass `--session-model`), the current `tiers` ids for your provider and a `routing` block (`aiTimeoutMs: 1500`, `classifyCacheSize: 500`, `allowHaikuInAgentic: true`, `passthroughHaiku: true`); keys already in the file win; `start` and `init` use the same defaults;
 - installs the [orchestration plugin](#orchestration-mode-claude-code) (role agents + session policy). The statusline is opt-in: add `--statusline`; an already installed one is never removed by a re-run.
 
 From then on the plugin's session-start hook keeps it honest: if the proxy isn't running it starts it, and every session opens with one line saying `claude-router: enforcing — …` or why not.
@@ -224,7 +224,7 @@ Without a marker, a read-only agent Claude Code already runs on haiku (the built
 
 ## Configuration
 
-Set defaults once in `~/.claude-router/config.json` instead of passing flags. **CLI flags always override the file.** Scaffold it with `claude-router init --port 4000`.
+Set defaults once in `~/.claude-router/config.json` instead of passing flags. **CLI flags always override the file.** Scaffold it with `claude-router init --port 4000`; the scaffold already contains `sessionModel`, `tiers` and `routing`, so edit those rather than adding them. The example below shows `allowHaikuInAgentic` and `passthroughHaiku` as `false`, which is what the code does when the keys are absent; the scaffold writes `true`.
 
 ```json
 {
