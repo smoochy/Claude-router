@@ -7,6 +7,8 @@ This fork's own sections use the upstream version plus a `-smoo.<n>` prerelease 
 
 ## [Unreleased]
 
+## [0.4.0-smoo.7] - 2026-10-18
+
 ### Changed
 
 - README screenshots (2026-10-18): all dashboard images in `docs/images` are recaptured from a synthetic scratch HOME (viewport 1600, device scale 2) so they show the tri-state filters instead of the old selects. `dashboard-session-filter.png` now shows the open tri-state popup with one session hidden and one only, and the new `dashboard-filter-summary.png` shows the closed bar with ellipsized summaries. Since Mode, Scope, Window and the refresh interval are now DOM popovers, the open refresh popover (`dashboard-auto-refresh.png`), the open Mode popup (new `dashboard-mode-filter.png`) and the open Window popover (new `dashboard-window-filter.png`) are real captures too, and `dashboard-observe-mode.png` shows the multi-select Mode as `≠ Route`. README alt text and filter paragraph updated.
