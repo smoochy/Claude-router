@@ -239,11 +239,11 @@ describe('createProxyApp', () => {
 
   it('GET /dashboard: legacy auto=0&auto=1 means 10s, auto=0 off, auto=45 keeps 45s, title links home', async () => {
     const on = await (await app.request('/dashboard?auto=0&auto=1')).text();
-    assert.ok(on.includes('<option value="10" selected>'));
+    assert.ok(on.includes('name="auto" value="10"'));
     assert.ok(on.includes('<a href="/dashboard"'));
     const off = await (await app.request('/dashboard?auto=0')).text();
-    assert.ok(off.includes('<option value="0" selected>'));
-    assert.ok((await (await app.request('/dashboard?auto=45')).text()).includes('<option value="45" selected>'));
+    assert.ok(off.includes('name="auto" value="0"'));
+    assert.ok((await (await app.request('/dashboard?auto=45')).text()).includes('name="auto" value="45"'));
   });
 
   it('GET /dashboard?scope=all fills the table from history.jsonl; default scope does not', async () => {

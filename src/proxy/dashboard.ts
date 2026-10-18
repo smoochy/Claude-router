@@ -14,7 +14,7 @@ const NONE = '__none__';
  * `inc` non-empty: show only those values. `exc`: hide those values. Both empty: no constraint.
  */
 export type FilterSel = string | { inc?: string[]; exc?: string[] };
-export const FILTER_NAMES = ['session', 'tier', 'model', 'pin', 'reason', 'retry', 'role'] as const;
+export const FILTER_NAMES = ['mode', 'session', 'tier', 'model', 'pin', 'reason', 'retry', 'role'] as const;
 export type FilterName = (typeof FILTER_NAMES)[number];
 
 export function selOf(s: FilterSel | undefined): { inc: string[]; exc: string[] } {
@@ -81,8 +81,10 @@ function dirty(d){d.dataset.dirty=1}
 document.addEventListener('click',function(e){var r=e.target.closest&&e.target.closest('.tri-row'),x=e.target.closest&&e.target.closest('.tri-reset');
 if(r){r.dataset.s=N[r.dataset.s];dirty(r.closest('details'))}
 if(x){var d=x.closest('details');d.querySelectorAll('.tri-row').forEach(function(q){q.dataset.s='n'});dirty(d)}
+/* Single-select popover: a row replaces the one value and submits right away. */
+var o=e.target.closest&&e.target.closest('.sel-row');if(o){var p=o.closest('details'),h=p.querySelector('input[type=hidden]');h.value=o.dataset.v;p.open=false;h.form.submit()}
 document.querySelectorAll('details.tri[open]').forEach(function(d){if(!d.contains(e.target))d.open=false})});
-document.addEventListener('keydown',function(e){var r=e.target.closest&&e.target.closest('.tri-row');if(r&&(e.key==='Enter'||e.key===' ')){e.preventDefault();r.click()}if(e.key==='Escape')document.querySelectorAll('details.tri[open]').forEach(function(d){d.open=false})});
+document.addEventListener('keydown',function(e){var r=e.target.closest&&e.target.closest('.tri-row,.sel-row');if(r&&(e.key==='Enter'||e.key===' ')){e.preventDefault();r.click()}if(e.key==='Escape')document.querySelectorAll('details.tri[open]').forEach(function(d){d.open=false})});
 document.addEventListener('toggle',function(e){var d=e.target;if(!d.matches||!d.matches('details.tri')||d.open||!d.dataset.dirty)return;var f=d.closest('form'),n=d.dataset.f;
 f.querySelectorAll('input[data-f="'+n+'"]').forEach(function(i){i.remove()});
 d.querySelectorAll('.tri-row').forEach(function(q){if(q.dataset.s==='n')return;var i=document.createElement('input');i.type='hidden';i.name=n+(q.dataset.s==='exc'?'_ne':'');i.value=q.dataset.v;i.dataset.f=n;f.appendChild(i)});f.submit()},true)})()</script>`;
@@ -186,7 +188,7 @@ function confidenceHelp(e: RouteEvent): string {
 
 /** Hover/focus explanation for each filter label. */
 const FILTER_HELP = {
-  mode: 'Which routing mode the requests ran under: all, routed (the router chose the model) or passthrough (routing off, request logged as sent).',
+  mode: 'Which routing mode the requests ran under: route (the router chose the model), observe or off (passed through as sent), or unknown for lines written before the mode was recorded.',
   scope: 'Session counts requests since this router started; All reads the tail of the history file, across restarts.',
   window: 'Only requests inside this time window: all time, today, or the last hour.',
   session: 'Only requests from one Claude Code session. The label is the session title when known, else its start time, length and request count.',
@@ -226,34 +228,23 @@ function esc(s: string): string {
 }
 
 /**
- * Dashboard mode filter: a filter over the recorded history
+ * Mode filter: a tri-state filter over the recorded history
  * rather than separate measurement windows, so an unrepresentative window can
  * be re-sliced after the fact instead of re-run.
  *
- * `unknown` is its own slice, not folded into `all` and not excluded. Lines
+ * Lines with no `routingMode` are their own slice (the NONE value, labeled Unknown), neither folded into a mode nor excluded. Lines
  * written before `routingMode` was added (194k+ of them on a long-running
  * install) carry no field at all, and excluding them would make the default
  * view of a long history mostly empty while silently discarding most of the
  * data; a labeled slice keeps them visible without mixing them into a mode
  * that never actually produced them.
  */
-export const DASHBOARD_MODES = ['all', 'route', 'observe', 'off', 'unknown'] as const;
-export type DashboardMode = (typeof DASHBOARD_MODES)[number];
 
-const MODE_LABEL: Record<DashboardMode, string> = {
-  all: 'All',
+const MODE_LABEL: Record<string, string> = {
   route: 'Route',
   observe: 'Observe',
   off: 'Off',
-  unknown: 'Unknown (pre-routingMode)',
 };
-
-/** Filters the history by `routingMode`. Exported for the filtering/recomputation tests. */
-export function filterByMode(history: RouteEvent[], mode: DashboardMode): RouteEvent[] {
-  if (mode === 'all') return history;
-  if (mode === 'unknown') return history.filter((e) => e.routingMode === undefined);
-  return history.filter((e) => e.routingMode === mode);
-}
 
 export const TIME_WINDOWS = ['all', 'today', 'hour'] as const;
 export type TimeWindow = (typeof TIME_WINDOWS)[number];
@@ -269,7 +260,8 @@ const WINDOW_LABEL: Record<TimeWindow, string> = { all: 'All time', today: 'Toda
  * silent exclusion, the precedent set for pre-field history.
  */
 export interface DashboardFilters {
-  mode?: DashboardMode;
+  /** The routing mode (`route` | `observe` | `off`), or NONE for lines written before `routingMode` existed. */
+  mode?: FilterSel;
   role?: FilterSel;
   model?: FilterSel;
   tier?: FilterSel;
@@ -328,13 +320,14 @@ function retryState(e: RouteEvent): string | undefined {
 
 /** True when any control narrows the event set; scope only picks the source, so it is not a filter. */
 export function hasActiveFilter(f: DashboardFilters): boolean {
-  return Boolean((f.mode && f.mode !== 'all') || FILTER_NAMES.some((n) => { const s = selOf(f[n]); return s.inc.length + s.exc.length > 0; }) || (f.window && f.window !== 'all'));
+  return Boolean(FILTER_NAMES.some((n) => { const s = selOf(f[n]); return s.inc.length + s.exc.length > 0; }) || (f.window && f.window !== 'all'));
 }
 
 /** Applies every active control as one AND, recomputed from the full history — exported for the filter/recomputation tests. */
 export function filterHistory(history: RouteEvent[], filters: DashboardFilters): RouteEvent[] {
-  let out = filterByMode(history, filters.mode ?? 'all');
+  let out = history;
   out = out.filter((e) =>
+    selMatches(filters.mode, e.routingMode) &&
     selMatches(filters.role, roleLabel(e)) &&
     selMatches(filters.model, e.model) &&
     selMatches(filters.tier, String(e.tier)) &&
@@ -443,7 +436,6 @@ export function savedTipLines(t: LifetimeStats): string[] {
 
 /** `opusModel` is the effective `config.tiers.opus`; defaults to the compiled-in one. */
 export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats, filters: DashboardFilters = {}, opusModel: string = DEFAULT_MODELS.opus, version?: string): string {
-  const mode = filters.mode ?? 'all';
   const filtered = filterHistory(history, filters);
   const totals = emptyTotals();
   for (const e of filtered) foldOutcome(totals, e);
@@ -504,9 +496,14 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
 
   const recent = filtered.slice(-50).reverse();
 
-  const modeOptions = DASHBOARD_MODES.map(
-    (m) => `<option value="${m}"${m === mode ? ' selected' : ''}>${esc(MODE_LABEL[m])}</option>`,
-  ).join('');
+  // Single-select popover in the tri-state look: one hidden input carries the value, the marked row is the current one.
+  const selPop = (name: string, items: [value: string, label: string][], cur: string, attrs = ''): string => {
+    const label = items.find(([v]) => v === cur)?.[1] ?? cur;
+    const rows = items
+      .map(([v, l]) => `<div class="sel-row" role="option" tabindex="0" aria-selected="${v === cur}" data-v="${esc(v)}"${v === cur ? ' data-on' : ''}><span class="box"></span><span class="tl">${esc(l)}</span></div>`)
+      .join('');
+    return `<details class="tri one" data-f="${name}"><summary data-tip="${esc(label)}">${esc(label)}</summary><input type="hidden" name="${name}" value="${esc(cur)}"${attrs}><div class="tri-pop" role="listbox">${rows}</div></details>`;
+  };
 
   // Option lists come from the full history, not a hardcoded list -
   // a role/model/tier that never ran never appears, and one that did always does.
@@ -555,9 +552,7 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
   }
   const sessionItems = triItems(sessionValues.values, sessionValues.hasNone, 'No session id', filters.session, (id) => sessionLabel(id, eventsBySession.get(id) ?? []));
 
-  const windowOptions = TIME_WINDOWS.map(
-    (w) => `<option value="${w}"${w === (filters.window ?? 'all') ? ' selected' : ''}>${esc(WINDOW_LABEL[w])}</option>`,
-  ).join('');
+  const windowItems: [string, string][] = TIME_WINDOWS.map((w) => [w, WINDOW_LABEL[w]]);
 
   const roleItems = triItems(roleValues.values, roleValues.hasNone, 'No role', filters.role);
   const modelItems = triItems(modelValues.values, false, '', filters.model);
@@ -568,16 +563,18 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
 
   const retryValues = distinct(history, retryState);
   const retryItems = triItems(retryValues.values, retryValues.hasNone, 'No retry', filters.retry);
+  const modeValues = distinct(history, (e) => e.routingMode);
+  const modeTriItems = triItems(modeValues.values, modeValues.hasNone, 'Unknown (pre-routingMode)', filters.mode, (m) => MODE_LABEL[m] ?? m);
 
-  const scopeOptions = `<option value="session"${filters.scope === 'all' ? '' : ' selected'}>Session (since start)</option><option value="all"${filters.scope === 'all' ? ' selected' : ''}>All (last ${HISTORY_TAIL_LINES} from history)</option>`;
-  const selectField = (id: string, label: string, help: string, options: string): string => `<div class="mode-filter">
-      <label for="${id}" class="has-tip" tabindex="0">${label}<span class="tip-body" role="tooltip">${esc(help)}</span></label>
-      <select id="${id}" name="${id}" onmouseenter="this.title = this.selectedOptions[0].text" onchange="this.form.submit()">${options}</select>
+  const scopeItems: [string, string][] = [['session', 'Session (since start)'], ['all', `All (last ${HISTORY_TAIL_LINES} from history)`]];
+  const selectField = (id: string, label: string, help: string, items: [string, string][], cur: string): string => `<div class="mode-filter">
+      <label class="has-tip" tabindex="0">${label}<span class="tip-body" role="tooltip">${esc(help)}</span></label>
+      ${selPop(id, items, cur)}
     </div>`;
   const filterFields = [
-    selectField('mode', 'Mode', FILTER_HELP.mode, modeOptions),
-    selectField('scope', 'Scope', FILTER_HELP.scope, scopeOptions),
-    selectField('window', 'Window', FILTER_HELP.window, windowOptions),
+    triField('mode', 'Mode', FILTER_HELP.mode, modeTriItems, filters.mode),
+    selectField('scope', 'Scope', FILTER_HELP.scope, scopeItems, filters.scope === 'all' ? 'all' : 'session'),
+    selectField('window', 'Window', FILTER_HELP.window, windowItems, filters.window ?? 'all'),
     triField('session', 'Session', FILTER_HELP.session, sessionItems, filters.session),
     triField('tier', 'Tier', FILTER_HELP.tier, tierItems, filters.tier),
     triField('model', 'Model', FILTER_HELP.model, modelItems, filters.model),
@@ -592,7 +589,6 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
   // Carries the active filters as query params so the refresh target keeps
   // them — otherwise auto-refresh resets every control to "All" every 10s.
   const refreshParams = new URLSearchParams();
-  if (filters.mode && filters.mode !== 'all') refreshParams.set('mode', filters.mode);
   for (const n of FILTER_NAMES) {
     const { inc, exc } = selOf(filters[n]);
     for (const v of inc) refreshParams.append(n, v);
@@ -730,7 +726,6 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
       background: var(--glass);
       white-space: nowrap;
     }
-    .live select { font-family: var(--mono); font-size: 11px; letter-spacing: normal; text-transform: none; color: var(--ink); background: var(--void); border: 1px solid var(--edge-soft); border-radius: 6px; padding: 3px 6px; cursor: pointer; }
     header > div:first-child { margin-right: auto; }
     header .gh { order: 1; }
     header .live { order: 2; }
@@ -760,45 +755,26 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
     .mode-filter { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 11px; color: var(--ink-dim); }
     th.help { cursor: help; text-decoration: underline dotted; text-underline-offset: 4px; }
     td[title] { cursor: help; }
-    .mode-filter select {
-      flex: 1 1 0;
-      min-width: 0;
-      width: 100%;
-      text-overflow: ellipsis;
-      background: var(--void);
-      color: var(--ink);
-      border: 1px solid var(--edge-soft);
-      border-radius: 6px;
-      padding: 5px 8px;
-      font-family: var(--mono);
-      font-size: 11px;
-    }
-    select { color-scheme: dark; }
-    .live select option,
-    .mode-filter select option {
-      background: var(--void);
-      color: var(--ink);
-    }
     /* Tri-state filter: the summary is sized like a select, so a long selection ellipsizes instead of widening the bar */
-    .mode-filter details.tri { position: relative; flex: 1 1 0; min-width: 0; }
-    .mode-filter details.tri > summary {
+    details.tri { position: relative; flex: 1 1 0; min-width: 0; }
+    details.tri > summary {
       display: block; list-style: none; cursor: pointer; width: 100%;
       overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
       background: var(--void); color: var(--ink); border: 1px solid var(--edge-soft); border-radius: 6px;
       padding: 5px 8px; font-family: var(--mono); font-size: 11px;
     }
-    .mode-filter details.tri > summary::-webkit-details-marker { display: none; }
-    .mode-filter details.tri[open] > summary { border-color: var(--orange); }
+    details.tri > summary::-webkit-details-marker { display: none; }
+    details.tri[open] > summary { border-color: var(--orange); }
     .tri-pop {
       position: absolute; z-index: 30; top: calc(100% + 6px); left: 0; width: 280px; max-height: 340px; overflow-y: auto;
       background: #0b0f19; border: 1px solid #3a4560; border-radius: 8px; padding: 6px;
       box-shadow: 0 10px 30px rgba(0, 0, 0, 0.67);
     }
     .filter-bar .mode-filter:nth-last-child(-n+4) .tri-pop { left: auto; right: 0; }
-    .tri-row { display: flex; align-items: center; gap: 8px; padding: 4px 6px; border-radius: 5px; cursor: pointer; font-family: var(--mono); font-size: 11px; color: var(--ink); }
-    .tri-row:hover, .tri-row:focus-visible { background: rgba(255, 255, 255, 0.06); outline: none; }
-    .tri-row .tl { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .tri-row .box { flex: none; width: 16px; height: 16px; border: 1px solid var(--edge-soft); border-radius: 4px; display: grid; place-items: center; font-size: 11px; line-height: 1; }
+    .tri-row, .sel-row { display: flex; align-items: center; gap: 8px; padding: 4px 6px; border-radius: 5px; cursor: pointer; font-family: var(--mono); font-size: 11px; color: var(--ink); }
+    .tri-row:hover, .tri-row:focus-visible, .sel-row:hover, .sel-row:focus-visible { background: rgba(255, 255, 255, 0.06); outline: none; }
+    .tri-row .tl, .sel-row .tl { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .tri-row .box, .sel-row .box { flex: none; width: 16px; height: 16px; border: 1px solid var(--edge-soft); border-radius: 4px; display: grid; place-items: center; font-size: 11px; line-height: 1; }
     .tri-row[data-s="n"] .box { border-color: var(--green); color: var(--green); }
     .tri-row[data-s="n"] .box::before { content: "\\2713"; }
     .tri-row[data-s="exc"] .box { border-color: var(--red); color: var(--red); }
@@ -806,6 +782,12 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
     .tri-row[data-s="exc"] .tl { text-decoration: line-through; color: var(--ink-dim); }
     .tri-row[data-s="inc"] .box { border-color: var(--orange); background: var(--orange); color: #fff; }
     .tri-row[data-s="inc"] .box::before { content: "\\25CF"; font-size: 8px; }
+    .sel-row[data-on] .box { border-color: var(--orange); background: var(--orange); color: #fff; }
+    .sel-row[data-on] .box::before { content: "\\25CF"; font-size: 8px; }
+    details.tri.one > .tri-pop { width: max-content; min-width: 100%; max-width: 280px; }
+    .live details.tri { flex: none; letter-spacing: normal; text-transform: none; }
+    .live details.tri > summary { width: auto; min-width: 44px; padding: 3px 6px; }
+    .live details.tri > .tri-pop { min-width: 70px; }
     .tri-foot { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 6px 6px 2px; margin-top: 4px; border-top: 1px solid var(--edge-soft); font-family: var(--mono); font-size: 10px; color: var(--ink-dim); }
     .tri-reset { font-family: var(--mono); font-size: 10px; color: var(--ink); background: transparent; border: 1px solid var(--edge-soft); border-radius: 5px; padding: 2px 8px; cursor: pointer; }
     .tri-reset:hover { border-color: var(--orange); }
@@ -998,7 +980,7 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
       <h1><a href="/dashboard" style="color:inherit;text-decoration:none">claude-router dashboard</a></h1>
       <div class="tagline">routing ledger &middot; cost engine</div>
     </div>
-    <div class="live${auto ? '' : ' paused'}"><span class="dot"></span>live &middot; refresh <select name="auto" form="filter-form" aria-label="Refresh interval" onchange="this.form.submit()">${REFRESH_INTERVALS.map((s) => `<option value="${s}"${s === interval ? ' selected' : ''}>${s === 0 ? 'off' : `${s}s`}</option>`).join('')}</select></div>
+    <div class="live${auto ? '' : ' paused'}"><span class="dot"></span>live &middot; refresh ${selPop('auto', REFRESH_INTERVALS.map((s) => [String(s), s === 0 ? 'off' : `${s}s`]), String(interval), ' form="filter-form"')}</div>
     <a class="gh" href="https://github.com/smoochy/Claude-router" aria-label="GitHub repository"><svg viewBox="0 0 16 16" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.6 7.6 0 0 1 4 0c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg></a>
   </header>
 

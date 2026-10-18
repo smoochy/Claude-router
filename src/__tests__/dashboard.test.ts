@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { DIM_INK, hasActiveFilter, PASSTHROUGH_INK, extraCostNote, filterByMode, filterHistory, parseRefresh, renderDashboard, sessionLabel } from '../proxy/dashboard.js';
+import { DIM_INK, hasActiveFilter, PASSTHROUGH_INK, extraCostNote, filterHistory, parseRefresh, renderDashboard, sessionLabel } from '../proxy/dashboard.js';
 import { emptyTotals, foldOutcome } from '../totals.js';
 import type { RouteEvent } from '../proxy/route-event.js';
 
@@ -21,28 +21,24 @@ function e(overrides: Partial<RouteEvent> = {}): RouteEvent {
   };
 }
 
-describe('filterByMode', () => {
-  it('"all" returns the full set, including lines with no routingMode', () => {
-    const history = [e({ routingMode: 'route' }), e({ routingMode: undefined })];
-    assert.equal(filterByMode(history, 'all').length, 2);
+describe('mode filter (tri-state, several values)', () => {
+  const history = [e({ routingMode: 'route' }), e({ routingMode: 'observe' }), e({ routingMode: 'off' }), e({ routingMode: undefined })];
+  const modes = (f: Parameters<typeof filterHistory>[1]) => filterHistory(history, f).map((h) => h.routingMode);
+  it('no selection keeps everything, including lines with no routingMode', () => {
+    assert.equal(filterHistory(history, {}).length, 4);
   });
-
-  it('filters to exactly the requested mode', () => {
-    const history = [e({ routingMode: 'route' }), e({ routingMode: 'observe' }), e({ routingMode: 'off' })];
-    assert.deepEqual(filterByMode(history, 'route').map((h) => h.routingMode), ['route']);
-    assert.deepEqual(filterByMode(history, 'observe').map((h) => h.routingMode), ['observe']);
+  it('several included modes show exactly those', () => {
+    assert.deepEqual(modes({ mode: { inc: ['route', 'observe'] } }), ['route', 'observe']);
   });
-
-  it('"off" is a real, selectable slice even though off never records in practice', () => {
-    const history = [e({ routingMode: 'off' })];
-    assert.equal(filterByMode(history, 'off').length, 1);
+  it('an excluded mode is hidden', () => {
+    assert.deepEqual(modes({ mode: { exc: ['route'] } }), ['observe', 'off', undefined]);
   });
-
-  it('"unknown" picks up lines that carry no routingMode at all', () => {
-    const history = [e({ routingMode: 'route' }), e({ routingMode: undefined })];
-    const unknown = filterByMode(history, 'unknown');
-    assert.equal(unknown.length, 1);
-    assert.equal(unknown[0]!.routingMode, undefined);
+  it('NONE picks up lines that carry no routingMode at all', () => {
+    assert.deepEqual(modes({ mode: '__none__' }), [undefined]);
+  });
+  it('counts as an active filter', () => {
+    assert.equal(hasActiveFilter({ mode: { inc: ['route'] } }), true);
+    assert.equal(hasActiveFilter({}), false);
   });
 });
 
@@ -53,7 +49,7 @@ describe('renderDashboard — recomputation per mode', () => {
       e({ routingMode: 'observe', tier: 'haiku', costCents: 1, savedCents: 0 }),
       e({ routingMode: undefined, tier: 'sonnet', costCents: 100, savedCents: 50 }),
     ];
-    const all = renderDashboard(history, undefined, { mode: 'all' });
+    const all = renderDashboard(history, undefined, {});
     const route = renderDashboard(history, undefined, { mode: 'route' });
     assert.match(all, /\$1\.1100/); // (10 + 1 + 100) / 100
     assert.match(route, /\$0\.1000/); // 10 / 100
@@ -68,15 +64,12 @@ describe('renderDashboard — recomputation per mode', () => {
 
   it('defaults to "all" when no mode is given, matching pre-filter behavior', () => {
     const history = [e({ routingMode: 'route' }), e({ routingMode: undefined })];
-    assert.equal(renderDashboard(history), renderDashboard(history, undefined, { mode: 'all' }));
+    assert.equal(renderDashboard(history), renderDashboard(history, undefined, {}));
   });
 
-  it('styles select popups dark, including the refresh dropdown and the selected option', () => {
+  it('styles the refresh dropdown like the filter popovers, outside the uppercase live pill', () => {
     const html = renderDashboard([]);
-    assert.match(html, /select \{ color-scheme: dark; \}/);
-    assert.match(html, /\.live select option,\s*\.mode-filter select option \{\s*background: var\(--void\);\s*color: var\(--ink\);/);
-    assert.doesNotMatch(html, /option:checked/);
-    assert.match(html, /\.live select \{ font-family: var\(--mono\); font-size: 11px; letter-spacing: normal;/);
+    assert.match(html, /\.live details\.tri \{ flex: none; letter-spacing: normal; text-transform: none; \}/);
     assert.match(html, /header \.gh \{ order: 1; \}\s*header \.live \{ order: 2; \}/);
   });
 });
@@ -213,7 +206,7 @@ describe('stat card order', () => {
 describe('filter row and retry help', () => {
   const html = renderDashboard([e({ retried: true, retryReason: 'truncation' })]);
   it('lists the selects in route-feed order, one row', () => {
-    const ids = [...html.matchAll(/<select id="(\w+)"|<details class="tri" data-f="(\w+)"/g)].map((m) => m[1] ?? m[2]);
+    const ids = [...html.matchAll(/<details class="tri(?: one)?" data-f="(\w+)"/g)].map((m) => m[1]).filter((id) => id !== 'auto');
     assert.deepEqual(ids, ['mode', 'scope', 'window', 'session', 'tier', 'model', 'pin', 'reason', 'retry', 'role']);
     assert.match(html, /flex-wrap: nowrap/);
   });
@@ -257,7 +250,8 @@ describe('refresh pill and reset button', () => {
   });
   it('renders the chosen interval as selected and as a deferred-reload script', () => {
     const html = renderDashboard([e()], undefined, { tier: 'haiku', auto: 30 });
-    assert.match(html, /<option value="30" selected>30s<\/option>/);
+    assert.match(html, /<input type="hidden" name="auto" value="30"/);
+    assert.match(html, /data-v="30" data-on/);
     assert.ok(!html.includes('http-equiv="refresh"'));
     const scripts = html.match(/<script>[\s\S]*?<\/script>/g) ?? [];
     assert.equal(scripts.length, 2, 'refresh script plus the shared tooltip script');
@@ -298,7 +292,7 @@ describe('refresh pill and reset button', () => {
   it('off pauses the LED and runs no timer', () => {
     const off = renderDashboard([e()], undefined, { auto: 0 });
     assert.match(off, /<div class="live paused"/);
-    assert.match(off, /<option value="0" selected>off<\/option>/);
+    assert.match(off, /<input type="hidden" name="auto" value="0"/);
     assert.ok(!off.includes('setTimeout'), 'no refresh timer');
   });
   it('resets filters but keeps the interval, and has no auto checkbox', () => {
@@ -545,8 +539,29 @@ describe('tri-state value filters (include / exclude, several values)', () => {
     assert.match(renderDashboard(history, undefined, { tier: { exc: ['fable'] } }), /data-v="fable" data-s="exc"/);
   });
 
-  it('mode, scope and window stay single selects', () => {
-    const html = renderDashboard(history, undefined, {});
-    for (const id of ['mode', 'scope', 'window']) assert.match(html, new RegExp(`<select id="${id}" name="${id}"`));
+  it('scope, window and refresh are single-select popovers styled like the tri-state ones', () => {
+    const html = renderDashboard(history, undefined, { window: 'today', auto: 30 });
+    assert.ok(!html.includes('<select'), 'no native select left');
+    for (const [id, cur] of [['scope', 'session'], ['window', 'today'], ['auto', '30']]) {
+      assert.match(html, new RegExp(`<details class="tri one" data-f="${id}">`));
+      assert.equal(html.match(new RegExp(`name="${id}"`, 'g'))?.length, 1, `${id} submits one value`);
+      assert.match(html, new RegExp(`<input type="hidden" name="${id}" value="${cur}"`));
+      const block = html.slice(html.indexOf(`data-f="${id}"`), html.indexOf('</details>', html.indexOf(`data-f="${id}"`)));
+      assert.equal(block.match(/class="sel-row"[^>]*data-on/g)?.length, 1, `${id} marks exactly one row`);
+      assert.match(block, new RegExp(`data-v="${cur}" data-on`));
+    }
+    assert.match(html, /\.tri-row, \.sel-row \{/, 'rows share the tri-state row style');
+  });
+  it('picking a single-select row replaces the value, submits once and closes the menu', () => {
+    const src = (renderDashboard(history).match(/<script>\(function\(\)\{var t=[\s\S]*?<\/script>/) ?? [''])[0].slice(8, -9);
+    const handlers: Record<string, (e: unknown) => void> = {};
+    const doc = { createElement: () => ({ style: {}, setAttribute() {} }), body: { appendChild() {} }, addEventListener: (n: string, f: (e: unknown) => void) => (handlers[n] = f), querySelectorAll: () => [] };
+    new Function('document', src)(doc);
+    let submits = 0;
+    const input = { value: 'all', form: { submit: () => submits++ } };
+    const details = { open: true, querySelector: () => input };
+    const row = { dataset: { v: 'today' }, closest: (s: string) => (s === 'details' ? details : null) };
+    handlers.click({ target: { closest: (s: string) => (s === '.sel-row' ? row : null) } });
+    assert.deepEqual([input.value, submits, details.open], ['today', 1, false]);
   });
 });
