@@ -9,7 +9,7 @@ This fork's own sections use the upstream version plus a `-smoo.<n>` prerelease 
 
 ### Changed
 
-- The single-select dashboard dropdowns (Mode, Scope, Window and the refresh interval) are now popovers in the look of the tri-state filters instead of native selects: same panel, rows, hover and spacing, the current row marked with a filled dot. Picking a row replaces the value, submits the form and closes the menu; Enter and Space work on a focused row. `auto=0` still renders no refresh script. `docs/images/dashboard-auto-refresh.png` is recaptured from the new popover.
+- The single-select dashboard dropdowns (Mode, Scope, Window and the refresh interval) are now popovers in the look of the tri-state filters instead of native selects: same panel, rows, hover and spacing, the current row marked with a filled dot. Picking a row replaces the value, submits the form and closes the menu; Enter and Space work on a focused row. `auto=0` still renders no refresh script.
 
 - `RELEASING.md`: the Mac install section is confirmed accurate (no `file:` dependency, no shadowing binary), replacing the "unverified" note.
 
