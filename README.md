@@ -297,6 +297,8 @@ Install-only options:
   --statusline           Add the Claude Code statusline (off by default; --no-statusline is accepted and does nothing)
 ```
 
+**Daemon hung or restarted?** The daemon logs a `[diag]` health line to `proxy.log` every 30 s (event-loop lag, memory, active handles, in-flight requests), so the last one before a gap shows when it stopped and what was open: `claude-router logs -n 200 | grep '\[diag\]'`. On a heap OOM it also writes a `report.*.json` into `~/.claude-router/`; on macOS and Linux `kill -USR2 <pid>` writes one from a live daemon.
+
 **Something not routing?** Run `claude-router doctor` — it checks the Node version, the model-list cache age, stale former-default tier ids, config validity and unknown keys, proxy health on your port, the active routing mode, `ANTHROPIC_BASE_URL`, credentials, stale daemon state, autostart, the statusline and the orchestration plugin, with a fix hint for anything that fails.
 
 ---
