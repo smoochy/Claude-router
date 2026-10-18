@@ -172,6 +172,7 @@ export async function replaceHungDaemon(
   }
   if (isProcessAlive(state.pid)) return { replaced: false, detail: `Hung proxy (pid ${state.pid}) did not exit` };
   clearDaemonState(paths);
+  try { fs.appendFileSync(paths.logFile, `[replace] ${new Date().toISOString()} killed silent pid ${state.pid} on port ${port}\n`); } catch { /* logging must not block the replace */ }
   return { replaced: true, detail: `Replaced hung proxy (pid ${state.pid})` };
 }
 
@@ -240,11 +241,15 @@ export interface StopDaemonResult {
   detail: string;
 }
 
-export async function stopDaemon(paths: RouterPaths = routerPaths()): Promise<StopDaemonResult> {
+export async function stopDaemon(paths: RouterPaths = routerPaths(), port?: number): Promise<StopDaemonResult> {
   // macOS: unload the LaunchAgent first — KeepAlive would resurrect a killed process
   unloadLaunchAgent(paths);
 
   const state = readDaemonState(paths);
+  // daemon.json holds one daemon; an explicit --port that names another must not kill it.
+  if (port !== undefined && state && isProcessAlive(state.pid) && state.port !== port) {
+    return { ok: false, detail: `The daemon in daemon.json runs on port ${state.port}, not ${port}; not touching it` };
+  }
   if (state && isProcessAlive(state.pid)) {
     try {
       process.kill(state.pid);

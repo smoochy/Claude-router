@@ -4,7 +4,7 @@ import { serve, type ServerType } from '@hono/node-server';
 import type { Hono } from 'hono';
 import fs from 'node:fs';
 import type { Server } from 'node:http';
-import { createInflightTracker, attachInflight, startDiagnostics, installCrashReports } from './diagnostics.js';
+import { createInflightTracker, attachInflight, startDiagnostics, installCrashReports, installExitLog } from './diagnostics.js';
 import { createProxyApp } from './server.js';
 import { createProviderClient, DEFAULT_UPSTREAM, type Provider } from './handler.js';
 import { DEFAULT_MODELS, BEDROCK_MODELS, VERTEX_MODELS, DISPLAY_TIERS, DEFAULT_PRICING, counterfactualCents } from '../models.js';
@@ -289,6 +289,7 @@ async function cmdStart(args: string[], paths: RouterPaths): Promise<CommandResu
   attachInflight(server as unknown as Server, inflight);
   startDiagnostics({ tracker: inflight });
   installCrashReports(paths.configDir);
+  installExitLog();
 
   // SIGINT covers Ctrl+C on all platforms. SIGTERM covers `kill` on POSIX; on
   // Windows process.kill is TerminateProcess and no handler runs — acceptable,
@@ -362,8 +363,10 @@ export function startServer(
 
 // ── stop / restart ─────────────────────────────────────────────────────────
 
-async function cmdStop(_args: string[], paths: RouterPaths): Promise<CommandResult> {
-  const result = await stopDaemon(paths);
+async function cmdStop(args: string[], paths: RouterPaths): Promise<CommandResult> {
+  const portFlag = args.findIndex((a) => a === '--port' || a === '-p');
+  const port = portFlag >= 0 ? Number(args[portFlag + 1]) : undefined;
+  const result = await stopDaemon(paths, Number.isInteger(port) ? port : undefined);
   return result.ok
     ? ok([out(`${term.ok()} ${result.detail}`)])
     : failed([failLine(result.detail)]);

@@ -12,6 +12,7 @@ import {
   readDaemonState,
   resolveStatusPort,
   statusPid,
+  stopDaemon,
   stoppedStatusDetail,
   writeDaemonState,
 } from '../proxy/daemon.js';
@@ -150,5 +151,18 @@ describe('daemon state file mode', () => {
     const { paths } = tempPaths();
     writeDaemonState({ pid: 1, port: 1, startedAt: new Date().toISOString(), args: [] }, paths);
     assert.equal(fs.statSync(paths.daemonStateFile).mode & 0o777, 0o600);
+  });
+});
+
+describe('stopDaemon with an explicit port', () => {
+  it('leaves a live daemon on another port alone', async () => {
+    const { home, paths } = tempPaths();
+    writeDaemonState({ pid: process.pid, port: 4000, startedAt: '2026-10-18T00:00:00Z', args: [] }, paths);
+    const r = await stopDaemon(paths, 4177);
+    assert.equal(r.ok, false);
+    assert.match(r.detail, /port 4000/);
+    assert.equal(isProcessAlive(process.pid), true);
+    assert.deepEqual(readDaemonState(paths)?.pid, process.pid);
+    fs.rmSync(home, { recursive: true, force: true });
   });
 });

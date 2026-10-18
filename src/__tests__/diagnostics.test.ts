@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
-import { createInflightTracker, formatSample, startDiagnostics, attachInflight } from '../proxy/diagnostics.js';
+import { createInflightTracker, formatSample, startDiagnostics, attachInflight, installExitLog } from '../proxy/diagnostics.js';
 
 describe('inflight tracker', () => {
   it('counts begun requests, drops finished ones, reports the oldest first', () => {
@@ -65,5 +65,19 @@ describe('startDiagnostics', () => {
     assert.ok(lines.some((l) => l.startsWith('[diag] inflight ') && l.includes('POST /v1/messages')));
     await new Promise((r) => setTimeout(r, 60));
     assert.equal(lines.length, n);
+  });
+});
+
+describe('exit log', () => {
+  it('logs SIGHUP/SIGBREAK without swallowing the default exit, and logs the exit code', () => {
+    const proc = new EventEmitter() as unknown as NodeJS.Process;
+    const lines: string[] = [];
+    const exits: number[] = [];
+    installExitLog((l) => lines.push(l), proc, (c) => exits.push(c));
+    proc.emit('SIGHUP', 'SIGHUP');
+    proc.emit('exit', 0);
+    assert.ok(lines.some((l) => l.includes('SIGHUP')));
+    assert.ok(lines.some((l) => l.includes('exit code=0')));
+    assert.deepEqual(exits, [129]);
   });
 });

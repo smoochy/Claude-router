@@ -7,6 +7,14 @@ This fork's own sections use the upstream version plus a `-smoo.<n>` prerelease 
 
 ## [Unreleased]
 
+### Added
+
+- Exit forensics (2026-10-19): the daemon logs `[exit]` lines to proxy.log for SIGHUP, SIGBREAK and the process `exit` event (code), and `start -d` appends a `[replace]` line when it kills a silent daemon. A daemon that dies with no `[exit]` line was terminated without a handler (Windows TerminateProcess).
+
+### Fixed
+
+- `claude-router stop --port <n>` no longer kills the daemon recorded in daemon.json when that daemon runs on a different port; it refuses and names the recorded port. Without `--port` the behaviour is unchanged.
+
 ## [0.4.0-smoo.7] - 2026-10-18
 
 ### Changed
