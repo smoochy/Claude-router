@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import Anthropic from '@anthropic-ai/sdk';
 import { handleMessages, handlePassthrough, registerAgent, routeHistory, routeCounters, type HandlerConfig } from './handler.js';
 import { getVersion } from './cli-config.js';
-import { renderDashboard, parseRefresh, DASHBOARD_MODES, FILTER_NAMES, TIME_WINDOWS, type DashboardMode, type DashboardFilters } from './dashboard.js';
+import { renderDashboard, parseRefresh, FILTER_NAMES, TIME_WINDOWS, type DashboardFilters } from './dashboard.js';
 import { readHistoryTail, readLifetimeStatsAsync } from './history.js';
 import { buildHealth, formatStatusLine } from './health.js';
 import { localGuard, requireJson } from './local-guard.js';
@@ -70,19 +70,15 @@ export function createProxyApp(
   app.get('/dashboard', async (c) => {
     // Async + chunked: the first read folds the whole ledger and must not block /v1/messages.
     const lifetime = config.historyFile ? await readLifetimeStatsAsync(config.historyFile) : undefined;
-    const requestedMode = c.req.query('mode');
-    const mode: DashboardMode = (DASHBOARD_MODES as readonly string[]).includes(requestedMode ?? '')
-      ? (requestedMode as DashboardMode)
-      : 'all';
     const requestedWindow = c.req.query('window');
     const window = (TIME_WINDOWS as readonly string[]).includes(requestedWindow ?? '')
       ? (requestedWindow as DashboardFilters['window'])
       : undefined;
     const filters: DashboardFilters = {
-      mode,
       // `tier=a&tier=b` shows only those, `tier_ne=x` hides x; a lone `tier=a` is the old single-value link.
       ...Object.fromEntries(FILTER_NAMES.map((n) => [n, {
-        inc: (c.req.queries(n) ?? []).filter(Boolean),
+        // Old links: mode=all meant no constraint, mode=unknown the lines without a routingMode.
+        inc: (c.req.queries(n) ?? []).filter((v) => v && !(n === 'mode' && v === 'all')).map((v) => (n === 'mode' && v === 'unknown' ? '__none__' : v)),
         exc: (c.req.queries(`${n}_ne`) ?? []).filter(Boolean),
       }])),
       window,
