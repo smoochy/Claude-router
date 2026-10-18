@@ -49,7 +49,7 @@ Installing the release is `npm install -g @smoochy/claude-router` (or the tarbal
 
 This stays a manual step per release rather than something automated.
 
-Whether the Mac also has the home-directory `file:` dependency arrangement documented below for Windows is unverified - do not assume the plain `npm install -g` path above is incomplete there until that is checked.
+The Mac does not have the home-directory `file:` dependency arrangement documented below for Windows (checked 2026-10-18 on 0.4.0-smoo.6): there is no `~/package.json` and no `~/node_modules/.bin/claude-router`, `claude-router` resolves to the global `/opt/homebrew/bin/claude-router`, and `claude-router --version` matches `npm ls -g`. The plain `npm install -g` path above is complete there.
 
 ## Windows install
 

@@ -9,6 +9,10 @@ This fork's own sections use the upstream version plus a `-smoo.<n>` prerelease 
 
 ### Changed
 
+- `RELEASING.md`: the Mac install section is confirmed accurate (no `file:` dependency, no shadowing binary), replacing the "unverified" note.
+
+### Changed
+
 - `claude-router init` and `install` now scaffold `sessionModel`, `tiers` (ids for the chosen provider) and `routing` (`aiTimeoutMs: 1500`, `classifyCacheSize: 500`, `allowHaikuInAgentic: true`, `passthroughHaiku: true`) into config.json, matching a hand-tuned config. Keys already in the file still win on `install`. README and `help` updated.
 
 ### Fixed
