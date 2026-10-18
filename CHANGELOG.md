@@ -9,7 +9,7 @@ This fork's own sections use the upstream version plus a `-smoo.<n>` prerelease 
 
 ### Changed
 
-- The single-select dashboard dropdowns (Mode, Scope, Window and the refresh interval) are now popovers in the look of the tri-state filters instead of native selects: same panel, rows, hover and spacing, the current row marked with a filled dot. Picking a row replaces the value, submits the form and closes the menu; Enter and Space work on a focused row. `auto=0` still renders no refresh script.
+- The Mode filter is now a tri-state multi-value filter like Tier and Model (several modes at once, hide a mode, lines without a routingMode as "Unknown"); old `mode=all` and `mode=unknown` links still work. The single-select dashboard dropdowns (Scope, Window and the refresh interval) are now popovers in the look of the tri-state filters instead of native selects: same panel, rows, hover and spacing, the current row marked with a filled dot. Picking a row replaces the value, submits the form and closes the menu; Enter and Space work on a focused row. `auto=0` still renders no refresh script.
 
 - `RELEASING.md`: the Mac install section is confirmed accurate (no `file:` dependency, no shadowing binary), replacing the "unverified" note.
 

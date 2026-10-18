@@ -14,7 +14,7 @@ const NONE = '__none__';
  * `inc` non-empty: show only those values. `exc`: hide those values. Both empty: no constraint.
  */
 export type FilterSel = string | { inc?: string[]; exc?: string[] };
-export const FILTER_NAMES = ['session', 'tier', 'model', 'pin', 'reason', 'retry', 'role'] as const;
+export const FILTER_NAMES = ['mode', 'session', 'tier', 'model', 'pin', 'reason', 'retry', 'role'] as const;
 export type FilterName = (typeof FILTER_NAMES)[number];
 
 export function selOf(s: FilterSel | undefined): { inc: string[]; exc: string[] } {
@@ -188,7 +188,7 @@ function confidenceHelp(e: RouteEvent): string {
 
 /** Hover/focus explanation for each filter label. */
 const FILTER_HELP = {
-  mode: 'Which routing mode the requests ran under: all, routed (the router chose the model) or passthrough (routing off, request logged as sent).',
+  mode: 'Which routing mode the requests ran under: route (the router chose the model), observe or off (passed through as sent), or unknown for lines written before the mode was recorded.',
   scope: 'Session counts requests since this router started; All reads the tail of the history file, across restarts.',
   window: 'Only requests inside this time window: all time, today, or the last hour.',
   session: 'Only requests from one Claude Code session. The label is the session title when known, else its start time, length and request count.',
@@ -228,34 +228,23 @@ function esc(s: string): string {
 }
 
 /**
- * Dashboard mode filter: a filter over the recorded history
+ * Mode filter: a tri-state filter over the recorded history
  * rather than separate measurement windows, so an unrepresentative window can
  * be re-sliced after the fact instead of re-run.
  *
- * `unknown` is its own slice, not folded into `all` and not excluded. Lines
+ * Lines with no `routingMode` are their own slice (the NONE value, labeled Unknown), neither folded into a mode nor excluded. Lines
  * written before `routingMode` was added (194k+ of them on a long-running
  * install) carry no field at all, and excluding them would make the default
  * view of a long history mostly empty while silently discarding most of the
  * data; a labeled slice keeps them visible without mixing them into a mode
  * that never actually produced them.
  */
-export const DASHBOARD_MODES = ['all', 'route', 'observe', 'off', 'unknown'] as const;
-export type DashboardMode = (typeof DASHBOARD_MODES)[number];
 
-const MODE_LABEL: Record<DashboardMode, string> = {
-  all: 'All',
+const MODE_LABEL: Record<string, string> = {
   route: 'Route',
   observe: 'Observe',
   off: 'Off',
-  unknown: 'Unknown (pre-routingMode)',
 };
-
-/** Filters the history by `routingMode`. Exported for the filtering/recomputation tests. */
-export function filterByMode(history: RouteEvent[], mode: DashboardMode): RouteEvent[] {
-  if (mode === 'all') return history;
-  if (mode === 'unknown') return history.filter((e) => e.routingMode === undefined);
-  return history.filter((e) => e.routingMode === mode);
-}
 
 export const TIME_WINDOWS = ['all', 'today', 'hour'] as const;
 export type TimeWindow = (typeof TIME_WINDOWS)[number];
@@ -271,7 +260,8 @@ const WINDOW_LABEL: Record<TimeWindow, string> = { all: 'All time', today: 'Toda
  * silent exclusion, the precedent set for pre-field history.
  */
 export interface DashboardFilters {
-  mode?: DashboardMode;
+  /** The routing mode (`route` | `observe` | `off`), or NONE for lines written before `routingMode` existed. */
+  mode?: FilterSel;
   role?: FilterSel;
   model?: FilterSel;
   tier?: FilterSel;
@@ -330,13 +320,14 @@ function retryState(e: RouteEvent): string | undefined {
 
 /** True when any control narrows the event set; scope only picks the source, so it is not a filter. */
 export function hasActiveFilter(f: DashboardFilters): boolean {
-  return Boolean((f.mode && f.mode !== 'all') || FILTER_NAMES.some((n) => { const s = selOf(f[n]); return s.inc.length + s.exc.length > 0; }) || (f.window && f.window !== 'all'));
+  return Boolean(FILTER_NAMES.some((n) => { const s = selOf(f[n]); return s.inc.length + s.exc.length > 0; }) || (f.window && f.window !== 'all'));
 }
 
 /** Applies every active control as one AND, recomputed from the full history — exported for the filter/recomputation tests. */
 export function filterHistory(history: RouteEvent[], filters: DashboardFilters): RouteEvent[] {
-  let out = filterByMode(history, filters.mode ?? 'all');
+  let out = history;
   out = out.filter((e) =>
+    selMatches(filters.mode, e.routingMode) &&
     selMatches(filters.role, roleLabel(e)) &&
     selMatches(filters.model, e.model) &&
     selMatches(filters.tier, String(e.tier)) &&
@@ -445,7 +436,6 @@ export function savedTipLines(t: LifetimeStats): string[] {
 
 /** `opusModel` is the effective `config.tiers.opus`; defaults to the compiled-in one. */
 export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats, filters: DashboardFilters = {}, opusModel: string = DEFAULT_MODELS.opus, version?: string): string {
-  const mode = filters.mode ?? 'all';
   const filtered = filterHistory(history, filters);
   const totals = emptyTotals();
   for (const e of filtered) foldOutcome(totals, e);
@@ -514,7 +504,6 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
       .join('');
     return `<details class="tri one" data-f="${name}"><summary data-tip="${esc(label)}">${esc(label)}</summary><input type="hidden" name="${name}" value="${esc(cur)}"${attrs}><div class="tri-pop" role="listbox">${rows}</div></details>`;
   };
-  const modeItems: [string, string][] = DASHBOARD_MODES.map((m) => [m, MODE_LABEL[m]]);
 
   // Option lists come from the full history, not a hardcoded list -
   // a role/model/tier that never ran never appears, and one that did always does.
@@ -574,6 +563,8 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
 
   const retryValues = distinct(history, retryState);
   const retryItems = triItems(retryValues.values, retryValues.hasNone, 'No retry', filters.retry);
+  const modeValues = distinct(history, (e) => e.routingMode);
+  const modeTriItems = triItems(modeValues.values, modeValues.hasNone, 'Unknown (pre-routingMode)', filters.mode, (m) => MODE_LABEL[m] ?? m);
 
   const scopeItems: [string, string][] = [['session', 'Session (since start)'], ['all', `All (last ${HISTORY_TAIL_LINES} from history)`]];
   const selectField = (id: string, label: string, help: string, items: [string, string][], cur: string): string => `<div class="mode-filter">
@@ -581,7 +572,7 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
       ${selPop(id, items, cur)}
     </div>`;
   const filterFields = [
-    selectField('mode', 'Mode', FILTER_HELP.mode, modeItems, mode),
+    triField('mode', 'Mode', FILTER_HELP.mode, modeTriItems, filters.mode),
     selectField('scope', 'Scope', FILTER_HELP.scope, scopeItems, filters.scope === 'all' ? 'all' : 'session'),
     selectField('window', 'Window', FILTER_HELP.window, windowItems, filters.window ?? 'all'),
     triField('session', 'Session', FILTER_HELP.session, sessionItems, filters.session),
@@ -598,7 +589,6 @@ export function renderDashboard(history: RouteEvent[], lifetime?: LifetimeStats,
   // Carries the active filters as query params so the refresh target keeps
   // them — otherwise auto-refresh resets every control to "All" every 10s.
   const refreshParams = new URLSearchParams();
-  if (filters.mode && filters.mode !== 'all') refreshParams.set('mode', filters.mode);
   for (const n of FILTER_NAMES) {
     const { inc, exc } = selOf(filters[n]);
     for (const v of inc) refreshParams.append(n, v);

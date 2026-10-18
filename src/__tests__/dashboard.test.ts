@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { DIM_INK, hasActiveFilter, PASSTHROUGH_INK, extraCostNote, filterByMode, filterHistory, parseRefresh, renderDashboard, sessionLabel } from '../proxy/dashboard.js';
+import { DIM_INK, hasActiveFilter, PASSTHROUGH_INK, extraCostNote, filterHistory, parseRefresh, renderDashboard, sessionLabel } from '../proxy/dashboard.js';
 import { emptyTotals, foldOutcome } from '../totals.js';
 import type { RouteEvent } from '../proxy/route-event.js';
 
@@ -21,28 +21,24 @@ function e(overrides: Partial<RouteEvent> = {}): RouteEvent {
   };
 }
 
-describe('filterByMode', () => {
-  it('"all" returns the full set, including lines with no routingMode', () => {
-    const history = [e({ routingMode: 'route' }), e({ routingMode: undefined })];
-    assert.equal(filterByMode(history, 'all').length, 2);
+describe('mode filter (tri-state, several values)', () => {
+  const history = [e({ routingMode: 'route' }), e({ routingMode: 'observe' }), e({ routingMode: 'off' }), e({ routingMode: undefined })];
+  const modes = (f: Parameters<typeof filterHistory>[1]) => filterHistory(history, f).map((h) => h.routingMode);
+  it('no selection keeps everything, including lines with no routingMode', () => {
+    assert.equal(filterHistory(history, {}).length, 4);
   });
-
-  it('filters to exactly the requested mode', () => {
-    const history = [e({ routingMode: 'route' }), e({ routingMode: 'observe' }), e({ routingMode: 'off' })];
-    assert.deepEqual(filterByMode(history, 'route').map((h) => h.routingMode), ['route']);
-    assert.deepEqual(filterByMode(history, 'observe').map((h) => h.routingMode), ['observe']);
+  it('several included modes show exactly those', () => {
+    assert.deepEqual(modes({ mode: { inc: ['route', 'observe'] } }), ['route', 'observe']);
   });
-
-  it('"off" is a real, selectable slice even though off never records in practice', () => {
-    const history = [e({ routingMode: 'off' })];
-    assert.equal(filterByMode(history, 'off').length, 1);
+  it('an excluded mode is hidden', () => {
+    assert.deepEqual(modes({ mode: { exc: ['route'] } }), ['observe', 'off', undefined]);
   });
-
-  it('"unknown" picks up lines that carry no routingMode at all', () => {
-    const history = [e({ routingMode: 'route' }), e({ routingMode: undefined })];
-    const unknown = filterByMode(history, 'unknown');
-    assert.equal(unknown.length, 1);
-    assert.equal(unknown[0]!.routingMode, undefined);
+  it('NONE picks up lines that carry no routingMode at all', () => {
+    assert.deepEqual(modes({ mode: '__none__' }), [undefined]);
+  });
+  it('counts as an active filter', () => {
+    assert.equal(hasActiveFilter({ mode: { inc: ['route'] } }), true);
+    assert.equal(hasActiveFilter({}), false);
   });
 });
 
@@ -53,7 +49,7 @@ describe('renderDashboard — recomputation per mode', () => {
       e({ routingMode: 'observe', tier: 'haiku', costCents: 1, savedCents: 0 }),
       e({ routingMode: undefined, tier: 'sonnet', costCents: 100, savedCents: 50 }),
     ];
-    const all = renderDashboard(history, undefined, { mode: 'all' });
+    const all = renderDashboard(history, undefined, {});
     const route = renderDashboard(history, undefined, { mode: 'route' });
     assert.match(all, /\$1\.1100/); // (10 + 1 + 100) / 100
     assert.match(route, /\$0\.1000/); // 10 / 100
@@ -68,7 +64,7 @@ describe('renderDashboard — recomputation per mode', () => {
 
   it('defaults to "all" when no mode is given, matching pre-filter behavior', () => {
     const history = [e({ routingMode: 'route' }), e({ routingMode: undefined })];
-    assert.equal(renderDashboard(history), renderDashboard(history, undefined, { mode: 'all' }));
+    assert.equal(renderDashboard(history), renderDashboard(history, undefined, {}));
   });
 
   it('styles the refresh dropdown like the filter popovers, outside the uppercase live pill', () => {
@@ -543,10 +539,10 @@ describe('tri-state value filters (include / exclude, several values)', () => {
     assert.match(renderDashboard(history, undefined, { tier: { exc: ['fable'] } }), /data-v="fable" data-s="exc"/);
   });
 
-  it('mode, scope, window and refresh are single-select popovers styled like the tri-state ones', () => {
+  it('scope, window and refresh are single-select popovers styled like the tri-state ones', () => {
     const html = renderDashboard(history, undefined, { window: 'today', auto: 30 });
     assert.ok(!html.includes('<select'), 'no native select left');
-    for (const [id, cur] of [['mode', 'all'], ['scope', 'session'], ['window', 'today'], ['auto', '30']]) {
+    for (const [id, cur] of [['scope', 'session'], ['window', 'today'], ['auto', '30']]) {
       assert.match(html, new RegExp(`<details class="tri one" data-f="${id}">`));
       assert.equal(html.match(new RegExp(`name="${id}"`, 'g'))?.length, 1, `${id} submits one value`);
       assert.match(html, new RegExp(`<input type="hidden" name="${id}" value="${cur}"`));
