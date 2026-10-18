@@ -9,6 +9,7 @@ This fork's own sections use the upstream version plus a `-smoo.<n>` prerelease 
 
 ### Changed
 
+- README screenshots (2026-10-18): all dashboard images in `docs/images` are recaptured from a synthetic scratch HOME (viewport 1600, device scale 2) so they show the tri-state filters instead of the old selects. `dashboard-session-filter.png` now shows the open tri-state popup with one session hidden and one only, and the new `dashboard-filter-summary.png` shows the closed bar with ellipsized summaries. `dashboard-auto-refresh.png` no longer shows an open native select (an OS-drawn popup cannot be captured truthfully); it shows the 30 second setting and footer. README alt text and filter paragraph updated.
 - `RELEASING.md`: the Mac install section is confirmed accurate (no `file:` dependency, no shadowing binary), replacing the "unverified" note.
 
 ### Changed
