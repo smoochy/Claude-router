@@ -7,6 +7,10 @@ This fork's own sections use the upstream version plus a `-smoo.<n>` prerelease 
 
 ## [Unreleased]
 
+### Fixed
+
+- The daemon no longer dies when an upstream connection errors out. An `error` event on a pooled upstream stream (`UND_ERR_SOCKET`, other side closed) with no listener is an uncaught exception that `unhandledRejection` never saw; a new `uncaughtException` guard logs transport-level upstream errors and keeps serving, and still exits on any other uncaught exception.
+
 ### Changed
 
 - Dashboard stat cards say what they cover: `Session` becomes `History` under scope All, and a `(filtered)` suffix appears while any filter is active.
