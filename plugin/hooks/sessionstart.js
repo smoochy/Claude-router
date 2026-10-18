@@ -46,7 +46,9 @@ async function ensureProxy(port) {
   } catch {
     return { health: null, started: false };
   }
-  for (let i = 0; i < 20 && !health; i++) {
+  // `start -d` also replaces a hung daemon (SIGTERM, wait, SIGKILL, fresh start), so allow
+  // for that; the whole hook must still end inside its 8 s timeout in hooks.json.
+  for (let i = 0; i < 45 && !health; i++) {
     await sleep(150);
     health = await request(port, 'GET', '/health');
   }
