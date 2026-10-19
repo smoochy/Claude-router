@@ -26,6 +26,44 @@ describe('installPolicyPlugin', () => {
     assert.match(r.detail, new RegExp(`claude plugin install --scope user ${PLUGIN_ID}`));
   });
 
+  describe('marketplace autoUpdate', () => {
+    const run = (initial: string | null) => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cr-mkt-'));
+      const file = path.join(dir, 'settings.json');
+      if (initial !== null) fs.writeFileSync(file, initial);
+      const r = installPolicyPlugin(scripted([{ ok: true }, { ok: true }, { ok: true }]).exec, file);
+      return { r, file, read: () => JSON.parse(fs.readFileSync(file, 'utf8')) };
+    };
+
+    it('registers the marketplace with autoUpdate in settings.json and keeps other keys', () => {
+      const { r, read } = run('{"theme":"dark","extraKnownMarketplaces":{"x":{"autoUpdate":false}}}');
+      assert.equal(r.ok, true);
+      const s = read();
+      assert.equal(s.theme, 'dark');
+      assert.equal(s.extraKnownMarketplaces.x.autoUpdate, false);
+      assert.deepEqual(s.extraKnownMarketplaces['claude-router'], { source: { source: 'github', repo: MARKETPLACE_SOURCE }, autoUpdate: true });
+    });
+
+    it('creates settings.json when missing and flips an existing entry without replacing its source', () => {
+      assert.equal(run(null).read().extraKnownMarketplaces['claude-router'].autoUpdate, true);
+      const { read } = run('{"extraKnownMarketplaces":{"claude-router":{"source":{"source":"git","url":"u"}}}}');
+      assert.deepEqual(read().extraKnownMarketplaces['claude-router'], { source: { source: 'git', url: 'u' }, autoUpdate: true });
+    });
+
+    it('uninstall removes the entry so the marketplace is not re-added', () => {
+      const { file, read } = run('{"extraKnownMarketplaces":{"x":{}}}');
+      uninstallPolicyPlugin(scripted([{ ok: true }, { ok: true }]).exec, { installed: true, id: PLUGIN_ID, marketplace: 'claude-router', version: null, installPath: null }, file);
+      assert.deepEqual(Object.keys(read().extraKnownMarketplaces), ['x']);
+    });
+
+    it('leaves an invalid settings.json untouched and still succeeds', () => {
+      const { r, file } = run('{nope');
+      assert.equal(r.ok, true);
+      assert.equal(fs.readFileSync(file, 'utf8'), '{nope');
+      assert.match(r.detail, /autoUpdate/);
+    });
+  });
+
   it('installs from this fork, not the upstream repository', () => {
     assert.equal(MARKETPLACE_SOURCE, 'smoochy/Claude-router');
   });

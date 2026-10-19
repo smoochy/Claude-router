@@ -7,6 +7,14 @@ This fork's own sections use the upstream version plus a `-smoo.<n>` prerelease 
 
 ## [Unreleased]
 
+### Fixed
+
+- `start -d` no longer writes its own pid to `daemon.json` when its child already died, which happens when a parallel `start -d` won the port and answered `/health` (2026-10-19). A stale pid there would have disabled hung-daemon replacement.
+
+### Changed
+
+- `install` now enables `autoUpdate` for the `claude-router` marketplace through an `extraKnownMarketplaces` entry in `~/.claude/settings.json` (existing keys and an existing entry's source are kept); `uninstall` removes the entry (2026-10-19). README documents the plugin hook as the daemon's fail-guard, what is lost with `--no-policy` / `--api-only`, and that concurrent `start -d` has no lock (accepted).
+
 ### Added
 
 - Silent daemon exits now leave a trace in proxy.log (2026-10-19): SIGHUP and SIGBREAK are logged before the daemon exits (129 / 149), and the process `exit` event logs its code. `start -d` logs `replacing pid <pid>: /health silent, log silent <n> s` and each signal it sends when it replaces a hung daemon. SIGKILL and Windows TerminateProcess stay invisible by nature; an `exit` line missing next to the last `[diag]` points at them.

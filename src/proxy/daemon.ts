@@ -225,7 +225,8 @@ export async function startDaemon(
   for (let i = 0; i < 15; i++) {
     await new Promise((r) => setTimeout(r, 200));
     const health = await checkHealth(port, 500);
-    if (health) {
+    // A dead child means the health answer came from another daemon (a parallel `start -d` won the port): never record our own dead pid.
+    if (health && isProcessAlive(pid)) {
       writeDaemonState(
         { pid, port, startedAt: new Date().toISOString(), args: serveArgs },
         paths,

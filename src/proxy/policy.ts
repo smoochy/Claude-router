@@ -62,7 +62,27 @@ export function claudeAvailable(exec: Exec = defaultExec): boolean {
 
 const MANUAL = `claude plugin marketplace add --scope user ${MARKETPLACE_SOURCE} && claude plugin install --scope user ${PLUGIN_ID}`;
 
-export function installPolicyPlugin(exec: Exec = defaultExec): StepResult {
+/**
+ * `claude plugin marketplace add` leaves autoUpdate off for a third-party marketplace and has no flag for it.
+ * The non-interactive switch is the `extraKnownMarketplaces` entry in settings.json. Returns a warning, or null.
+ * Without it the plugin (and its session-start hook, the daemon's fail-guard) never updates.
+ */
+function enableMarketplaceAutoUpdate(settingsFile: string): string | null {
+  const manual = `set extraKnownMarketplaces.${MARKETPLACE_NAME}.autoUpdate to true in ${settingsFile}, or toggle it in /plugin`;
+  try {
+    const settings = fs.existsSync(settingsFile) ? (JSON.parse(fs.readFileSync(settingsFile, 'utf8')) as Record<string, any>) : {};
+    const known = (settings['extraKnownMarketplaces'] ??= {});
+    const entry = (known[MARKETPLACE_NAME] ??= { source: { source: 'github', repo: MARKETPLACE_SOURCE } });
+    entry.autoUpdate = true;
+    fs.mkdirSync(path.dirname(settingsFile), { recursive: true });
+    fs.writeFileSync(settingsFile, JSON.stringify(settings, null, 2), 'utf8');
+    return null;
+  } catch (err) {
+    return `marketplace autoUpdate not enabled (${firstLine(String(err))}); ${manual}`;
+  }
+}
+
+export function installPolicyPlugin(exec: Exec = defaultExec, settingsFile?: string): StepResult {
   if (!claudeAvailable(exec)) {
     return { ok: false, skipped: true, detail: `Orchestration plugin skipped: \`claude\` is not on PATH. Later: ${MANUAL}` };
   }
@@ -75,10 +95,11 @@ export function installPolicyPlugin(exec: Exec = defaultExec): StepResult {
   if (!install.ok && !/already/i.test(install.output)) {
     return { ok: false, detail: `Could not install ${PLUGIN_ID}: ${firstLine(install.output)}` };
   }
-  return { ok: true, detail: `Orchestration plugin installed (${PLUGIN_ID}) — restart Claude Code to load it` };
+  const warn = settingsFile ? enableMarketplaceAutoUpdate(settingsFile) : null;
+  return { ok: true, detail: `Orchestration plugin installed (${PLUGIN_ID}) — restart Claude Code to load it${warn ? `. Warning: ${warn}` : ''}` };
 }
 
-export function uninstallPolicyPlugin(exec: Exec = defaultExec, status: PolicyPluginStatus = policyPluginStatus()): StepResult {
+export function uninstallPolicyPlugin(exec: Exec = defaultExec, status: PolicyPluginStatus = policyPluginStatus(), settingsFile?: string): StepResult {
   if (!claudeAvailable(exec)) {
     return { ok: false, skipped: true, detail: `Orchestration plugin left in place: \`claude\` is not on PATH` };
   }
@@ -86,6 +107,15 @@ export function uninstallPolicyPlugin(exec: Exec = defaultExec, status: PolicyPl
   const result = exec(['plugin', 'uninstall', '--scope', 'user', id]);
   if (!result.ok && !/not installed|not found/i.test(result.output)) {
     return { ok: false, detail: `Could not uninstall ${id}: ${firstLine(result.output)}` };
+  }
+  if (settingsFile) {
+    try {
+      const settings = JSON.parse(fs.readFileSync(settingsFile, 'utf8')) as Record<string, any>;
+      if (settings['extraKnownMarketplaces']?.[MARKETPLACE_NAME]) {
+        delete settings['extraKnownMarketplaces'][MARKETPLACE_NAME];
+        fs.writeFileSync(settingsFile, JSON.stringify(settings, null, 2), 'utf8');
+      }
+    } catch { /* no or unreadable settings: nothing of ours to remove */ }
   }
   return { ok: true, detail: `Orchestration plugin removed (${id})` };
 }

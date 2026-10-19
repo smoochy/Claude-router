@@ -756,7 +756,7 @@ async function cmdInstall(args: string[], paths: RouterPaths): Promise<CommandRe
   //    working looks exactly like one that works — until the bill arrives.
   let pluginInstalled = false;
   if (!found.has('--no-policy')) {
-    const result = installPolicyPlugin();
+    const result = installPolicyPlugin(undefined, routerPaths().claudeSettingsFile);
     lines.push(stepLine(result));
     if (!result.ok && !result.skipped) failures++;
     pluginInstalled = result.ok;
@@ -791,7 +791,7 @@ async function cmdUninstall(_args: string[], paths: RouterPaths): Promise<Comman
   lines.push(stepLine(unsetClaudeCodeEnv(paths)));
   lines.push(stepLine(unsetEnvVar(paths)));
   lines.push(stepLine(removeStatusline(paths)));
-  lines.push(stepLine(uninstallPolicyPlugin()));
+  lines.push(stepLine(uninstallPolicyPlugin(undefined, undefined, routerPaths().claudeSettingsFile)));
   lines.push(out(`\n${term.ok()} claude-router uninstalled.\n`));
   return ok(lines);
 }
@@ -803,7 +803,7 @@ function cmdPolicy(args: string[]): CommandResult {
   const [action = 'status'] = args;
   switch (action) {
     case 'install': {
-      const result = installPolicyPlugin();
+      const result = installPolicyPlugin(undefined, routerPaths().claudeSettingsFile);
       return result.ok || result.skipped ? ok([stepLine(result)]) : failed([stepLine(result)]);
     }
     case 'uninstall': {
