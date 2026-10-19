@@ -9,7 +9,12 @@ This fork's own sections use the upstream version plus a `-smoo.<n>` prerelease 
 
 ### Fixed
 
+- `start -d` no longer writes its own pid to `daemon.json` when its child already died, which happens when a parallel `start -d` won the port and answered `/health` (2026-10-19). A stale pid there would have disabled hung-daemon replacement.
 - `npm install -g @smoochy/claude-router` no longer prints `npm warn deprecated uuid@9.0.1`: the optional `@anthropic-ai/vertex-sdk` is bumped from `^0.16.0` to `^0.21.0`, which needs `google-auth-library` 10 and `gaxios` 7, neither of which depends on `uuid`. No `overrides` entry is needed. A new test pins the range and the resolved `google-auth-library` major.
+
+### Changed
+
+- `install` now enables `autoUpdate` for the `claude-router` marketplace through an `extraKnownMarketplaces` entry in `~/.claude/settings.json` (existing keys and an existing entry's source are kept); `uninstall` removes the entry (2026-10-19). README documents the plugin hook as the daemon's fail-guard, what is lost with `--no-policy` / `--api-only`, and that concurrent `start -d` has no lock (accepted).
 
 ### Added
 
