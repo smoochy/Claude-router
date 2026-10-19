@@ -7,6 +7,10 @@ This fork's own sections use the upstream version plus a `-smoo.<n>` prerelease 
 
 ## [Unreleased]
 
+### Fixed
+
+- `npm install -g @smoochy/claude-router` no longer prints `npm warn deprecated uuid@9.0.1`: the optional `@anthropic-ai/vertex-sdk` is bumped from `^0.16.0` to `^0.21.0`, which needs `google-auth-library` 10 and `gaxios` 7, neither of which depends on `uuid`. No `overrides` entry is needed. A new test pins the range and the resolved `google-auth-library` major.
+
 ### Added
 
 - Silent daemon exits now leave a trace in proxy.log (2026-10-19): SIGHUP and SIGBREAK are logged before the daemon exits (129 / 149), and the process `exit` event logs its code. `start -d` logs `replacing pid <pid>: /health silent, log silent <n> s` and each signal it sends when it replaces a hung daemon. SIGKILL and Windows TerminateProcess stay invisible by nature; an `exit` line missing next to the last `[diag]` points at them.
