@@ -94,4 +94,19 @@ describe('replaceHungDaemon', () => {
     assert.equal(isProcessAlive(bystander.pid), true);
     fs.rmSync(home, { recursive: true, force: true });
   });
+
+  it('writes pid, reason and silent seconds to proxy.log', async () => {
+    const { home, paths } = tempPaths();
+    fs.mkdirSync(paths.configDir, { recursive: true });
+    fs.writeFileSync(paths.logFile, '[diag] x\n');
+    const old = new Date(Date.now() - 42_000);
+    fs.utimesSync(paths.logFile, old, old);
+    const hung = await spawnHungServer();
+    writeDaemonState(state(hung.pid, hung.port), paths);
+    await replaceHungDaemon(hung.port, paths, FAST);
+    const log = fs.readFileSync(paths.logFile, 'utf8');
+    assert.match(log, new RegExp(`replacing pid ${hung.pid}: /health silent, log silent 4\\d s`));
+    assert.match(log, /sent SIGTERM/);
+    fs.rmSync(home, { recursive: true, force: true });
+  });
 });

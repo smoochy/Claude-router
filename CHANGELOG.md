@@ -7,6 +7,10 @@ This fork's own sections use the upstream version plus a `-smoo.<n>` prerelease 
 
 ## [Unreleased]
 
+### Added
+
+- Silent daemon exits now leave a trace in proxy.log (2026-10-19): SIGHUP and SIGBREAK are logged before the daemon exits (129 / 149), and the process `exit` event logs its code. `start -d` logs `replacing pid <pid>: /health silent, log silent <n> s` and each signal it sends when it replaces a hung daemon. SIGKILL and Windows TerminateProcess stay invisible by nature; an `exit` line missing next to the last `[diag]` points at them.
+
 ## [0.4.0-smoo.7] - 2026-10-18
 
 ### Changed
