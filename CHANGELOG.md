@@ -9,6 +9,7 @@ This fork's own sections use the upstream version plus a `-smoo.<n>` prerelease 
 
 ### Fixed
 
+- **The SessionStart hook finds the router behind a chained `ANTHROPIC_BASE_URL`.** With a front proxy that carries the upstream in the path (`http://127.0.0.1:48787/bili/http://127.0.0.1:4000`) the hook probed the front proxy's port, reported "proxy not reachable" and could start a second daemon. It now collects every loopback port in the URL, last hop first, and takes the first one whose `/health` answers as `claude-router-proxy`, so the router may sit anywhere in a chain of local relays; `CLAUDE_ROUTER_PORT` still wins (#116).
 - `install` (and `uninstall`) on Windows now find a native Claude Code install that ships only `claude.exe`: the CLI is run as `claude.exe` directly, falling back to the `claude.cmd` shim through cmd.exe only when the exe is not on PATH (2026-10-19). Before, the plugin step was skipped with "`claude` is not on PATH".
 - `start -d` no longer writes its own pid to `daemon.json` when its child already died, which happens when a parallel `start -d` won the port and answered `/health` (2026-10-19). A stale pid there would have disabled hung-daemon replacement.
 - `npm install -g @smoochy/claude-router` no longer prints `npm warn deprecated uuid@9.0.1`: the optional `@anthropic-ai/vertex-sdk` is bumped from `^0.16.0` to `^0.21.0`, which needs `google-auth-library` 10 and `gaxios` 7, neither of which depends on `uuid`. No `overrides` entry is needed. A new test pins the range and the resolved `google-auth-library` major.
