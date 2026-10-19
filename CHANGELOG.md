@@ -7,6 +7,8 @@ This fork's own sections use the upstream version plus a `-smoo.<n>` prerelease 
 
 ## [Unreleased]
 
+## [0.4.0-smoo.8] - 2026-10-19
+
 ### Fixed
 
 - **The SessionStart hook finds the router behind a chained `ANTHROPIC_BASE_URL`.** With a front proxy that carries the upstream in the path (`http://127.0.0.1:48787/bili/http://127.0.0.1:4000`) the hook probed the front proxy's port, reported "proxy not reachable" and could start a second daemon. It now collects every loopback port in the URL, last hop first, and takes the first one whose `/health` answers as `claude-router-proxy`, so the router may sit anywhere in a chain of local relays; `CLAUDE_ROUTER_PORT` still wins (#116).
