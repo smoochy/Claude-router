@@ -7,6 +7,12 @@ This fork's own sections use the upstream version plus a `-smoo.<n>` prerelease 
 
 ## [Unreleased]
 
+## [0.4.0-smoo.9] - 2026-11-04
+
+### Fixed
+
+- **Security:** `@hono/node-server` updated to v2.1.6 (Renovate security update, #120).
+
 ## [0.4.0-smoo.8] - 2026-10-19
 
 ### Fixed
