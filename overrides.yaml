@@ -1,0 +1,3 @@
+# Minimum versions for Dependabot alerts, applied by the upstream sync into package.json overrides before the lockfile is regenerated. Entries the upstream lockfile already satisfies are pruned.
+npm:
+  fast-xml-parser: '5.12.0'  # alert 29

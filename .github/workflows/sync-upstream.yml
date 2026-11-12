@@ -155,10 +155,13 @@ jobs:
           NEW=$(node scripts/sync-upstream.mjs bump "$(node -p "require('./package.json').version")" "$NEWBASE")
           npm version "$NEW" --no-git-tag-version --allow-same-version
           node -e "const f='plugin/.claude-plugin/plugin.json',fs=require('fs'),j=JSON.parse(fs.readFileSync(f));j.version=process.argv[1];fs.writeFileSync(f,JSON.stringify(j,null,2)+'\n')" "$NEW"
+          PRUNED=$(node scripts/apply-overrides.mjs)
           npm ci
           npm test
-          git add package.json package-lock.json plugin/.claude-plugin/plugin.json
-          git commit -m "Bump version to $NEW (upstream base only, counter kept)"
+          git add package.json package-lock.json overrides.yaml plugin/.claude-plugin/plugin.json
+          MSG="Bump version to $NEW (upstream base only, counter kept)"
+          if [ -n "$PRUNED" ]; then MSG="$MSG"$'\n\n'"Pruned satisfied overrides:"$'\n'"$PRUNED"; fi
+          git commit -m "$MSG"
           echo "version=$NEW" >> "$GITHUB_ENV"
 
       - name: Push and open the sync PR
