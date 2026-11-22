@@ -217,6 +217,17 @@ describe('createProxyApp', () => {
       }
     });
 
+    it('POST /v1/messages: refuses a foreign Host, lets a loopback JSON call through the guards', async () => {
+      const post = (host: string) =>
+        app.request('/v1/messages', { method: 'POST', headers: { host, 'content-type': 'application/json' }, body: '{}' });
+      assert.equal((await post('attacker.example:4000')).status, 403);
+      for (const host of ['localhost:4000', '127.0.0.1:4000']) {
+        const status = (await post(host)).status;
+        // Past both guards the handler answers (401 without credentials), never 403/415.
+        assert.ok(status !== 403 && status !== 415, `${host} -> ${status}`);
+      }
+    });
+
     it('lets a network-exposed bind skip only the Host check', async () => {
       const exposed = createProxyApp(
         { classifier: 'heuristic', defaultModel: 'claude-sonnet-4-6', verbose: false, provider: 'anthropic', models: DEFAULT_MODELS, forceRoute: false },
