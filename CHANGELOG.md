@@ -9,6 +9,7 @@ This fork's own sections use the upstream version plus a `-smoo.<n>` prerelease 
 
 ### Added
 - `overrides.yaml` lists minimum versions for Dependabot alerts. The upstream sync writes them into the `overrides` field of `package.json`, regenerates the lockfile with `npm install --package-lock-only`, and prunes entries the upstream lockfile already satisfies (named in the commit message), so alert fixes survive a sync. Fix alerts by editing `overrides.yaml`, never the lockfile.
+- Test pinning the POST `/v1/messages` request checks: a foreign Host is refused with 403, loopback JSON calls pass both guards.
 
 ## [0.4.0-smoo.9] - 2026-11-04
 
