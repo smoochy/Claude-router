@@ -7,6 +7,9 @@ This fork's own sections use the upstream version plus a `-smoo.<n>` prerelease 
 
 ## [Unreleased]
 
+### Changed
+- CI workflows use `actions/checkout@v7`, `actions/setup-node@v7` and `actions/upload-artifact@v7`, which run on Node 24, so the Node 20 deprecation annotation on the publish run is gone.
+
 ## [0.4.0-smoo.10] - 2026-11-22
 
 ### Fixed
