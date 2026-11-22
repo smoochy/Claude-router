@@ -24,7 +24,8 @@ import type { AddressInfo } from 'node:net';
 import { serve } from '@hono/node-server';
 import Anthropic from '@anthropic-ai/sdk';
 import { createProxyApp } from '../proxy/server.js';
-import { routeHistory, type HandlerConfig } from '../proxy/handler.js';
+import { routeHistory, setRouterHeaders, type HandlerConfig } from '../proxy/handler.js';
+import type { ClassifyResult } from '../types.js';
 import { roleMarker } from '../roles.js';
 import { readLifetimeStats, resetHistoryCache } from '../proxy/history.js';
 import { DEFAULT_MODELS } from '../models.js';
@@ -348,6 +349,29 @@ describe('proxy end-to-end (real sockets, fake upstream)', () => {
     assert.match(sse, new RegExp(`hello from ${DEFAULT_MODELS.opus}`));
     assert.equal(upstream.calls.at(-1)!.model, DEFAULT_MODELS.opus);
     assert.equal(upstream.calls.at(-1)!.stream, true);
+  });
+
+  it('streaming sets exactly the x-router-* headers setRouterHeaders produces (no cost known yet)', async () => {
+    const { base } = await setup({ config: { sessionModel: 'opus' } });
+    const res = await post(base, {
+      model: 'claude-opus-4-8',
+      messages: [{ role: 'user', content: 'translate hello to French' }],
+      tools: CODER_TOOLS,
+      max_tokens: 100,
+      stream: true,
+    });
+    await readSse(res);
+    const routerHeaders = (h: Headers) => [...h].filter(([k]) => k.startsWith('x-router-')).sort();
+    const expected = new Headers();
+    const classifyResult = {
+      method: res.headers.get('x-router-classifier'),
+      ms: Number(res.headers.get('x-router-classifier-ms')),
+      confidence: Number(res.headers.get('x-router-confidence')),
+      reason: res.headers.get('x-router-reason') ?? undefined,
+    } as ClassifyResult;
+    setRouterHeaders(expected, 'opus', DEFAULT_MODELS.opus, undefined, undefined, classifyResult);
+    assert.deepEqual(routerHeaders(res.headers), routerHeaders(expected));
+    assert.equal(res.headers.get('x-router-cost-cents'), null, 'cost is unknown before the stream ends');
   });
 
   it('routes subagent requests by evidence even when sessionModel is set', async () => {

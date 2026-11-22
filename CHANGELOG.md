@@ -11,6 +11,9 @@ This fork's own sections use the upstream version plus a `-smoo.<n>` prerelease 
 - `readLifetimeStats` now reads the history ledger in 4 MiB chunks instead of allocating one buffer the size of the whole file.
 - A client that disconnects mid-stream now aborts the upstream stream instead of leaving it running, the stream controller is no longer touched after the cancel, and the cancelled stream is recorded in history as an error event.
 
+### Changed
+- `log()` in the proxy handler takes an options object instead of nine positional parameters, and the streaming path sets its `x-router-*` headers through `setRouterHeaders` instead of by hand (audit finding 5). Behaviour is unchanged; a test pins the streaming headers equal to `setRouterHeaders` output.
+
 ### Added
 - `overrides.yaml` lists minimum versions for Dependabot alerts. The upstream sync writes them into the `overrides` field of `package.json`, regenerates the lockfile with `npm install --package-lock-only`, and prunes entries the upstream lockfile already satisfies (named in the commit message), so alert fixes survive a sync. Fix alerts by editing `overrides.yaml`, never the lockfile.
 - Test pinning the POST `/v1/messages` request checks: a foreign Host is refused with 403, loopback JSON calls pass both guards.

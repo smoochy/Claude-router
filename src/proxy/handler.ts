@@ -302,7 +302,19 @@ async function classify(
   });
 }
 
-function log(tier: Tier, model: string, classifyResult: ClassifyResult, costCents: number, savedCents: number, defaultModel: string, retried: boolean = false, retryReason: string | null = null, priced: boolean = true): void {
+interface LogOptions {
+  tier: Tier;
+  model: string;
+  classifyResult: ClassifyResult;
+  costCents: number;
+  savedCents: number;
+  defaultModel: string;
+  retried?: boolean;
+  retryReason?: string | null;
+  priced?: boolean;
+}
+
+function log({ tier, model, classifyResult, costCents, savedCents, defaultModel, retried = false, retryReason = null, priced = true }: LogOptions): void {
   // Without a price there is no cost figure to print — "$0.0000" would read as
   // a free call rather than an unmeasured one.
   const money = !priced
@@ -322,12 +334,13 @@ function log(tier: Tier, model: string, classifyResult: ClassifyResult, costCent
   );
 }
 
-function setRouterHeaders(
+// costCents/savedCents are undefined on the streaming path: the cost is not known when headers go out.
+export function setRouterHeaders(
   headers: Headers,
   tier: Tier,
   model: string,
-  costCents: number,
-  savedCents: number,
+  costCents: number | undefined,
+  savedCents: number | undefined,
   classifyResult: ClassifyResult,
   retried: boolean = false,
   retryReason: string | null = null,
@@ -335,8 +348,8 @@ function setRouterHeaders(
 ): void {
   headers.set('x-router-tier', tier);
   headers.set('x-router-model', model);
-  headers.set('x-router-cost-cents', costCents.toFixed(3));
-  headers.set('x-router-saved-cents', savedCents.toFixed(3));
+  if (costCents !== undefined) headers.set('x-router-cost-cents', costCents.toFixed(3));
+  if (savedCents !== undefined) headers.set('x-router-saved-cents', savedCents.toFixed(3));
   headers.set('x-router-classifier', classifyResult.method);
   headers.set('x-router-classifier-ms', classifyResult.ms.toString());
   headers.set('x-router-confidence', classifyResult.confidence.toString());
@@ -637,7 +650,7 @@ async function handleNonStreaming(
     const cost = computeCosts(result.model, result.response.usage, config, baselineModel);
 
     if (config.verbose) {
-      log(result.tier, result.model, classifyResult, cost.costCents, cost.savedCents, baselineModel, result.retried, result.retryReason, cost.priced);
+      log({ tier: result.tier, model: result.model, classifyResult, costCents: cost.costCents, savedCents: cost.savedCents, defaultModel: baselineModel, retried: result.retried, retryReason: result.retryReason, priced: cost.priced });
     }
 
     recordEvent(buildRouteEvent({
@@ -724,14 +737,8 @@ async function handleStreaming(
     'content-type': 'text/event-stream',
     'cache-control': 'no-cache',
     'connection': 'keep-alive',
-    'x-router-tier': tier,
-    'x-router-model': model,
-    'x-router-classifier': classifyResult.method,
-    'x-router-classifier-ms': classifyResult.ms.toString(),
-    'x-router-confidence': classifyResult.confidence.toString(),
   });
-  if (classifyResult.reason) headers.set('x-router-reason', classifyResult.reason);
-  if (classifyResult.method === 'role' && context.role) headers.set('x-router-role', context.role);
+  setRouterHeaders(headers, tier, model, undefined, undefined, classifyResult, false, null, context);
 
   const encoder = new TextEncoder();
 
@@ -755,7 +762,7 @@ async function handleStreaming(
         const cost = computeCosts(model, finalMessage.usage, config, baselineModel);
 
         if (config.verbose) {
-          log(tier, model, classifyResult, cost.costCents, cost.savedCents, baselineModel, false, null, cost.priced);
+          log({ tier, model, classifyResult, costCents: cost.costCents, savedCents: cost.savedCents, defaultModel: baselineModel, priced: cost.priced });
         }
 
         recordEvent(buildRouteEvent({ tier, model, requestedModel: pinnedModel, cost, classifyResult, context, dispatched: dispatchedIn(finalMessage.content) }), config);
