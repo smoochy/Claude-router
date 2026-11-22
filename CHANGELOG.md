@@ -8,6 +8,7 @@ This fork's own sections use the upstream version plus a `-smoo.<n>` prerelease 
 ## [Unreleased]
 
 ### Fixed
+- `readLifetimeStats` now reads the history ledger in 4 MiB chunks instead of allocating one buffer the size of the whole file.
 - A client that disconnects mid-stream now aborts the upstream stream instead of leaving it running, the stream controller is no longer touched after the cancel, and the cancelled stream is recorded in history as an error event.
 
 ### Added
