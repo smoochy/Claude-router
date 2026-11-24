@@ -132,6 +132,8 @@ Watch routing live in the logs, or open the dashboard at `http://localhost:4000/
 
 > **Another local proxy in front of the router?** A relay that takes the upstream as a path suffix works, for example `ANTHROPIC_BASE_URL=http://127.0.0.1:48787/bili/http://127.0.0.1:4000` for billion-context. The plugin hooks probe every loopback port in that URL on `/health`, last hop first, and use the first that answers as `claude-router-proxy`. With several relays, or when you want no guessing, set `CLAUDE_ROUTER_PORT` to the router's port in the same `settings.json` `env` block; it always wins.
 
+> **Another local proxy in front of the router?** A relay that takes the upstream as a path suffix works, for example `ANTHROPIC_BASE_URL=http://127.0.0.1:48787/bili/http://127.0.0.1:4000` for billion-context. The plugin hooks probe every loopback port in that URL on `/health`, last hop first, and use the first that answers as `claude-router-proxy`. With several relays, or when you want no guessing, set `CLAUDE_ROUTER_PORT` to the router's port in the same `settings.json` `env` block; it always wins.
+
 ### Any app, without installing
 
 **1. Start the proxy** in one terminal:
