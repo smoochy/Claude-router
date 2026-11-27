@@ -8,7 +8,18 @@ This fork's own sections use the upstream version plus a `-smoo.<n>` prerelease 
 ## [Unreleased]
 
 ### Changed
+- Merged upstream v0.4.1 into the fork (released as `0.4.1-smoo.1`). The fork already carried the upstream fixes in its own `0.4.0-smoo.*` sections, so the merge keeps the fork's side of every conflict and takes only the upstream `hono` ^4.13.21 and `@hono/node-server` ^2.1.11 bumps.
 - CI workflows use `actions/checkout@v7`, `actions/setup-node@v7` and `actions/upload-artifact@v7`, which run on Node 24, so the Node 20 deprecation annotation on the publish run is gone.
+
+## [0.4.1] - 2026-11-23
+
+Upstream release, pulled in by merge. Fixes in it were ported from this fork.
+
+### Security
+- The proxy refuses browser-origin requests (`localGuard`, JSON-only POST routes returning 415 otherwise), and `hono` / `@hono/node-server` pick up upstream security fixes.
+
+### Fixed
+- The daemon survives an unhandled upstream stream `error`, memory is bounded (request body cap, chunked SSE and ledger reads), a cancelled streaming request aborts the upstream call, `restart` no longer revives flags removed from `config.json`, the plugin hooks find the router in a chained `ANTHROPIC_BASE_URL`, and Windows `.cmd` spawning is hardened.
 
 ## [0.4.0-smoo.10] - 2026-11-22
 
